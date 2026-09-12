@@ -1,0 +1,14 @@
+.DS_Store
+codedb.snapshot
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+node_modules/
+__pycache__/
+build/
+dist/
+*.xcresult/
+
+playwright-report/
+test-results/

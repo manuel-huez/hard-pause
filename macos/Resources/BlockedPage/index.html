@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#1c1d29" />
+    <title>Hard Pause — This page is paused.</title>
+    <link rel="stylesheet" href="../mascot/mascot.css" />
+    <link rel="stylesheet" href="blocked.css" />
+    <script src="../mascot/mascot.js" defer></script>
+    <script src="blocked.js" defer></script>
+  </head>
+  <body>
+    <main class="blocked-page" aria-labelledby="blocked-title">
+      <section class="blocked-card">
+        <div id="mascot" role="img" aria-label="Low Light is resting"></div>
+        <p class="eyebrow">HARD PAUSE</p>
+        <h1 id="blocked-title">This page is paused.</h1>
+        <p class="message">You chose a little space. Your pause is still in place.</p>
+      </section>
+    </main>
+  </body>
+</html>

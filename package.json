@@ -1,0 +1,21 @@
+{
+  "name": "hard-pause-checks",
+  "private": true,
+  "scripts": {
+    "test": "node --test web/tests/*.test.cjs",
+    "lint": "eslint web/app.js web/mascot web/tests scripts/*.cjs playwright.config.cjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run lint && npm test",
+    "test:browser": "playwright test"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "eslint": "10.10.0",
+    "prettier": "3.9.6"
+  }
+}

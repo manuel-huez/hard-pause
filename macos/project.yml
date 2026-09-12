@@ -1,0 +1,165 @@
+name: HardPause
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: '26.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    DEVELOPMENT_TEAM: ZBX6C7BJ5X
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: Apple Development
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+    CURRENT_PROJECT_VERSION: 2
+    MARKETING_VERSION: 0.1.0
+targets:
+  HardPause:
+    type: application
+    platform: macOS
+    sources:
+      - App
+      - Core
+      - ../ios/App/Theme.swift
+      - ../ios/App/PauseSeed.swift
+      - ../ios/App/CaretTrackingTextField.swift
+      - path: ../web/mascot
+        type: folder
+        buildPhase: resources
+      - path: ../web/mascot/first-frame.svg
+        buildPhase: resources
+      - path: ../ios/App/Resources/Fonts/Recursive.ttf
+        buildPhase: resources
+      - path: ../ios/App/Resources/Fonts/Recursive-OFL.txt
+        buildPhase: resources
+      - path: Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: Resources/BlockedPage
+        type: folder
+        buildPhase: resources
+      - path: README.md
+        buildPhase: resources
+      - path: ../AGENTS.md
+        buildPhase: resources
+    entitlements:
+      path: App/HardPause.entitlements
+      properties:
+        com.apple.security.network.client: true
+        com.apple.security.automation.apple-events: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.app
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Hard Pause
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: YES
+    dependencies:
+      - target: HardPauseService
+        embed: false
+      - target: HardPauseCLI
+        embed: false
+      - sdk: Security.framework
+    postBuildScripts:
+      - name: Bundle production service
+        script: |
+          resources="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+          /usr/bin/install -d -m 0755 "$resources"
+          /usr/bin/install -m 0755 "${SRCROOT}/scripts/install-macos-service.sh" "$resources/install-macos-service.sh"
+          /usr/bin/install -m 0755 "${SRCROOT}/scripts/uninstall-macos-service.sh" "$resources/uninstall-macos-service.sh"
+          /usr/bin/install -m 0755 "${SRCROOT}/scripts/service-dry-run.sh" "$resources/service-dry-run.sh"
+          /usr/bin/install -m 0644 "${SRCROOT}/scripts/org.hardpause.service.plist" "$resources/org.hardpause.service.plist"
+          /usr/bin/install -m 0755 "${BUILT_PRODUCTS_DIR}/hard-pause-service" "$resources/hard-pause-service"
+          /usr/bin/install -m 0755 "${BUILT_PRODUCTS_DIR}/hard-pause" "$resources/hard-pause"
+        inputFiles:
+          - $(SRCROOT)/scripts/install-macos-service.sh
+          - $(SRCROOT)/scripts/uninstall-macos-service.sh
+          - $(SRCROOT)/scripts/service-dry-run.sh
+          - $(SRCROOT)/scripts/org.hardpause.service.plist
+          - $(BUILT_PRODUCTS_DIR)/hard-pause-service
+          - $(BUILT_PRODUCTS_DIR)/hard-pause
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/install-macos-service.sh
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/uninstall-macos-service.sh
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/service-dry-run.sh
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/org.hardpause.service.plist
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hard-pause-service
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hard-pause
+  HardPauseService:
+    type: tool
+    platform: macOS
+    productName: hard-pause-service
+    sources:
+      - Service
+      - Core
+    settings:
+      base:
+        PRODUCT_NAME: hard-pause-service
+        PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.service
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+    dependencies:
+      - sdk: Security.framework
+      - sdk: libbsm.tbd
+  HardPauseCLI:
+    type: tool
+    platform: macOS
+    productName: hard-pause
+    sources:
+      - CLI
+      - Core
+    settings:
+      base:
+        PRODUCT_NAME: hard-pause
+        PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.cli
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+  HardPauseTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+      - Core
+      - App/AppModel.swift
+      - App/SetupReadiness.swift
+      - App/ServiceInstaller.swift
+      - App/BrowserProtection.swift
+      - App/LocalPausePageServer.swift
+      - App/FirefoxBrowserProtection.swift
+      - App/ProtectedServiceClient.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - sdk: Security.framework
+  HardPauseServiceTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Service
+        excludes:
+          - main.swift
+      - Core
+      - ServiceTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.service-tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - sdk: Security.framework
+      - sdk: libbsm.tbd
+schemes:
+  HardPause:
+    build:
+      targets:
+        HardPause: all
+        HardPauseService: all
+        HardPauseCLI: all
+        HardPauseTests: [test]
+        HardPauseServiceTests: [test]
+    test:
+      targets:
+        - HardPauseTests
+        - HardPauseServiceTests

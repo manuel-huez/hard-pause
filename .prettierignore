@@ -1,0 +1,12 @@
+**/*.xcodeproj/**
+**/.build/**
+**/Resources/**
+web/fonts/**
+web/previews/**
+node_modules/**
+codedb.snapshot
+
+playwright-report/**
+test-results/**
+build/**
+dist/**

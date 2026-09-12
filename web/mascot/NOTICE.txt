@@ -1,0 +1,6 @@
+Low Light uses Hard Pause's approved round night-cloud silhouette, blue palette,
+ivory crescent and sleeping face.
+The generic Catmull-Rom contour interpolation and current-pose retargeting
+approach were adapted from Bloub (https://github.com/jeremy-prt/bloub),
+Copyright (c) 2026 Jérémy Perret, MIT. See LICENSE.txt.
+No Bloub character artwork or xAI likeness is used.

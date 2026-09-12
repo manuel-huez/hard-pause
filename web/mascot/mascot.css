@@ -1,0 +1,43 @@
+.low-light-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.low-light-eye {
+  fill: #202e48;
+  stroke: #202e48;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.low-light-mouth {
+  fill: none;
+  stroke: #263550;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.low-light-texture {
+  mix-blend-mode: soft-light;
+}
+
+html.native-mascot,
+.native-mascot body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+.native-mascot button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.native-mascot button:focus-visible {
+  outline: 2px solid #edc1bd;
+  outline-offset: -4px;
+  border-radius: 40%;
+}

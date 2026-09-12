@@ -1,0 +1,923 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		09F511CE02D84AD37B9FEBA3 /* LocalLockRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A008C517931E1E076FDC3B /* LocalLockRuntimeTests.swift */; };
+		0BE4BEDEFF67BC13E0661B17 /* LockRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */; };
+		15882B1EAC69D5394188450B /* MonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5EBDDB6622AC007FEF770DE /* MonitorExtension.swift */; };
+		1C247D7DE72B2FBCA29AF2E7 /* CaretTrackingTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25EB73AE3867B9515138D2FB /* CaretTrackingTextField.swift */; };
+		2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515D0ACE76FFE733C3585779 /* HardPauseApp.swift */; };
+		2CF1148B33492738B17151DF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA4D5CA5AE6189C76FC02A0 /* Theme.swift */; };
+		32D13D9D7C65E981C70DDF74 /* TransitionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */; };
+		35917CB15157942FA738C5AC /* HardPauseConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */; };
+		36CED3C87A874D940813BB16 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */; };
+		4311D599FEA14F19E3D06821 /* HardPauseShieldAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		44492E6359DADDF5382C9208 /* HardPauseMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 840F73B7C5B3F4C84ADFEC56 /* HardPauseMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		493068EBA96467F2C3A0BB4F /* TransitionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */; };
+		4B363C26D9A6AE78326A4F13 /* Recursive.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2CE17F29AD01F549AA33E8E9 /* Recursive.ttf */; };
+		52F7BE80DF7B856DE54AFDBB /* ShieldConfigurationExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788D947594861B25ED6E2C50 /* ShieldConfigurationExtension.swift */; };
+		54BDD9EBE63C38B528E3AD35 /* HardPauseConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */; };
+		562D18A508E6E79331381769 /* ShieldActionExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1664575DC09CCFD8AAD978B /* ShieldActionExtension.swift */; };
+		5A4BB56C2C86220DD91D9329 /* LockControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28AC9F0F91D97372B71A98E4 /* LockControllerTests.swift */; };
+		6246D0CF5C032BF211580CCC /* LocalLockRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */; };
+		6AC7096D3804023D7F5CB208 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
+		721AE788979CAF819E52C674 /* HardPauseShieldConfiguration.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
+		879E0F59B4F4EF178FC1A82E /* LockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 169BE56FCC1F31BF78B525F7 /* LockController.swift */; };
+		9211C7DB3783D248F9D20228 /* LockRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */; };
+		9845BA0305034D133204BB5B /* ElapsedTimeClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */; };
+		992A85BF48CA1727F9DED7C2 /* LockPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */; };
+		A3978E065B3B6A33ECC11550 /* RecoveryPolicyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */; };
+		A6733A799BAAD2210B781175 /* Recursive-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 17DE3530A2D72DA8C4CD96D9 /* Recursive-OFL.txt */; };
+		A6B43742FBE37C05BDE23758 /* LockState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E1A76313E0BDB9BFDDF309 /* LockState.swift */; };
+		B461D97F352CF31A563AD660 /* RestrictionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7CB51F47AB1556A21548EC /* RestrictionService.swift */; };
+		C2D8CB6D4D56CDD7B05920BE /* LockPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32265F3554157D2DDB850E43 /* LockPolicyTests.swift */; };
+		C80ECB031082C50CD28DB3CB /* LockState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E1A76313E0BDB9BFDDF309 /* LockState.swift */; };
+		CB0C0CCCF6F76844F24457C3 /* ElapsedTimeClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */; };
+		CC7FACC790C664A2196E70A6 /* LockStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202A992C4E1FAC8B85C957E3 /* LockStateMachineTests.swift */; };
+		CEA721A0A1D4E16B6D4B7055 /* RestrictionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7CB51F47AB1556A21548EC /* RestrictionService.swift */; };
+		CF72361A025DAEC35E4BB233 /* LocalLockRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */; };
+		D3D7A72B2174BF0E9492796B /* LockRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87CAB440108158A54D87EC78 /* LockRepositoryTests.swift */; };
+		D75116F320B1014A1492F768 /* RecoveryPolicyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */; };
+		DF59F01E02982422ABE6CEC3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */; };
+		E46DBE81B297964737C6F871 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 315F783C01EA2244855E02A1 /* RootView.swift */; };
+		E8D2730C4FC6D0B0F128E865 /* TransitionSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD9C8C5AECAADA4E0F2C1BE /* TransitionSchedulerTests.swift */; };
+		EDE7740226BB1ED5FBF3A71F /* LockPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */; };
+		EF73AA9EAB3E85826E1E0EEA /* mascot in Resources */ = {isa = PBXBuildFile; fileRef = 404D8B647D1426A483797A07 /* mascot */; };
+		F883C2DD801A5D5DF2B4BED4 /* PauseSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 615B07EC5F0D1E32181EDABE /* PauseSeed.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		290480B816F5227DF46A5776 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4F9E7A9F270AB551274B872F;
+			remoteInfo = HardPauseMonitor;
+		};
+		CEAA52905840C43CBD1AB0F8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 18772DB522E4BA97F6A297EB;
+			remoteInfo = HardPause;
+		};
+		EEA18809B5FA038EE872587C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 10B0DDB21BCB5F36EB5BE14D;
+			remoteInfo = HardPauseShieldConfiguration;
+		};
+		FCF5D734DD2CFCB52ECAD7D0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA483D3EB662D959F5414C87;
+			remoteInfo = HardPauseShieldAction;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		06A2F49B3B0BCCC34B06A892 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				44492E6359DADDF5382C9208 /* HardPauseMonitor.appex in Embed Foundation Extensions */,
+				721AE788979CAF819E52C674 /* HardPauseShieldConfiguration.appex in Embed Foundation Extensions */,
+				4311D599FEA14F19E3D06821 /* HardPauseShieldAction.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HardPauseShieldAction.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0FB078B8B65DD4BE0D82DF77 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		14AC45CCB50BCA7E5A52D3B4 /* ShieldAction.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldAction.entitlements; sourceTree = "<group>"; };
+		169BE56FCC1F31BF78B525F7 /* LockController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockController.swift; sourceTree = "<group>"; };
+		17DE3530A2D72DA8C4CD96D9 /* Recursive-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Recursive-OFL.txt"; sourceTree = "<group>"; };
+		202A992C4E1FAC8B85C957E3 /* LockStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockStateMachineTests.swift; sourceTree = "<group>"; };
+		25EB73AE3867B9515138D2FB /* CaretTrackingTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaretTrackingTextField.swift; sourceTree = "<group>"; };
+		28AC9F0F91D97372B71A98E4 /* LockControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockControllerTests.swift; sourceTree = "<group>"; };
+		2CE17F29AD01F549AA33E8E9 /* Recursive.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Recursive.ttf; sourceTree = "<group>"; };
+		2DE980E3E04FF86C91ACD2DB /* ShieldConfiguration.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldConfiguration.entitlements; sourceTree = "<group>"; };
+		315F783C01EA2244855E02A1 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		32265F3554157D2DDB850E43 /* LockPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockPolicyTests.swift; sourceTree = "<group>"; };
+		32C95D6B54F8FFFE9739BADB /* HardPause.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HardPause.entitlements; sourceTree = "<group>"; };
+		3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPolicyRepository.swift; sourceTree = "<group>"; };
+		404D8B647D1426A483797A07 /* mascot */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mascot; path = ../web/mascot; sourceTree = SOURCE_ROOT; };
+		515D0ACE76FFE733C3585779 /* HardPauseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseApp.swift; sourceTree = "<group>"; };
+		53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockPolicy.swift; sourceTree = "<group>"; };
+		54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitionScheduler.swift; sourceTree = "<group>"; };
+		615B07EC5F0D1E32181EDABE /* PauseSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseSeed.swift; sourceTree = "<group>"; };
+		66E09A917BA6D23FE3E35CA4 /* HardPause.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HardPause.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseConstants.swift; sourceTree = "<group>"; };
+		6DA4D5CA5AE6189C76FC02A0 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		788D947594861B25ED6E2C50 /* ShieldConfigurationExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShieldConfigurationExtension.swift; sourceTree = "<group>"; };
+		7E7CB51F47AB1556A21548EC /* RestrictionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestrictionService.swift; sourceTree = "<group>"; };
+		840F73B7C5B3F4C84ADFEC56 /* HardPauseMonitor.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HardPauseMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		87CAB440108158A54D87EC78 /* LockRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockRepositoryTests.swift; sourceTree = "<group>"; };
+		8AD9C8C5AECAADA4E0F2C1BE /* TransitionSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitionSchedulerTests.swift; sourceTree = "<group>"; };
+		8D1F7AB916998334664871DB /* HardPauseTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HardPauseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLockRuntime.swift; sourceTree = "<group>"; };
+		9D54959695EE4B7D0D254B40 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElapsedTimeClock.swift; sourceTree = "<group>"; };
+		A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A5A008C517931E1E076FDC3B /* LocalLockRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLockRuntimeTests.swift; sourceTree = "<group>"; };
+		A5EBDDB6622AC007FEF770DE /* MonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorExtension.swift; sourceTree = "<group>"; };
+		B1664575DC09CCFD8AAD978B /* ShieldActionExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShieldActionExtension.swift; sourceTree = "<group>"; };
+		C8E31C62B594831083E5ED18 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CC180345D481C61E5696F730 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D4E1A76313E0BDB9BFDDF309 /* LockState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockState.swift; sourceTree = "<group>"; };
+		D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockRepository.swift; sourceTree = "<group>"; };
+		E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HardPauseShieldConfiguration.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F44C590BE9313520EE1713D5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		FA5653AC54A045DBBC965131 /* Monitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Monitor.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1795A9A2D8B93C6D4E303A41 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				66E09A917BA6D23FE3E35CA4 /* HardPause.app */,
+				840F73B7C5B3F4C84ADFEC56 /* HardPauseMonitor.appex */,
+				09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */,
+				E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */,
+				8D1F7AB916998334664871DB /* HardPauseTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3BE35859BCD921217BF13E64 /* ShieldAction */ = {
+			isa = PBXGroup;
+			children = (
+				0FB078B8B65DD4BE0D82DF77 /* Info.plist */,
+				14AC45CCB50BCA7E5A52D3B4 /* ShieldAction.entitlements */,
+				B1664575DC09CCFD8AAD978B /* ShieldActionExtension.swift */,
+			);
+			name = ShieldAction;
+			path = Extensions/ShieldAction;
+			sourceTree = "<group>";
+		};
+		5D783D3DCF10B50043FF1F12 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				A5A008C517931E1E076FDC3B /* LocalLockRuntimeTests.swift */,
+				28AC9F0F91D97372B71A98E4 /* LockControllerTests.swift */,
+				32265F3554157D2DDB850E43 /* LockPolicyTests.swift */,
+				87CAB440108158A54D87EC78 /* LockRepositoryTests.swift */,
+				202A992C4E1FAC8B85C957E3 /* LockStateMachineTests.swift */,
+				8AD9C8C5AECAADA4E0F2C1BE /* TransitionSchedulerTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		8CBC5D0E04A593DFB1F08231 = {
+			isa = PBXGroup;
+			children = (
+				DAF2478B078ECFC2342C28E9 /* App */,
+				E50A3347081D86BDA7123877 /* Monitor */,
+				BB64F0CE409913EE67F6E000 /* Resources */,
+				C6AFF93F17E3FA51A7152C74 /* Shared */,
+				3BE35859BCD921217BF13E64 /* ShieldAction */,
+				8FFEBF9800AEB72E2B721BD3 /* ShieldConfiguration */,
+				5D783D3DCF10B50043FF1F12 /* Tests */,
+				404D8B647D1426A483797A07 /* mascot */,
+				1795A9A2D8B93C6D4E303A41 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8FFEBF9800AEB72E2B721BD3 /* ShieldConfiguration */ = {
+			isa = PBXGroup;
+			children = (
+				C8E31C62B594831083E5ED18 /* Info.plist */,
+				2DE980E3E04FF86C91ACD2DB /* ShieldConfiguration.entitlements */,
+				788D947594861B25ED6E2C50 /* ShieldConfigurationExtension.swift */,
+			);
+			name = ShieldConfiguration;
+			path = Extensions/ShieldConfiguration;
+			sourceTree = "<group>";
+		};
+		BB64F0CE409913EE67F6E000 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				EE38A3DA46AB973B51FFC361 /* Fonts */,
+			);
+			name = Resources;
+			path = App/Resources;
+			sourceTree = "<group>";
+		};
+		C6AFF93F17E3FA51A7152C74 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */,
+				6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */,
+				8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */,
+				53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */,
+				D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */,
+				D4E1A76313E0BDB9BFDDF309 /* LockState.swift */,
+				A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */,
+				3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */,
+				7E7CB51F47AB1556A21548EC /* RestrictionService.swift */,
+				54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		DAF2478B078ECFC2342C28E9 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				9D54959695EE4B7D0D254B40 /* Assets.xcassets */,
+				25EB73AE3867B9515138D2FB /* CaretTrackingTextField.swift */,
+				32C95D6B54F8FFFE9739BADB /* HardPause.entitlements */,
+				515D0ACE76FFE733C3585779 /* HardPauseApp.swift */,
+				CC180345D481C61E5696F730 /* Info.plist */,
+				169BE56FCC1F31BF78B525F7 /* LockController.swift */,
+				615B07EC5F0D1E32181EDABE /* PauseSeed.swift */,
+				315F783C01EA2244855E02A1 /* RootView.swift */,
+				6DA4D5CA5AE6189C76FC02A0 /* Theme.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		E50A3347081D86BDA7123877 /* Monitor */ = {
+			isa = PBXGroup;
+			children = (
+				F44C590BE9313520EE1713D5 /* Info.plist */,
+				FA5653AC54A045DBBC965131 /* Monitor.entitlements */,
+				A5EBDDB6622AC007FEF770DE /* MonitorExtension.swift */,
+			);
+			name = Monitor;
+			path = Extensions/Monitor;
+			sourceTree = "<group>";
+		};
+		EE38A3DA46AB973B51FFC361 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				17DE3530A2D72DA8C4CD96D9 /* Recursive-OFL.txt */,
+				2CE17F29AD01F549AA33E8E9 /* Recursive.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		10B0DDB21BCB5F36EB5BE14D /* HardPauseShieldConfiguration */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BA66A8A28C38B8D3F1D6D5C1 /* Build configuration list for PBXNativeTarget "HardPauseShieldConfiguration" */;
+			buildPhases = (
+				DB14C3E8F493E31D9AE7716E /* Sources */,
+				679FECAC2DE67C1BE792D830 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HardPauseShieldConfiguration;
+			packageProductDependencies = (
+			);
+			productName = HardPauseShieldConfiguration;
+			productReference = E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		18772DB522E4BA97F6A297EB /* HardPause */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1BEA4BA0CE970999FD5082D /* Build configuration list for PBXNativeTarget "HardPause" */;
+			buildPhases = (
+				EF28C6FD22CAF70B38131FBE /* Sources */,
+				848C9125F4749ABF2700E9ED /* Resources */,
+				06A2F49B3B0BCCC34B06A892 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A42885976166FEFC4F62B448 /* PBXTargetDependency */,
+				9ADFDF43C14FC8DAFA526864 /* PBXTargetDependency */,
+				7835362B694E243E5DD4BB17 /* PBXTargetDependency */,
+			);
+			name = HardPause;
+			packageProductDependencies = (
+			);
+			productName = HardPause;
+			productReference = 66E09A917BA6D23FE3E35CA4 /* HardPause.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4F9E7A9F270AB551274B872F /* HardPauseMonitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC065E7DFA6B980E36F16ED4 /* Build configuration list for PBXNativeTarget "HardPauseMonitor" */;
+			buildPhases = (
+				7602486BF4D1F4D26E3D0BD9 /* Sources */,
+				77A2EA110B58F16EC6817A75 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HardPauseMonitor;
+			packageProductDependencies = (
+			);
+			productName = HardPauseMonitor;
+			productReference = 840F73B7C5B3F4C84ADFEC56 /* HardPauseMonitor.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		AA483D3EB662D959F5414C87 /* HardPauseShieldAction */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC0F839D393FC5AB3E141782 /* Build configuration list for PBXNativeTarget "HardPauseShieldAction" */;
+			buildPhases = (
+				7F133FAE5E1E65C6431FF92D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HardPauseShieldAction;
+			packageProductDependencies = (
+			);
+			productName = HardPauseShieldAction;
+			productReference = 09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		E5FED5FB8B035290AE3985A0 /* HardPauseTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D8181926F5EF6336A6C2748B /* Build configuration list for PBXNativeTarget "HardPauseTests" */;
+			buildPhases = (
+				5743ED843D16CEED3278E6F7 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				69361736C191C6E1CB8B9AC7 /* PBXTargetDependency */,
+			);
+			name = HardPauseTests;
+			packageProductDependencies = (
+			);
+			productName = HardPauseTests;
+			productReference = 8D1F7AB916998334664871DB /* HardPauseTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E3762ED8A1A1506DDEA98CC0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					10B0DDB21BCB5F36EB5BE14D = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					18772DB522E4BA97F6A297EB = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					4F9E7A9F270AB551274B872F = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					AA483D3EB662D959F5414C87 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					E5FED5FB8B035290AE3985A0 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 30FD654D6481DF249E2B8C12 /* Build configuration list for PBXProject "HardPause" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8CBC5D0E04A593DFB1F08231;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 1795A9A2D8B93C6D4E303A41 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				18772DB522E4BA97F6A297EB /* HardPause */,
+				4F9E7A9F270AB551274B872F /* HardPauseMonitor */,
+				10B0DDB21BCB5F36EB5BE14D /* HardPauseShieldConfiguration */,
+				AA483D3EB662D959F5414C87 /* HardPauseShieldAction */,
+				E5FED5FB8B035290AE3985A0 /* HardPauseTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		679FECAC2DE67C1BE792D830 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6AC7096D3804023D7F5CB208 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77A2EA110B58F16EC6817A75 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF59F01E02982422ABE6CEC3 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		848C9125F4749ABF2700E9ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */,
+				36CED3C87A874D940813BB16 /* PrivacyInfo.xcprivacy in Resources */,
+				A6733A799BAAD2210B781175 /* Recursive-OFL.txt in Resources */,
+				4B363C26D9A6AE78326A4F13 /* Recursive.ttf in Resources */,
+				EF73AA9EAB3E85826E1E0EEA /* mascot in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5743ED843D16CEED3278E6F7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				09F511CE02D84AD37B9FEBA3 /* LocalLockRuntimeTests.swift in Sources */,
+				5A4BB56C2C86220DD91D9329 /* LockControllerTests.swift in Sources */,
+				C2D8CB6D4D56CDD7B05920BE /* LockPolicyTests.swift in Sources */,
+				D3D7A72B2174BF0E9492796B /* LockRepositoryTests.swift in Sources */,
+				CC7FACC790C664A2196E70A6 /* LockStateMachineTests.swift in Sources */,
+				E8D2730C4FC6D0B0F128E865 /* TransitionSchedulerTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7602486BF4D1F4D26E3D0BD9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9845BA0305034D133204BB5B /* ElapsedTimeClock.swift in Sources */,
+				35917CB15157942FA738C5AC /* HardPauseConstants.swift in Sources */,
+				CF72361A025DAEC35E4BB233 /* LocalLockRuntime.swift in Sources */,
+				992A85BF48CA1727F9DED7C2 /* LockPolicy.swift in Sources */,
+				9211C7DB3783D248F9D20228 /* LockRepository.swift in Sources */,
+				C80ECB031082C50CD28DB3CB /* LockState.swift in Sources */,
+				15882B1EAC69D5394188450B /* MonitorExtension.swift in Sources */,
+				A3978E065B3B6A33ECC11550 /* RecoveryPolicyRepository.swift in Sources */,
+				CEA721A0A1D4E16B6D4B7055 /* RestrictionService.swift in Sources */,
+				493068EBA96467F2C3A0BB4F /* TransitionScheduler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7F133FAE5E1E65C6431FF92D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				562D18A508E6E79331381769 /* ShieldActionExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DB14C3E8F493E31D9AE7716E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				52F7BE80DF7B856DE54AFDBB /* ShieldConfigurationExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EF28C6FD22CAF70B38131FBE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1C247D7DE72B2FBCA29AF2E7 /* CaretTrackingTextField.swift in Sources */,
+				CB0C0CCCF6F76844F24457C3 /* ElapsedTimeClock.swift in Sources */,
+				2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */,
+				54BDD9EBE63C38B528E3AD35 /* HardPauseConstants.swift in Sources */,
+				6246D0CF5C032BF211580CCC /* LocalLockRuntime.swift in Sources */,
+				879E0F59B4F4EF178FC1A82E /* LockController.swift in Sources */,
+				EDE7740226BB1ED5FBF3A71F /* LockPolicy.swift in Sources */,
+				0BE4BEDEFF67BC13E0661B17 /* LockRepository.swift in Sources */,
+				A6B43742FBE37C05BDE23758 /* LockState.swift in Sources */,
+				F883C2DD801A5D5DF2B4BED4 /* PauseSeed.swift in Sources */,
+				D75116F320B1014A1492F768 /* RecoveryPolicyRepository.swift in Sources */,
+				B461D97F352CF31A563AD660 /* RestrictionService.swift in Sources */,
+				E46DBE81B297964737C6F871 /* RootView.swift in Sources */,
+				2CF1148B33492738B17151DF /* Theme.swift in Sources */,
+				32D13D9D7C65E981C70DDF74 /* TransitionScheduler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		69361736C191C6E1CB8B9AC7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 18772DB522E4BA97F6A297EB /* HardPause */;
+			targetProxy = CEAA52905840C43CBD1AB0F8 /* PBXContainerItemProxy */;
+		};
+		7835362B694E243E5DD4BB17 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA483D3EB662D959F5414C87 /* HardPauseShieldAction */;
+			targetProxy = FCF5D734DD2CFCB52ECAD7D0 /* PBXContainerItemProxy */;
+		};
+		9ADFDF43C14FC8DAFA526864 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 10B0DDB21BCB5F36EB5BE14D /* HardPauseShieldConfiguration */;
+			targetProxy = EEA18809B5FA038EE872587C /* PBXContainerItemProxy */;
+		};
+		A42885976166FEFC4F62B448 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4F9E7A9F270AB551274B872F /* HardPauseMonitor */;
+			targetProxy = 290480B816F5227DF46A5776 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		25E32BDCFF2E2CFDADBF514F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Extensions/Monitor/Monitor.entitlements;
+				INFOPLIST_FILE = Extensions/Monitor/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app.monitor;
+				PRODUCT_NAME = HardPauseMonitor;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		34106999F30B0D0454849C1F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Extensions/ShieldConfiguration/ShieldConfiguration.entitlements;
+				INFOPLIST_FILE = Extensions/ShieldConfiguration/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hardpause.app.shield-configuration";
+				PRODUCT_NAME = HardPauseShieldConfiguration;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		379FB8BD93897833BEDC05B3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = App/HardPause.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app;
+				PRODUCT_NAME = HardPause;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		47BC1549A0CAA9241900EC7D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Extensions/ShieldConfiguration/ShieldConfiguration.entitlements;
+				INFOPLIST_FILE = Extensions/ShieldConfiguration/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hardpause.app.shield-configuration";
+				PRODUCT_NAME = HardPauseShieldConfiguration;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4BC092550C5C1B29D829A2D6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		52E76F5277AC4A4BAE593F80 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Extensions/ShieldAction/ShieldAction.entitlements;
+				INFOPLIST_FILE = Extensions/ShieldAction/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hardpause.app.shield-action";
+				PRODUCT_NAME = HardPauseShieldAction;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5FA0C0B934916AD3DF57A793 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HardPause.app/HardPause";
+			};
+			name = Debug;
+		};
+		886E1FE8C65DA7E2052FE01F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Extensions/ShieldAction/ShieldAction.entitlements;
+				INFOPLIST_FILE = Extensions/ShieldAction/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hardpause.app.shield-action";
+				PRODUCT_NAME = HardPauseShieldAction;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B989CC2CC5C54DA52885D765 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Extensions/Monitor/Monitor.entitlements;
+				INFOPLIST_FILE = Extensions/Monitor/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app.monitor;
+				PRODUCT_NAME = HardPauseMonitor;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		CBD5BA318DB313838A8DA13D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HardPause.app/HardPause";
+			};
+			name = Release;
+		};
+		DE37ECA1947ED9A5FA96BB1F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = App/HardPause.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app;
+				PRODUCT_NAME = HardPause;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		ECB69D03FB14BFE1683015C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		30FD654D6481DF249E2B8C12 /* Build configuration list for PBXProject "HardPause" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECB69D03FB14BFE1683015C4 /* Debug */,
+				4BC092550C5C1B29D829A2D6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AC065E7DFA6B980E36F16ED4 /* Build configuration list for PBXNativeTarget "HardPauseMonitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				25E32BDCFF2E2CFDADBF514F /* Debug */,
+				B989CC2CC5C54DA52885D765 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AC0F839D393FC5AB3E141782 /* Build configuration list for PBXNativeTarget "HardPauseShieldAction" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52E76F5277AC4A4BAE593F80 /* Debug */,
+				886E1FE8C65DA7E2052FE01F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BA66A8A28C38B8D3F1D6D5C1 /* Build configuration list for PBXNativeTarget "HardPauseShieldConfiguration" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				47BC1549A0CAA9241900EC7D /* Debug */,
+				34106999F30B0D0454849C1F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D8181926F5EF6336A6C2748B /* Build configuration list for PBXNativeTarget "HardPauseTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5FA0C0B934916AD3DF57A793 /* Debug */,
+				CBD5BA318DB313838A8DA13D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F1BEA4BA0CE970999FD5082D /* Build configuration list for PBXNativeTarget "HardPause" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				379FB8BD93897833BEDC05B3 /* Debug */,
+				DE37ECA1947ED9A5FA96BB1F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+}

@@ -1,0 +1,1105 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		010FE046703CFEE5BBD7C48B /* HostsEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC088B286331BA6902A57E92 /* HostsEnforcer.swift */; };
+		027629807844E0ADABB43801 /* AgentCommitmentGuidance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */; };
+		02DD56773059EE71109D5379 /* ServiceSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07578D74BB9C3F153392F59 /* ServiceSupport.swift */; };
+		04C6824E9FF3784826B660FD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F1EE681A9CD1B0B44159A0 /* Theme.swift */; };
+		0AA1339B5035EBC9EBC0BE13 /* ClientAuthorizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A46799FEC96C8266F520550 /* ClientAuthorizer.swift */; };
+		0D6C7D7EE15A62DF8DCC3736 /* libbsm.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A38AE50C0DE33FBB37FE332 /* libbsm.tbd */; };
+		0D8178E4EB58C5ABF26E68AE /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
+		10A2E895A570D7ED934ABF34 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76FE540206093F3051809B5B /* AppModel.swift */; };
+		114C4CB02FF3E3623A04FD1C /* ClientAuthorizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27EEC3C2FB90EA25567144CC /* ClientAuthorizerTests.swift */; };
+		115568E2B919E0425F4623DC /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB8AD2EF9D6D37968F814C2 /* main.swift */; };
+		1331BFF18D1A156968B46014 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */; };
+		14695C6D99D94EC0283D4CD8 /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
+		151F8E002910DDB623202EC1 /* PFEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235822A68E5E99CAAA7E5132 /* PFEnforcer.swift */; };
+		18AE99E1A3BB558B2AAABAA9 /* SetupReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE19D586EC509EECAD2D8C2 /* SetupReadiness.swift */; };
+		19BE1ACDF70BCFFD7324E0B9 /* BrowserURLMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */; };
+		1A0492E982C85A6607D56C6A /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76FE540206093F3051809B5B /* AppModel.swift */; };
+		1BA1EB905DBED60099A4D88F /* ProtectedServiceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67932AFAB8002B6016394A3 /* ProtectedServiceEngine.swift */; };
+		1CFF81DCB16B1D6A363EB17F /* LocalPausePageServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CE020B75644E033DA2B68E /* LocalPausePageServer.swift */; };
+		1D1BAA8F84E08006B10CF6F4 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
+		20F45CFF8C35A4E693083AAB /* AgentCommitmentGuidance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */; };
+		271780DEEA027871BD257E4A /* ServiceSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07578D74BB9C3F153392F59 /* ServiceSupport.swift */; };
+		2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515D0ACE76FFE733C3585779 /* HardPauseApp.swift */; };
+		2EF8B61A51CFF630E53B8535 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 198CF5ECE3B7E70E8BF92896 /* README.md */; };
+		2F2C062209F5D4E6D3157BD1 /* mascot in Resources */ = {isa = PBXBuildFile; fileRef = C6AC102D0805B788A197E82E /* mascot */; };
+		2FCA8978AABAFC18CA1ABE94 /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
+		30F509E35F63ABB15F5FBD26 /* ApplicationEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B67DC67E70153E368D907025 /* ApplicationEnforcer.swift */; };
+		31B98FC5C3EA32C73DF9A9C4 /* AppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD02DDCC7088EEA1DCF7169F /* AppModelTests.swift */; };
+		35CC8F9FC1F4100F07F8DE23 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
+		39B6667537253828AEBE4BC3 /* CaretTrackingTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 306150A94512CCEF491996EB /* CaretTrackingTextField.swift */; };
+		3B15C2A3B2399452C373775F /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
+		40B01687BD87C09E359882A9 /* AGENTS.md in Resources */ = {isa = PBXBuildFile; fileRef = 8D1F4228069182E29D66DE68 /* AGENTS.md */; };
+		4498954D0B4C85B7117832BF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1A97B9164197B452C7956E60 /* PrivacyInfo.xcprivacy */; };
+		470E2DC8A5CB5EA19939EFD7 /* PFEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235822A68E5E99CAAA7E5132 /* PFEnforcer.swift */; };
+		49B9FEB569116E8BAF934D19 /* Recursive-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 6CE18587105747850FB2001D /* Recursive-OFL.txt */; };
+		4E6E273A08961F056E5C24B6 /* ProtectedStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28277D418288D8C500796009 /* ProtectedStateStore.swift */; };
+		4EB0942FA9A82C363FE204FE /* ServiceInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AA79F4313E580D58F07DBE /* ServiceInstaller.swift */; };
+		5BE656212849DE0EE098D03C /* ApplicationEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B67DC67E70153E368D907025 /* ApplicationEnforcer.swift */; };
+		5C3E6E9E5A3742E77FE8EDFB /* ProtectedBlockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A74EEC991540531B98A6838 /* ProtectedBlockTests.swift */; };
+		5C86AD1CD7EAAD4BAC0BE347 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */; };
+		69828EAC0ED7711B58C47214 /* PFEnforcerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AAF9A47A7DA15A3C1B50F0C /* PFEnforcerTests.swift */; };
+		6CA8A342751BCA4D14502687 /* first-frame.svg in Resources */ = {isa = PBXBuildFile; fileRef = 8DFB577A7A8C9ECB95AC00E4 /* first-frame.svg */; };
+		6E51B0224BEBB7E7A722102F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295E29404D4010DD806082FB /* main.swift */; };
+		727AED47F1FD4B5BD08A6886 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
+		7404036BE3B7C3D940135334 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */; };
+		7F2BD52D61021B449DC70C4C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 721BDA26F3C01BE8A4471DAD /* ContentView.swift */; };
+		7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
+		83D7A59D7C495B346A577AFC /* libbsm.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A38AE50C0DE33FBB37FE332 /* libbsm.tbd */; };
+		858AC6AF06B1DFA142E05E24 /* BrowserProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26A1925EA42F4E11AC9582C6 /* BrowserProtection.swift */; };
+		8794AA772392BC19FDF6B969 /* ProtectedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357AF05730AE2F838061AF19 /* ProtectedService.swift */; };
+		8C11C12C6A9F1D2DC708E755 /* ProtectedStateStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1935757EE38CB123CD1F14F4 /* ProtectedStateStoreTests.swift */; };
+		90A3D91ABD5D46FB387D7A11 /* ProtectedServiceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67932AFAB8002B6016394A3 /* ProtectedServiceEngine.swift */; };
+		90F1D3771E9C9709F68008DE /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
+		91DA6C33364E5C1BDA68D462 /* ProtectedServiceEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F361845254DBC195DE507DD /* ProtectedServiceEngineTests.swift */; };
+		9431D53A4BF003BA6B5D96A5 /* ProtectedServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A9B40334B2C8EF80C77D3C /* ProtectedServiceClient.swift */; };
+		9A50FDBF20E2E35BF9594061 /* BrowserProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26A1925EA42F4E11AC9582C6 /* BrowserProtection.swift */; };
+		9AABF71AD34E585DDCE71004 /* ProtectedServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A9B40334B2C8EF80C77D3C /* ProtectedServiceClient.swift */; };
+		9ADFC4521345CCC1D2CF9A62 /* ServiceInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AA79F4313E580D58F07DBE /* ServiceInstaller.swift */; };
+		9EE7C7101405F51024732837 /* BrowserURLMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */; };
+		9F40F483F79EB64882D70AFA /* SetupReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE19D586EC509EECAD2D8C2 /* SetupReadiness.swift */; };
+		A38898838F5B827B4A8E738F /* BrowserURLMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */; };
+		A62D104AD8DC7D2FBA0DF43A /* ClientAuthorizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A46799FEC96C8266F520550 /* ClientAuthorizer.swift */; };
+		AA13F5E7DF49C348EBA07018 /* FirefoxBrowserProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D47E49D9C1B002570AA49 /* FirefoxBrowserProtection.swift */; };
+		AE197935A8ECD1E71A091AE0 /* ServiceTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97468816A1CC993DAAC51C96 /* ServiceTestSupport.swift */; };
+		AEF47390A93AAA5C426A3C89 /* Enforcement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C6280E722B6CF50F934980A /* Enforcement.swift */; };
+		AFF2DBF647BD07DEF96D2E3E /* HostsEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC088B286331BA6902A57E92 /* HostsEnforcer.swift */; };
+		B04963FD01B67C7A67B9EE8E /* PauseSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 956C9AB2D8A5E4F0DA9123E8 /* PauseSeed.swift */; };
+		B54C6007614A4D2E6A326C71 /* Recursive.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10FAA4EF0128CE063FB7AC7C /* Recursive.ttf */; };
+		B8421F81954F40C24B6AC486 /* ApplicationEnforcerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD7F5F527CCA0B94162548F /* ApplicationEnforcerTests.swift */; };
+		B922CDC142ED234C59C03619 /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
+		BCECA29FB4E5A381CCE0C380 /* ProtectedStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28277D418288D8C500796009 /* ProtectedStateStore.swift */; };
+		BF8B9635BB837C23AA9681FD /* HostsEnforcerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E8BED6DCD333C51BB9227F /* HostsEnforcerTests.swift */; };
+		C5A47190993B036892A2A314 /* Enforcement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C6280E722B6CF50F934980A /* Enforcement.swift */; };
+		C704BD5AF02366A1ACB2C7AE /* ProtectedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357AF05730AE2F838061AF19 /* ProtectedService.swift */; };
+		CA1F1EB9EB683589C2EE4999 /* PausePageAssetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30A474BF5A2F17C2066899D /* PausePageAssetsTests.swift */; };
+		CAE92C52DF5BE390AF9E35E7 /* AgentCommitmentGuidance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */; };
+		CAEDAD73119951086EECDB79 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
+		D15697605B1130D1D81DB5EE /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
+		D9654622221EC630D13154CD /* BrowserURLMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */; };
+		D9972CDC12AF06E9C3A13DEB /* BrowserURLMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */; };
+		DBAD0BC4037CA3685BDE07D8 /* BrowserURLMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7C40DDAB04920654FA3EBE /* BrowserURLMatcherTests.swift */; };
+		DCEEFC9195E7D2637FEF8036 /* ProtectedServiceIPCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 206EDC61E9BEECAC4CF570BC /* ProtectedServiceIPCTests.swift */; };
+		DD3C2827DA628740EEF98141 /* FirefoxBrowserProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D47E49D9C1B002570AA49 /* FirefoxBrowserProtection.swift */; };
+		E404F087E70A4AF832A28340 /* AgentCommitmentGuidance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */; };
+		E43EEB6564AE293D64E0DD8D /* LocalPausePageServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CE020B75644E033DA2B68E /* LocalPausePageServer.swift */; };
+		E56783271F94690FEFF5137B /* ProcessCommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A04B7606D7292D75A03DFBB /* ProcessCommandRunnerTests.swift */; };
+		F122BA17C9DD1DC1197C373E /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
+		F12E4E54053B902DA04BB919 /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
+		F35A575BFF0629B94822E263 /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
+		F38D9765D9210A91D3FB6CD7 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */; };
+		F4D4B664AD2FC66AA1316249 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
+		F840DB0305648A2860A3684B /* BlockedPage in Resources */ = {isa = PBXBuildFile; fileRef = A132D52C40502F34307579F9 /* BlockedPage */; };
+		FD9BF478745AAB2F13893347 /* AgentCommitmentGuidance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3CCE161F3F73A7CE1F30B269 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CCBAC82F8D0BDEA864B0E10B;
+			remoteInfo = HardPauseService;
+		};
+		883EEAD45E40A5F2884B9871 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D44C5D0380BBD11EAC86E8DF;
+			remoteInfo = HardPauseCLI;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		10FAA4EF0128CE063FB7AC7C /* Recursive.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Recursive.ttf; sourceTree = "<group>"; };
+		14A1729B8F0309D32FF35968 /* ProtectedRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedRules.swift; sourceTree = "<group>"; };
+		15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserURLMatcher.swift; sourceTree = "<group>"; };
+		1935757EE38CB123CD1F14F4 /* ProtectedStateStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedStateStoreTests.swift; sourceTree = "<group>"; };
+		198CF5ECE3B7E70E8BF92896 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		19AA79F4313E580D58F07DBE /* ServiceInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceInstaller.swift; sourceTree = "<group>"; };
+		1A97B9164197B452C7956E60 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		206EDC61E9BEECAC4CF570BC /* ProtectedServiceIPCTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedServiceIPCTests.swift; sourceTree = "<group>"; };
+		235822A68E5E99CAAA7E5132 /* PFEnforcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PFEnforcer.swift; sourceTree = "<group>"; };
+		25FBD2D9F1F341997A3F6EE7 /* hard-pause-service */ = {isa = PBXFileReference; includeInIndex = 0; path = "hard-pause-service"; sourceTree = BUILT_PRODUCTS_DIR; };
+		26A1925EA42F4E11AC9582C6 /* BrowserProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserProtection.swift; sourceTree = "<group>"; };
+		27EEC3C2FB90EA25567144CC /* ClientAuthorizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientAuthorizerTests.swift; sourceTree = "<group>"; };
+		28277D418288D8C500796009 /* ProtectedStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedStateStore.swift; sourceTree = "<group>"; };
+		295E29404D4010DD806082FB /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		306150A94512CCEF491996EB /* CaretTrackingTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaretTrackingTextField.swift; sourceTree = "<group>"; };
+		32C95D6B54F8FFFE9739BADB /* HardPause.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HardPause.entitlements; sourceTree = "<group>"; };
+		357AF05730AE2F838061AF19 /* ProtectedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedService.swift; sourceTree = "<group>"; };
+		3A46799FEC96C8266F520550 /* ClientAuthorizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientAuthorizer.swift; sourceTree = "<group>"; };
+		3AAF9A47A7DA15A3C1B50F0C /* PFEnforcerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PFEnforcerTests.swift; sourceTree = "<group>"; };
+		3D176EE416BCE7E416A82CCC /* HardPauseServiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HardPauseServiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		438D47E49D9C1B002570AA49 /* FirefoxBrowserProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxBrowserProtection.swift; sourceTree = "<group>"; };
+		4A38AE50C0DE33FBB37FE332 /* libbsm.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libbsm.tbd; path = usr/lib/libbsm.tbd; sourceTree = SDKROOT; };
+		4A74EEC991540531B98A6838 /* ProtectedBlockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedBlockTests.swift; sourceTree = "<group>"; };
+		515D0ACE76FFE733C3585779 /* HardPauseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseApp.swift; sourceTree = "<group>"; };
+		5BD7F5F527CCA0B94162548F /* ApplicationEnforcerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationEnforcerTests.swift; sourceTree = "<group>"; };
+		5C6280E722B6CF50F934980A /* Enforcement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Enforcement.swift; sourceTree = "<group>"; };
+		647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedBlock.swift; sourceTree = "<group>"; };
+		66E09A917BA6D23FE3E35CA4 /* HardPause.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HardPause.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6CE18587105747850FB2001D /* Recursive-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Recursive-OFL.txt"; sourceTree = "<group>"; };
+		6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCommitmentGuidance.swift; sourceTree = "<group>"; };
+		721BDA26F3C01BE8A4471DAD /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		73CE020B75644E033DA2B68E /* LocalPausePageServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPausePageServer.swift; sourceTree = "<group>"; };
+		76FE540206093F3051809B5B /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		7F7C40DDAB04920654FA3EBE /* BrowserURLMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserURLMatcherTests.swift; sourceTree = "<group>"; };
+		8A04B7606D7292D75A03DFBB /* ProcessCommandRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessCommandRunnerTests.swift; sourceTree = "<group>"; };
+		8D1F4228069182E29D66DE68 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
+		8D1F7AB916998334664871DB /* HardPauseTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HardPauseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8DFB577A7A8C9ECB95AC00E4 /* first-frame.svg */ = {isa = PBXFileReference; path = "first-frame.svg"; sourceTree = "<group>"; };
+		8F361845254DBC195DE507DD /* ProtectedServiceEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedServiceEngineTests.swift; sourceTree = "<group>"; };
+		956C9AB2D8A5E4F0DA9123E8 /* PauseSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseSeed.swift; sourceTree = "<group>"; };
+		97468816A1CC993DAAC51C96 /* ServiceTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceTestSupport.swift; sourceTree = "<group>"; };
+		9D54959695EE4B7D0D254B40 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A132D52C40502F34307579F9 /* BlockedPage */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BlockedPage; path = Resources/BlockedPage; sourceTree = SOURCE_ROOT; };
+		A3A9B40334B2C8EF80C77D3C /* ProtectedServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedServiceClient.swift; sourceTree = "<group>"; };
+		A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		B67DC67E70153E368D907025 /* ApplicationEnforcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationEnforcer.swift; sourceTree = "<group>"; };
+		BCB8AD2EF9D6D37968F814C2 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		C07578D74BB9C3F153392F59 /* ServiceSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceSupport.swift; sourceTree = "<group>"; };
+		C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedServiceIPC.swift; sourceTree = "<group>"; };
+		C67932AFAB8002B6016394A3 /* ProtectedServiceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedServiceEngine.swift; sourceTree = "<group>"; };
+		C6AC102D0805B788A197E82E /* mascot */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mascot; path = ../web/mascot; sourceTree = SOURCE_ROOT; };
+		C8E8BED6DCD333C51BB9227F /* HostsEnforcerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsEnforcerTests.swift; sourceTree = "<group>"; };
+		E3F1EE681A9CD1B0B44159A0 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		EAFB1AFDEA12C89094B8498C /* hard-pause */ = {isa = PBXFileReference; includeInIndex = 0; path = "hard-pause"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F30A474BF5A2F17C2066899D /* PausePageAssetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PausePageAssetsTests.swift; sourceTree = "<group>"; };
+		FC088B286331BA6902A57E92 /* HostsEnforcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsEnforcer.swift; sourceTree = "<group>"; };
+		FCE19D586EC509EECAD2D8C2 /* SetupReadiness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupReadiness.swift; sourceTree = "<group>"; };
+		FD02DDCC7088EEA1DCF7169F /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		39783AF94EAB112CE017DCE1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5C86AD1CD7EAAD4BAC0BE347 /* Security.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A162737B7ED4A8DC9D5A0E7A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1331BFF18D1A156968B46014 /* Security.framework in Frameworks */,
+				83D7A59D7C495B346A577AFC /* libbsm.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D12BBC15489F5276F2554F05 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F38D9765D9210A91D3FB6CD7 /* Security.framework in Frameworks */,
+				0D6C7D7EE15A62DF8DCC3736 /* libbsm.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D91DF3E672C3E0EBAE541D93 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7404036BE3B7C3D940135334 /* Security.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0D8684E2130CFD261F93F54C /* mascot */ = {
+			isa = PBXGroup;
+			children = (
+				8DFB577A7A8C9ECB95AC00E4 /* first-frame.svg */,
+			);
+			path = mascot;
+			sourceTree = "<group>";
+		};
+		0F928545A5C540381296CD02 /* CLI */ = {
+			isa = PBXGroup;
+			children = (
+				BCB8AD2EF9D6D37968F814C2 /* main.swift */,
+			);
+			path = CLI;
+			sourceTree = "<group>";
+		};
+		1795A9A2D8B93C6D4E303A41 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				EAFB1AFDEA12C89094B8498C /* hard-pause */,
+				25FBD2D9F1F341997A3F6EE7 /* hard-pause-service */,
+				66E09A917BA6D23FE3E35CA4 /* HardPause.app */,
+				3D176EE416BCE7E416A82CCC /* HardPauseServiceTests.xctest */,
+				8D1F7AB916998334664871DB /* HardPauseTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2B5D5E28D782B5E1FBB682C9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4A38AE50C0DE33FBB37FE332 /* libbsm.tbd */,
+				A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		4644B638C4B9068DBE0CCE69 /* web */ = {
+			isa = PBXGroup;
+			children = (
+				C6AC102D0805B788A197E82E /* mascot */,
+				0D8684E2130CFD261F93F54C /* mascot */,
+			);
+			path = web;
+			sourceTree = "<group>";
+		};
+		5CBF15F1436FF39798045BBA /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */,
+				15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */,
+				647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */,
+				14A1729B8F0309D32FF35968 /* ProtectedRules.swift */,
+				C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		5D783D3DCF10B50043FF1F12 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				FD02DDCC7088EEA1DCF7169F /* AppModelTests.swift */,
+				7F7C40DDAB04920654FA3EBE /* BrowserURLMatcherTests.swift */,
+				F30A474BF5A2F17C2066899D /* PausePageAssetsTests.swift */,
+				4A74EEC991540531B98A6838 /* ProtectedBlockTests.swift */,
+				206EDC61E9BEECAC4CF570BC /* ProtectedServiceIPCTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		6B59F775E0876104C94C0423 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				306150A94512CCEF491996EB /* CaretTrackingTextField.swift */,
+				956C9AB2D8A5E4F0DA9123E8 /* PauseSeed.swift */,
+				E3F1EE681A9CD1B0B44159A0 /* Theme.swift */,
+				DCA972382C4FF5F9B1B74116 /* Resources */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		8CBC5D0E04A593DFB1F08231 = {
+			isa = PBXGroup;
+			children = (
+				198CF5ECE3B7E70E8BF92896 /* README.md */,
+				DAF2478B078ECFC2342C28E9 /* App */,
+				0F928545A5C540381296CD02 /* CLI */,
+				5CBF15F1436FF39798045BBA /* Core */,
+				EA228C65FAF8D96184FBFF57 /* hard-pause */,
+				BB64F0CE409913EE67F6E000 /* Resources */,
+				F8009E85362B15B7A56540BC /* Service */,
+				F263295E59FD614DAE4AB6DF /* ServiceTests */,
+				5D783D3DCF10B50043FF1F12 /* Tests */,
+				2B5D5E28D782B5E1FBB682C9 /* Frameworks */,
+				1795A9A2D8B93C6D4E303A41 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BB64F0CE409913EE67F6E000 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A132D52C40502F34307579F9 /* BlockedPage */,
+				1A97B9164197B452C7956E60 /* PrivacyInfo.xcprivacy */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		C061C3A64591275EDDA0510E /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				6B59F775E0876104C94C0423 /* App */,
+			);
+			path = ios;
+			sourceTree = "<group>";
+		};
+		DAF2478B078ECFC2342C28E9 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				76FE540206093F3051809B5B /* AppModel.swift */,
+				9D54959695EE4B7D0D254B40 /* Assets.xcassets */,
+				26A1925EA42F4E11AC9582C6 /* BrowserProtection.swift */,
+				721BDA26F3C01BE8A4471DAD /* ContentView.swift */,
+				438D47E49D9C1B002570AA49 /* FirefoxBrowserProtection.swift */,
+				32C95D6B54F8FFFE9739BADB /* HardPause.entitlements */,
+				515D0ACE76FFE733C3585779 /* HardPauseApp.swift */,
+				73CE020B75644E033DA2B68E /* LocalPausePageServer.swift */,
+				A3A9B40334B2C8EF80C77D3C /* ProtectedServiceClient.swift */,
+				19AA79F4313E580D58F07DBE /* ServiceInstaller.swift */,
+				FCE19D586EC509EECAD2D8C2 /* SetupReadiness.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		DCA972382C4FF5F9B1B74116 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				F981391C99AAA81703A85D00 /* Fonts */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		EA228C65FAF8D96184FBFF57 /* hard-pause */ = {
+			isa = PBXGroup;
+			children = (
+				8D1F4228069182E29D66DE68 /* AGENTS.md */,
+				C061C3A64591275EDDA0510E /* ios */,
+				4644B638C4B9068DBE0CCE69 /* web */,
+			);
+			name = "hard-pause";
+			path = ..;
+			sourceTree = "<group>";
+		};
+		F263295E59FD614DAE4AB6DF /* ServiceTests */ = {
+			isa = PBXGroup;
+			children = (
+				5BD7F5F527CCA0B94162548F /* ApplicationEnforcerTests.swift */,
+				27EEC3C2FB90EA25567144CC /* ClientAuthorizerTests.swift */,
+				C8E8BED6DCD333C51BB9227F /* HostsEnforcerTests.swift */,
+				3AAF9A47A7DA15A3C1B50F0C /* PFEnforcerTests.swift */,
+				8A04B7606D7292D75A03DFBB /* ProcessCommandRunnerTests.swift */,
+				8F361845254DBC195DE507DD /* ProtectedServiceEngineTests.swift */,
+				1935757EE38CB123CD1F14F4 /* ProtectedStateStoreTests.swift */,
+				97468816A1CC993DAAC51C96 /* ServiceTestSupport.swift */,
+			);
+			path = ServiceTests;
+			sourceTree = "<group>";
+		};
+		F8009E85362B15B7A56540BC /* Service */ = {
+			isa = PBXGroup;
+			children = (
+				B67DC67E70153E368D907025 /* ApplicationEnforcer.swift */,
+				3A46799FEC96C8266F520550 /* ClientAuthorizer.swift */,
+				5C6280E722B6CF50F934980A /* Enforcement.swift */,
+				FC088B286331BA6902A57E92 /* HostsEnforcer.swift */,
+				295E29404D4010DD806082FB /* main.swift */,
+				235822A68E5E99CAAA7E5132 /* PFEnforcer.swift */,
+				357AF05730AE2F838061AF19 /* ProtectedService.swift */,
+				C67932AFAB8002B6016394A3 /* ProtectedServiceEngine.swift */,
+				28277D418288D8C500796009 /* ProtectedStateStore.swift */,
+				C07578D74BB9C3F153392F59 /* ServiceSupport.swift */,
+			);
+			path = Service;
+			sourceTree = "<group>";
+		};
+		F981391C99AAA81703A85D00 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				6CE18587105747850FB2001D /* Recursive-OFL.txt */,
+				10FAA4EF0128CE063FB7AC7C /* Recursive.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		18772DB522E4BA97F6A297EB /* HardPause */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1BEA4BA0CE970999FD5082D /* Build configuration list for PBXNativeTarget "HardPause" */;
+			buildPhases = (
+				EF28C6FD22CAF70B38131FBE /* Sources */,
+				848C9125F4749ABF2700E9ED /* Resources */,
+				D91DF3E672C3E0EBAE541D93 /* Frameworks */,
+				7D463206A49E0864F7426DD9 /* Bundle production service */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				59CEBA56230E1E7ACE46AE12 /* PBXTargetDependency */,
+				79810DB1565F0918DC52A860 /* PBXTargetDependency */,
+			);
+			name = HardPause;
+			packageProductDependencies = (
+			);
+			productName = HardPause;
+			productReference = 66E09A917BA6D23FE3E35CA4 /* HardPause.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CCBAC82F8D0BDEA864B0E10B /* HardPauseService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9687DAC2265D4D09BB4D53B3 /* Build configuration list for PBXNativeTarget "HardPauseService" */;
+			buildPhases = (
+				F56AD74BD52DAEDCF6BEE766 /* Sources */,
+				D12BBC15489F5276F2554F05 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HardPauseService;
+			packageProductDependencies = (
+			);
+			productName = HardPauseService;
+			productReference = 25FBD2D9F1F341997A3F6EE7 /* hard-pause-service */;
+			productType = "com.apple.product-type.tool";
+		};
+		D44C5D0380BBD11EAC86E8DF /* HardPauseCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 350C39E94967A9FFC710DC4B /* Build configuration list for PBXNativeTarget "HardPauseCLI" */;
+			buildPhases = (
+				22F6CE00E16BB0B16B4EDF58 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HardPauseCLI;
+			packageProductDependencies = (
+			);
+			productName = HardPauseCLI;
+			productReference = EAFB1AFDEA12C89094B8498C /* hard-pause */;
+			productType = "com.apple.product-type.tool";
+		};
+		E5FED5FB8B035290AE3985A0 /* HardPauseTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D8181926F5EF6336A6C2748B /* Build configuration list for PBXNativeTarget "HardPauseTests" */;
+			buildPhases = (
+				5743ED843D16CEED3278E6F7 /* Sources */,
+				39783AF94EAB112CE017DCE1 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HardPauseTests;
+			packageProductDependencies = (
+			);
+			productName = HardPauseTests;
+			productReference = 8D1F7AB916998334664871DB /* HardPauseTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E71FC7051C80918A6E8989D4 /* HardPauseServiceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 23333992C5712A44809D61E1 /* Build configuration list for PBXNativeTarget "HardPauseServiceTests" */;
+			buildPhases = (
+				2C08D1A16AE4FAACC8412933 /* Sources */,
+				A162737B7ED4A8DC9D5A0E7A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HardPauseServiceTests;
+			packageProductDependencies = (
+			);
+			productName = HardPauseServiceTests;
+			productReference = 3D176EE416BCE7E416A82CCC /* HardPauseServiceTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E3762ED8A1A1506DDEA98CC0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					18772DB522E4BA97F6A297EB = {
+						DevelopmentTeam = ZBX6C7BJ5X;
+						ProvisioningStyle = Manual;
+					};
+					CCBAC82F8D0BDEA864B0E10B = {
+						DevelopmentTeam = ZBX6C7BJ5X;
+						ProvisioningStyle = Manual;
+					};
+					D44C5D0380BBD11EAC86E8DF = {
+						DevelopmentTeam = ZBX6C7BJ5X;
+						ProvisioningStyle = Manual;
+					};
+					E5FED5FB8B035290AE3985A0 = {
+						DevelopmentTeam = ZBX6C7BJ5X;
+						ProvisioningStyle = Manual;
+					};
+					E71FC7051C80918A6E8989D4 = {
+						DevelopmentTeam = ZBX6C7BJ5X;
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 30FD654D6481DF249E2B8C12 /* Build configuration list for PBXProject "HardPause" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8CBC5D0E04A593DFB1F08231;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 1795A9A2D8B93C6D4E303A41 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				18772DB522E4BA97F6A297EB /* HardPause */,
+				CCBAC82F8D0BDEA864B0E10B /* HardPauseService */,
+				D44C5D0380BBD11EAC86E8DF /* HardPauseCLI */,
+				E5FED5FB8B035290AE3985A0 /* HardPauseTests */,
+				E71FC7051C80918A6E8989D4 /* HardPauseServiceTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		848C9125F4749ABF2700E9ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				40B01687BD87C09E359882A9 /* AGENTS.md in Resources */,
+				7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */,
+				F840DB0305648A2860A3684B /* BlockedPage in Resources */,
+				4498954D0B4C85B7117832BF /* PrivacyInfo.xcprivacy in Resources */,
+				2EF8B61A51CFF630E53B8535 /* README.md in Resources */,
+				49B9FEB569116E8BAF934D19 /* Recursive-OFL.txt in Resources */,
+				B54C6007614A4D2E6A326C71 /* Recursive.ttf in Resources */,
+				6CA8A342751BCA4D14502687 /* first-frame.svg in Resources */,
+				2F2C062209F5D4E6D3157BD1 /* mascot in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		7D463206A49E0864F7426DD9 /* Bundle production service */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/install-macos-service.sh",
+				"$(SRCROOT)/scripts/uninstall-macos-service.sh",
+				"$(SRCROOT)/scripts/service-dry-run.sh",
+				"$(SRCROOT)/scripts/org.hardpause.service.plist",
+				"$(BUILT_PRODUCTS_DIR)/hard-pause-service",
+				"$(BUILT_PRODUCTS_DIR)/hard-pause",
+			);
+			name = "Bundle production service";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/install-macos-service.sh",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/uninstall-macos-service.sh",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/service-dry-run.sh",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/org.hardpause.service.plist",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hard-pause-service",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hard-pause",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "resources=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n/usr/bin/install -d -m 0755 \"$resources\"\n/usr/bin/install -m 0755 \"${SRCROOT}/scripts/install-macos-service.sh\" \"$resources/install-macos-service.sh\"\n/usr/bin/install -m 0755 \"${SRCROOT}/scripts/uninstall-macos-service.sh\" \"$resources/uninstall-macos-service.sh\"\n/usr/bin/install -m 0755 \"${SRCROOT}/scripts/service-dry-run.sh\" \"$resources/service-dry-run.sh\"\n/usr/bin/install -m 0644 \"${SRCROOT}/scripts/org.hardpause.service.plist\" \"$resources/org.hardpause.service.plist\"\n/usr/bin/install -m 0755 \"${BUILT_PRODUCTS_DIR}/hard-pause-service\" \"$resources/hard-pause-service\"\n/usr/bin/install -m 0755 \"${BUILT_PRODUCTS_DIR}/hard-pause\" \"$resources/hard-pause\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		22F6CE00E16BB0B16B4EDF58 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CAE92C52DF5BE390AF9E35E7 /* AgentCommitmentGuidance.swift in Sources */,
+				9EE7C7101405F51024732837 /* BrowserURLMatcher.swift in Sources */,
+				2FCA8978AABAFC18CA1ABE94 /* ProtectedBlock.swift in Sources */,
+				F35A575BFF0629B94822E263 /* ProtectedRules.swift in Sources */,
+				35CC8F9FC1F4100F07F8DE23 /* ProtectedServiceIPC.swift in Sources */,
+				115568E2B919E0425F4623DC /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2C08D1A16AE4FAACC8412933 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FD9BF478745AAB2F13893347 /* AgentCommitmentGuidance.swift in Sources */,
+				30F509E35F63ABB15F5FBD26 /* ApplicationEnforcer.swift in Sources */,
+				B8421F81954F40C24B6AC486 /* ApplicationEnforcerTests.swift in Sources */,
+				D9972CDC12AF06E9C3A13DEB /* BrowserURLMatcher.swift in Sources */,
+				A62D104AD8DC7D2FBA0DF43A /* ClientAuthorizer.swift in Sources */,
+				114C4CB02FF3E3623A04FD1C /* ClientAuthorizerTests.swift in Sources */,
+				C5A47190993B036892A2A314 /* Enforcement.swift in Sources */,
+				AFF2DBF647BD07DEF96D2E3E /* HostsEnforcer.swift in Sources */,
+				BF8B9635BB837C23AA9681FD /* HostsEnforcerTests.swift in Sources */,
+				151F8E002910DDB623202EC1 /* PFEnforcer.swift in Sources */,
+				69828EAC0ED7711B58C47214 /* PFEnforcerTests.swift in Sources */,
+				E56783271F94690FEFF5137B /* ProcessCommandRunnerTests.swift in Sources */,
+				90F1D3771E9C9709F68008DE /* ProtectedBlock.swift in Sources */,
+				14695C6D99D94EC0283D4CD8 /* ProtectedRules.swift in Sources */,
+				8794AA772392BC19FDF6B969 /* ProtectedService.swift in Sources */,
+				1BA1EB905DBED60099A4D88F /* ProtectedServiceEngine.swift in Sources */,
+				91DA6C33364E5C1BDA68D462 /* ProtectedServiceEngineTests.swift in Sources */,
+				727AED47F1FD4B5BD08A6886 /* ProtectedServiceIPC.swift in Sources */,
+				4E6E273A08961F056E5C24B6 /* ProtectedStateStore.swift in Sources */,
+				8C11C12C6A9F1D2DC708E755 /* ProtectedStateStoreTests.swift in Sources */,
+				02DD56773059EE71109D5379 /* ServiceSupport.swift in Sources */,
+				AE197935A8ECD1E71A091AE0 /* ServiceTestSupport.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5743ED843D16CEED3278E6F7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E404F087E70A4AF832A28340 /* AgentCommitmentGuidance.swift in Sources */,
+				1A0492E982C85A6607D56C6A /* AppModel.swift in Sources */,
+				31B98FC5C3EA32C73DF9A9C4 /* AppModelTests.swift in Sources */,
+				9A50FDBF20E2E35BF9594061 /* BrowserProtection.swift in Sources */,
+				D9654622221EC630D13154CD /* BrowserURLMatcher.swift in Sources */,
+				DBAD0BC4037CA3685BDE07D8 /* BrowserURLMatcherTests.swift in Sources */,
+				AA13F5E7DF49C348EBA07018 /* FirefoxBrowserProtection.swift in Sources */,
+				E43EEB6564AE293D64E0DD8D /* LocalPausePageServer.swift in Sources */,
+				CA1F1EB9EB683589C2EE4999 /* PausePageAssetsTests.swift in Sources */,
+				0D8178E4EB58C5ABF26E68AE /* ProtectedBlock.swift in Sources */,
+				5C3E6E9E5A3742E77FE8EDFB /* ProtectedBlockTests.swift in Sources */,
+				F122BA17C9DD1DC1197C373E /* ProtectedRules.swift in Sources */,
+				9431D53A4BF003BA6B5D96A5 /* ProtectedServiceClient.swift in Sources */,
+				1D1BAA8F84E08006B10CF6F4 /* ProtectedServiceIPC.swift in Sources */,
+				DCEEFC9195E7D2637FEF8036 /* ProtectedServiceIPCTests.swift in Sources */,
+				4EB0942FA9A82C363FE204FE /* ServiceInstaller.swift in Sources */,
+				9F40F483F79EB64882D70AFA /* SetupReadiness.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EF28C6FD22CAF70B38131FBE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				027629807844E0ADABB43801 /* AgentCommitmentGuidance.swift in Sources */,
+				10A2E895A570D7ED934ABF34 /* AppModel.swift in Sources */,
+				858AC6AF06B1DFA142E05E24 /* BrowserProtection.swift in Sources */,
+				19BE1ACDF70BCFFD7324E0B9 /* BrowserURLMatcher.swift in Sources */,
+				39B6667537253828AEBE4BC3 /* CaretTrackingTextField.swift in Sources */,
+				7F2BD52D61021B449DC70C4C /* ContentView.swift in Sources */,
+				DD3C2827DA628740EEF98141 /* FirefoxBrowserProtection.swift in Sources */,
+				2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */,
+				1CFF81DCB16B1D6A363EB17F /* LocalPausePageServer.swift in Sources */,
+				B04963FD01B67C7A67B9EE8E /* PauseSeed.swift in Sources */,
+				D15697605B1130D1D81DB5EE /* ProtectedBlock.swift in Sources */,
+				B922CDC142ED234C59C03619 /* ProtectedRules.swift in Sources */,
+				9AABF71AD34E585DDCE71004 /* ProtectedServiceClient.swift in Sources */,
+				F4D4B664AD2FC66AA1316249 /* ProtectedServiceIPC.swift in Sources */,
+				9ADFC4521345CCC1D2CF9A62 /* ServiceInstaller.swift in Sources */,
+				18AE99E1A3BB558B2AAABAA9 /* SetupReadiness.swift in Sources */,
+				04C6824E9FF3784826B660FD /* Theme.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F56AD74BD52DAEDCF6BEE766 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20F45CFF8C35A4E693083AAB /* AgentCommitmentGuidance.swift in Sources */,
+				5BE656212849DE0EE098D03C /* ApplicationEnforcer.swift in Sources */,
+				A38898838F5B827B4A8E738F /* BrowserURLMatcher.swift in Sources */,
+				0AA1339B5035EBC9EBC0BE13 /* ClientAuthorizer.swift in Sources */,
+				AEF47390A93AAA5C426A3C89 /* Enforcement.swift in Sources */,
+				010FE046703CFEE5BBD7C48B /* HostsEnforcer.swift in Sources */,
+				470E2DC8A5CB5EA19939EFD7 /* PFEnforcer.swift in Sources */,
+				F12E4E54053B902DA04BB919 /* ProtectedBlock.swift in Sources */,
+				3B15C2A3B2399452C373775F /* ProtectedRules.swift in Sources */,
+				C704BD5AF02366A1ACB2C7AE /* ProtectedService.swift in Sources */,
+				90A3D91ABD5D46FB387D7A11 /* ProtectedServiceEngine.swift in Sources */,
+				CAEDAD73119951086EECDB79 /* ProtectedServiceIPC.swift in Sources */,
+				BCECA29FB4E5A381CCE0C380 /* ProtectedStateStore.swift in Sources */,
+				271780DEEA027871BD257E4A /* ServiceSupport.swift in Sources */,
+				6E51B0224BEBB7E7A722102F /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		59CEBA56230E1E7ACE46AE12 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CCBAC82F8D0BDEA864B0E10B /* HardPauseService */;
+			targetProxy = 3CCE161F3F73A7CE1F30B269 /* PBXContainerItemProxy */;
+		};
+		79810DB1565F0918DC52A860 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D44C5D0380BBD11EAC86E8DF /* HardPauseCLI */;
+			targetProxy = 883EEAD45E40A5F2884B9871 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		212AE12ADEB250A69701E026 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.service;
+				PRODUCT_NAME = "hard-pause-service";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		2F1C13B771115F281224FB34 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.cli;
+				PRODUCT_NAME = "hard-pause";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		379FB8BD93897833BEDC05B3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/HardPause.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Hard Pause";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.app;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		4BC092550C5C1B29D829A2D6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 2;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		5FA0C0B934916AD3DF57A793 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.tests;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		6D73828303B487ED1AF58918 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.cli;
+				PRODUCT_NAME = "hard-pause";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		82E78C2993E10CB781F79B00 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "org.hardpause.service-tests";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		CBD5BA318DB313838A8DA13D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.tests;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		D04711A06806BBD458407B90 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.service;
+				PRODUCT_NAME = "hard-pause-service";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		DE37ECA1947ED9A5FA96BB1F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/HardPause.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Hard Pause";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.app;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		E6DC0CE871351EBB8C185528 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "org.hardpause.service-tests";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		ECB69D03FB14BFE1683015C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 2;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		23333992C5712A44809D61E1 /* Build configuration list for PBXNativeTarget "HardPauseServiceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				82E78C2993E10CB781F79B00 /* Debug */,
+				E6DC0CE871351EBB8C185528 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		30FD654D6481DF249E2B8C12 /* Build configuration list for PBXProject "HardPause" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECB69D03FB14BFE1683015C4 /* Debug */,
+				4BC092550C5C1B29D829A2D6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		350C39E94967A9FFC710DC4B /* Build configuration list for PBXNativeTarget "HardPauseCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6D73828303B487ED1AF58918 /* Debug */,
+				2F1C13B771115F281224FB34 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9687DAC2265D4D09BB4D53B3 /* Build configuration list for PBXNativeTarget "HardPauseService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				212AE12ADEB250A69701E026 /* Debug */,
+				D04711A06806BBD458407B90 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D8181926F5EF6336A6C2748B /* Build configuration list for PBXNativeTarget "HardPauseTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5FA0C0B934916AD3DF57A793 /* Debug */,
+				CBD5BA318DB313838A8DA13D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F1BEA4BA0CE970999FD5082D /* Build configuration list for PBXNativeTarget "HardPause" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				379FB8BD93897833BEDC05B3 /* Debug */,
+				DE37ECA1947ED9A5FA96BB1F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+}

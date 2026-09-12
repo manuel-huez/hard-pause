@@ -1,0 +1,171 @@
+name: HardPause
+
+options:
+  bundleIdPrefix: com.hardpause
+  deploymentTarget:
+    iOS: '26.0'
+  xcodeVersion: '26.0'
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    IPHONEOS_DEPLOYMENT_TARGET: '26.0'
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    DEVELOPMENT_TEAM: ''
+
+targets:
+  HardPause:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - Resources
+      - path: Shared
+        excludes:
+          - PrivacyInfo.xcprivacy
+      - path: Shared/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: App/Resources
+        buildPhase: resources
+      - path: ../web/mascot
+        type: folder
+        buildPhase: resources
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Hard Pause
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Dark
+        UIAppFonts:
+          - Recursive.ttf
+    entitlements:
+      path: App/HardPause.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.hardpause.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hardpause.app
+        PRODUCT_NAME: HardPause
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+    dependencies:
+      - target: HardPauseMonitor
+        embed: true
+      - target: HardPauseShieldConfiguration
+        embed: true
+      - target: HardPauseShieldAction
+        embed: true
+
+  HardPauseMonitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/Monitor
+      - path: Shared
+        excludes:
+          - PrivacyInfo.xcprivacy
+      - path: Shared/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    info:
+      path: Extensions/Monitor/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.deviceactivity.monitor-extension
+          NSExtensionPrincipalClass: '$(PRODUCT_MODULE_NAME).MonitorExtension'
+    entitlements:
+      path: Extensions/Monitor/Monitor.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.hardpause.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hardpause.app.monitor
+        PRODUCT_NAME: HardPauseMonitor
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+
+  HardPauseShieldConfiguration:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/ShieldConfiguration
+      - path: App/Assets.xcassets
+        buildPhase: resources
+    info:
+      path: Extensions/ShieldConfiguration/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettingsUI.shield-configuration-service
+          NSExtensionPrincipalClass: '$(PRODUCT_MODULE_NAME).ShieldConfigurationExtension'
+    entitlements:
+      path: Extensions/ShieldConfiguration/ShieldConfiguration.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.hardpause.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hardpause.app.shield-configuration
+        PRODUCT_NAME: HardPauseShieldConfiguration
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+
+  HardPauseShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/ShieldAction
+    info:
+      path: Extensions/ShieldAction/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettings.shield-action-service
+          NSExtensionPrincipalClass: '$(PRODUCT_MODULE_NAME).ShieldActionExtension'
+    entitlements:
+      path: Extensions/ShieldAction/ShieldAction.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.hardpause.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hardpause.app.shield-action
+        PRODUCT_NAME: HardPauseShieldAction
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+
+  HardPauseTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: HardPause
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hardpause.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+
+schemes:
+  HardPause:
+    build:
+      targets:
+        HardPause: all
+        HardPauseTests: [test]
+    test:
+      gatherCoverageData: true
+      targets:
+        - HardPauseTests

@@ -1,0 +1,65 @@
+name: Checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  website:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - name: Package website
+        run: node scripts/package-web.cjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: website
+          path: dist/web
+          if-no-files-found: error
+          retention-days: 14
+  native:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check Swift formatting
+        run: xcrun swift-format lint --strict --recursive ios/App ios/Shared ios/Extensions ios/Tests macos/App macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
+      - name: Generate native projects
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec ios/project.yml
+          xcodegen generate --spec macos/project.yml
+          python3 scripts/check-project-settings.py
+          python3 scripts/test_project_settings.py
+      - name: Test macOS
+        run: xcodebuild -project macos/HardPause.xcodeproj -scheme HardPause -destination 'platform=macOS' -derivedDataPath build/macos -resultBundlePath build/macos-tests.xcresult CODE_SIGNING_ALLOWED=NO test
+      - name: Test iOS
+        shell: bash
+        run: |
+          device_id=$(python3 scripts/select-simulator.py)
+          xcodebuild -project ios/HardPause.xcodeproj -scheme HardPause -destination "platform=iOS Simulator,id=$device_id" -derivedDataPath build/ios -resultBundlePath build/ios-tests.xcresult CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: native-test-results
+          path: build/*.xcresult
+          retention-days: 7
