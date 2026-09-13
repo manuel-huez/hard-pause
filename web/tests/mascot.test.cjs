@@ -47,6 +47,50 @@ test('reduced motion holds body and retains smooth mood expression feedback', ()
   assert.ok(first.open < middle.open && middle.open < last.open);
 });
 
+test('sleeping mascot drifts staggered Zs and hides them with reduced motion', () => {
+  const sleeping = new Engine();
+  const first = sleeping.sample(0).sleepZ;
+  const later = sleeping.sample(1).sleepZ;
+  assert.equal(first.length, 3);
+  assert.ok(first.every(({ opacity }) => opacity === 0));
+  assert.ok(later.some(({ opacity }) => opacity > 0));
+  assert.ok(first.some(({ opacity }) => opacity === 0));
+  assert.notDeepEqual(later, first);
+  assert.ok(later.every(({ opacity }) => opacity >= 0 && opacity <= 0.78));
+
+  const awake = new Engine('resting').sample(0).sleepZ;
+  assert.ok(awake.every(({ opacity }) => opacity === 0));
+  const reduced = sleeping.sample(0, true).sleepZ;
+  assert.ok(reduced.every(({ opacity }) => opacity === 0));
+  assert.deepEqual(reduced, sleeping.sample(8, true).sleepZ);
+});
+
+test('sleep letters fade continuously through waking and falling asleep', () => {
+  const engine = new Engine();
+  engine.setAttention(true, 1);
+  engine.setAttention(false, 2);
+  let previous = engine.sample(2).sleepZ;
+  for (let t = 2.01; t < 8; t += 0.01) {
+    const current = engine.sample(t).sleepZ;
+    current.forEach((z, i) => assert.ok(Math.abs(z.opacity - previous[i].opacity) < 0.025));
+    previous = current;
+  }
+  assert.ok(engine.sample(2).sleepZ.every(({ opacity }) => opacity === 0));
+  assert.ok(engine.sample(4.8).sleepZ.some(({ opacity }) => opacity > 0));
+});
+
+test('falling asleep restarts letters one at a time on the body', () => {
+  const engine = new Engine();
+  engine.setAttention(true, 20);
+  engine.setAttention(false, 22);
+  assert.ok(engine.sample(23.66).sleepZ.every(({ opacity }) => opacity === 0));
+  const first = engine.sample(24.66).sleepZ;
+  assert.equal(first.filter(({ opacity }) => opacity > 0).length, 1);
+  const [, x, y] = first[0].transform.match(/translate\(([\d.]+) ([\d.]+)\)/);
+  assert.ok(Number(x) >= 140 && Number(x) <= 190);
+  assert.ok(Number(y) >= 110 && Number(y) <= 145);
+});
+
 test('greeting opens gradually and returns without a pose snap', () => {
   const engine = new Engine();
   const first = engine.sample(1);

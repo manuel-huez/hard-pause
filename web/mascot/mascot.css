@@ -19,6 +19,12 @@
 .low-light-texture {
   mix-blend-mode: soft-light;
 }
+.low-light-z {
+  fill: #fff4d3;
+  font-family: system-ui, sans-serif;
+  font-weight: 700;
+  text-anchor: middle;
+}
 
 html.native-mascot,
 .native-mascot body {

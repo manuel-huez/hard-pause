@@ -251,6 +251,32 @@
       const smile = mix(p.smile, 8, awake);
       const mouth = `M${point(-7, 20)}C${point(-1, 20 + smile)} ${point(7, 20 + smile)} ${point(12, 20)}`;
       const light = flow(152, 143);
+      const sleepOpacity = reduced ? 0 : (1 - ease(p.open / 0.4)) * (1 - ease(awake));
+      const sleepStarted = Math.max(
+        0,
+        this.changed + 1.5,
+        this.attentionChanged + 1.66,
+        this.helloAt + 3.11,
+      );
+      const sleepZ = [0, 2.3, 4.6].map((delay, i) => {
+        const age = Math.max(0, time - sleepStarted - delay);
+        const cycle = Math.floor(age / 7);
+        // Keep each letter's variation fixed during its flight, including redraws.
+        const variation = (salt) => {
+          const n = Math.sin((cycle * 3 + i + 1) * 127.1 + salt * 311.7) * 43758.5453;
+          return n - Math.floor(n);
+        };
+        const duration = 5 + variation(1);
+        const phase = clamp((age % 7 - variation(2) * 0.7) / duration);
+        const fade = ease(phase / 0.25) * (1 - ease((phase - 0.6) / 0.4));
+        const x = 145 + variation(3) * 32 + (20 + variation(4) * 35) * phase;
+        const y = 132 + variation(5) * 10 - (75 + variation(6) * 15) * phase;
+        return {
+          transform: `translate(${round(x)} ${round(y)}) scale(${round(0.6 + phase * 0.4)})`,
+          opacity: sleepOpacity * fade * 0.78,
+          size: 26 + variation(7) * 8,
+        };
+      });
       return {
         path,
         eyes,
@@ -261,6 +287,7 @@
         roll,
         open,
         blink,
+        sleepZ,
         eyeGeometry: {
           width: mix(16, 4.1, expressionOpen),
           height: 7.1 * open,
@@ -277,7 +304,7 @@
       win = doc.defaultView;
     const id = `low-light-${++serial}`;
     const previousId = element.querySelector('img')?.id;
-    element.innerHTML = `<svg class="low-light-svg" viewBox="0 0 400 380" aria-hidden="true" focusable="false"><defs><radialGradient id="${id}-body" gradientUnits="userSpaceOnUse" cx="166" cy="120" r="225"><stop stop-color="#c6d5e9"/><stop offset=".55" stop-color="#94aaca"/><stop offset="1" stop-color="#637a9b"/></radialGradient><radialGradient id="${id}-halo"><stop stop-color="#8daeda" stop-opacity=".16"/><stop offset="1" stop-color="#8daeda" stop-opacity="0"/></radialGradient><linearGradient id="${id}-moon" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff4d3"/><stop offset="1" stop-color="#d2bf91"/></linearGradient><radialGradient id="${id}-shade"><stop stop-color="#233854" stop-opacity=".24"/><stop offset="1" stop-color="#233854" stop-opacity="0"/></radialGradient><clipPath id="${id}-clip"><path class="low-light-outline"/></clipPath><filter id="${id}-velvet" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="3" seed="12"/><feColorMatrix type="saturate" values="0"/></filter></defs><ellipse cx="200" cy="210" rx="197" ry="169" fill="url(#${id}-halo)"/><path class="low-light-moon" d="M326 67C301 68 282 90 282 115C282 148 312 170 343 158C317 158 298 139 300 115C301 94 312 78 326 67Z" fill="url(#${id}-moon)"/><path class="low-light-body" fill="url(#${id}-body)" stroke="#d1e1f4" stroke-opacity=".12" stroke-width="1"/><g clip-path="url(#${id}-clip)"><g class="low-light-plush"><ellipse cx="215" cy="318" rx="168" ry="91" fill="url(#${id}-shade)"/></g><rect x="20" y="90" width="360" height="220" filter="url(#${id}-velvet)" opacity=".07" class="low-light-texture"/></g><g class="low-light-face"><path class="low-light-eye"/><path class="low-light-eye"/><path class="low-light-mouth"/></g></svg>`;
+    element.innerHTML = `<svg class="low-light-svg" viewBox="0 0 400 380" aria-hidden="true" focusable="false"><defs><radialGradient id="${id}-body" gradientUnits="userSpaceOnUse" cx="166" cy="120" r="225"><stop stop-color="#c6d5e9"/><stop offset=".55" stop-color="#94aaca"/><stop offset="1" stop-color="#637a9b"/></radialGradient><radialGradient id="${id}-halo"><stop stop-color="#8daeda" stop-opacity=".16"/><stop offset="1" stop-color="#8daeda" stop-opacity="0"/></radialGradient><linearGradient id="${id}-moon" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff4d3"/><stop offset="1" stop-color="#d2bf91"/></linearGradient><radialGradient id="${id}-shade"><stop stop-color="#233854" stop-opacity=".24"/><stop offset="1" stop-color="#233854" stop-opacity="0"/></radialGradient><clipPath id="${id}-clip"><path class="low-light-outline"/></clipPath><filter id="${id}-velvet" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="3" seed="12"/><feColorMatrix type="saturate" values="0"/></filter></defs><ellipse cx="200" cy="210" rx="197" ry="169" fill="url(#${id}-halo)"/><path class="low-light-moon" d="M326 67C301 68 282 90 282 115C282 148 312 170 343 158C317 158 298 139 300 115C301 94 312 78 326 67Z" fill="url(#${id}-moon)"/><path class="low-light-body" fill="url(#${id}-body)" stroke="#d1e1f4" stroke-opacity=".12" stroke-width="1"/><g clip-path="url(#${id}-clip)"><g class="low-light-plush"><ellipse cx="215" cy="318" rx="168" ry="91" fill="url(#${id}-shade)"/></g><rect x="20" y="90" width="360" height="220" filter="url(#${id}-velvet)" opacity=".07" class="low-light-texture"/></g><g class="low-light-sleep-z" aria-hidden="true"><text x="0" y="0" class="low-light-z">Z</text><text x="0" y="0" class="low-light-z">Z</text><text x="0" y="0" class="low-light-z">Z</text></g><g class="low-light-face"><path class="low-light-eye"/><path class="low-light-eye"/><path class="low-light-mouth"/></g></svg>`;
     const svg = element.querySelector('svg'),
       body = svg.querySelector('.low-light-body');
     if (previousId) svg.id = previousId;
@@ -285,6 +312,7 @@
       eyes = svg.querySelectorAll('.low-light-eye');
     const mouth = svg.querySelector('.low-light-mouth'),
       moon = svg.querySelector('.low-light-moon');
+    const sleepZ = svg.querySelectorAll('.low-light-z');
     const gradient = svg.querySelector('radialGradient');
     const engine = new Engine(options.mood);
     const media = win.matchMedia('(prefers-reduced-motion: reduce)');
@@ -305,6 +333,11 @@
       eyes.forEach((eye, i) => eye.setAttribute('d', f.eyes[i]));
       mouth.setAttribute('d', f.mouth);
       moon.setAttribute('transform', f.moon);
+      sleepZ.forEach((z, i) => {
+        z.setAttribute('font-size', f.sleepZ[i].size);
+        z.setAttribute('transform', f.sleepZ[i].transform);
+        z.setAttribute('opacity', f.sleepZ[i].opacity);
+      });
       gradient.setAttribute('cx', round(f.light[0]));
       gradient.setAttribute('cy', round(f.light[1]));
     }

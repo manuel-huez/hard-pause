@@ -105,13 +105,13 @@ enum CaretTrackingTextFieldInputMode {
 #elseif os(macOS)
     import AppKit
 
-    struct CaretTrackingTextField: NSViewRepresentable {
+    struct CaretTrackingTextField: View {
         let placeholder: String
         @Binding var text: String
         let accessibilityLabel: String
-        let inputMode: CaretTrackingTextFieldInputMode
         let onSubmit: () -> Void
         let onCaretChange: (CGPoint?) -> Void
+        @FocusState private var isFocused: Bool
 
         init(
             _ placeholder: String, text: Binding<String>, accessibilityLabel: String = "Website domain",
@@ -122,98 +122,93 @@ enum CaretTrackingTextFieldInputMode {
             self.placeholder = placeholder
             _text = text
             self.accessibilityLabel = accessibilityLabel
-            self.inputMode = inputMode
             self.onSubmit = onSubmit
             self.onCaretChange = onCaretChange
         }
 
-        func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-        func makeNSView(context: Context) -> NSTextField {
-            let field = NSTextField()
-            field.delegate = context.coordinator
-            field.placeholderString = placeholder
-            field.setAccessibilityLabel(accessibilityLabel)
-            field.font = .systemFont(ofSize: NSFont.systemFontSize)
-            field.isBezeled = true
-            field.bezelStyle = .roundedBezel
-            field.focusRingType = .default
-            field.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            context.coordinator.field = field
-            return field
+        var body: some View {
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel(accessibilityLabel)
+                .focused($isFocused)
+                .onSubmit(onSubmit)
+                .background(CaretObserver(isFocused: isFocused, onChange: onCaretChange))
         }
+    }
 
-        func updateNSView(_ field: NSTextField, context: Context) {
-            context.coordinator.parent = self
-            if field.stringValue != text {
-                field.stringValue = text
-                context.coordinator.publishCaret()
-            }
-        }
+    /// Observes the field editor without changing its text, selection, or delegate.
+    private struct CaretObserver: NSViewRepresentable {
+        let isFocused: Bool
+        let onChange: (CGPoint?) -> Void
 
-        func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextField, context: Context) -> CGSize? {
-            CGSize(width: proposal.width ?? 180, height: max(nsView.intrinsicContentSize.height, 22))
-        }
+        func makeCoordinator() -> Coordinator { Coordinator() }
 
-        static func dismantleNSView(_ field: NSTextField, coordinator: Coordinator) {
-            coordinator.stopObserving()
-            coordinator.parent.onCaretChange(nil)
-        }
-
-        @MainActor final class Coordinator: NSObject, NSTextFieldDelegate {
-            var parent: CaretTrackingTextField
-            weak var field: NSTextField?
-            private var selectionObserver: NSObjectProtocol?
-            init(_ parent: CaretTrackingTextField) { self.parent = parent }
-
-            func controlTextDidBeginEditing(_ notification: Notification) {
-                stopObserving()
-                if let editor = field?.currentEditor() as? NSTextView {
-                    selectionObserver = NotificationCenter.default.addObserver(
-                        forName: NSTextView.didChangeSelectionNotification, object: editor, queue: .main
-                    ) { [weak self] _ in
-                        MainActor.assumeIsolated { self?.publishCaret() }
-                    }
+        func makeNSView(context: Context) -> NSView {
+            let view = NSView()
+            context.coordinator.view = view
+            context.coordinator.observer = NotificationCenter.default.addObserver(
+                forName: NSTextView.didChangeSelectionNotification, object: nil, queue: .main
+            ) { [weak coordinator = context.coordinator] notification in
+                MainActor.assumeIsolated {
+                    guard let editor = notification.object as? NSTextView,
+                        editor.window === coordinator?.view?.window
+                    else { return }
+                    coordinator?.scheduleUpdate()
                 }
-                publishCaret()
+            }
+            return view
+        }
+
+        func updateNSView(_ view: NSView, context: Context) {
+            context.coordinator.isFocused = isFocused
+            context.coordinator.onChange = onChange
+            context.coordinator.scheduleUpdate()
+        }
+
+        static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
+            if let observer = coordinator.observer { NotificationCenter.default.removeObserver(observer) }
+            coordinator.view = nil
+            coordinator.isFocused = false
+            coordinator.onChange = nil
+        }
+
+        @MainActor final class Coordinator {
+            weak var view: NSView?
+            var observer: NSObjectProtocol?
+            var isFocused = false
+            var onChange: ((CGPoint?) -> Void)?
+            private var pending = false
+            private var lastPosition: CGPoint?
+
+            func scheduleUpdate() {
+                guard !pending else { return }
+                pending = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.pending = false
+                    let position = self.caretPosition()
+                    guard position != self.lastPosition else { return }
+                    self.lastPosition = position
+                    self.onChange?(position)
+                }
             }
 
-            func controlTextDidChange(_ notification: Notification) {
-                parent.text = field?.stringValue ?? ""
-                publishCaret()
-            }
-
-            func controlTextDidEndEditing(_ notification: Notification) {
-                stopObserving()
-                parent.onCaretChange(nil)
-            }
-
-            func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-                guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
-                parent.onSubmit()
-                return true
-            }
-
-            func stopObserving() {
-                if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
-                selectionObserver = nil
-            }
-
-            fileprivate func publishCaret() {
-                guard let field, let editor = field.currentEditor() as? NSTextView,
-                    let window = field.window, let content = window.contentView
-                else { return }
+            private func caretPosition() -> CGPoint? {
+                guard isFocused, let window = view?.window,
+                    let editor = window.firstResponder as? NSTextView, editor.isFieldEditor
+                else { return nil }
                 let selection = editor.selectedRange()
-                guard selection.location != NSNotFound else { return }
-                let caretLocation = min(NSMaxRange(selection), (editor.string as NSString).length)
-                let rect = editor.firstRect(
-                    forCharacterRange: NSRange(location: caretLocation, length: 0), actualRange: nil)
-                let pointInWindow = window.convertPoint(fromScreen: CGPoint(x: rect.midX, y: rect.midY))
-                let pointInContent = content.convert(pointInWindow, from: nil)
-                parent.onCaretChange(pointInContent)
+                guard selection.location != NSNotFound else { return nil }
+                let location = min(NSMaxRange(selection), (editor.string as NSString).length)
+                let rect = editor.firstRect(forCharacterRange: NSRange(location: location, length: 0), actualRange: nil)
+                let hostWindow = window.sheetParent ?? window
+                guard let content = hostWindow.contentView else { return nil }
+                let point = hostWindow.convertPoint(fromScreen: CGPoint(x: rect.midX, y: rect.midY))
+                return content.convert(point, from: nil)
             }
         }
     }
+
 #endif
 
 struct MascotFrameKey: PreferenceKey {

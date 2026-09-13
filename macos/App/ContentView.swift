@@ -226,7 +226,7 @@ private struct HomePane: View {
                             ? "Open Blocks to create one or start a saved block."
                             : "The controls for your active block are below."
                     )
-                    .font(PauseFont.body(16))
+                    .font(.body)
                     .foregroundStyle(PauseTheme.muted)
 
                     if model.activeBlocks.isEmpty && model.serviceAvailability == .ready {
@@ -243,12 +243,10 @@ private struct HomePane: View {
                         }
                     }
                 }
-                .padding(22)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(PauseTheme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 18))
             }
             .frame(maxWidth: 680, alignment: .leading)
-            .padding(28)
+            .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
@@ -262,26 +260,27 @@ private struct HomeActiveBlockCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             BlockStatusPanel(block: block, showUnlockGuidance: showUnlockGuidance)
-            HStack(spacing: 12) {
-                if block.phase.canRequestBreak {
-                    Button("Request a break") {
-                        Task { _ = await model.requestBreak(for: block) }
+            if block.phase.canRequestBreak || block.phase.canRequestFullEnd {
+                HStack(spacing: 12) {
+                    if block.phase.canRequestBreak {
+                        Button("Request a break") {
+                            Task { _ = await model.requestBreak(for: block) }
+                        }
+                        .buttonStyle(PausePrimaryButtonStyle())
                     }
-                    .buttonStyle(PausePrimaryButtonStyle())
-                }
-                if block.phase.canRequestFullEnd {
-                    Button("Request full end") {
-                        Task { _ = await model.requestEnd(for: block) }
+                    if block.phase.canRequestFullEnd {
+                        Button("Request full end") {
+                            Task { _ = await model.requestEnd(for: block) }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
                 }
+                .controlSize(.large)
+                .disabled(!model.canRequestUnlock)
             }
-            .controlSize(.large)
-            .disabled(!model.canRequestUnlock)
         }
-        .padding(14)
-        .background(PauseTheme.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 18))
+        .settingsPanel()
     }
 }
 
@@ -302,22 +301,22 @@ private struct BlocksPane: View {
             case .unavailable:
                 ScrollView {
                     ServiceSetupPanel()
-                        .frame(maxWidth: 680)
-                        .padding(36)
-                }
-            case .ready where model.blocks.isEmpty:
-                ContentUnavailableView {
-                    Label("No blocks", systemImage: "shield.lefthalf.filled")
-                } description: {
-                    Text("Create a block, choose its rules, and start it when you are ready.")
-                } actions: {
-                    Button("New block", action: addBlock)
-                        .buttonStyle(PausePrimaryButtonStyle())
+                        .frame(maxWidth: 680, alignment: .leading)
+                        .padding(24)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             case .ready:
                 ScrollView {
-                    LazyVStack(spacing: 16) {
-                        ForEach(model.blocks) { block in
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        Text("Blocks")
+                            .font(PauseFont.display(26, relativeTo: .title))
+                        if model.blocks.isEmpty {
+                            Text("Create a block, choose its rules, and start it when you are ready.")
+                                .foregroundStyle(PauseTheme.muted)
+                            Button("New block", action: addBlock)
+                                .buttonStyle(PausePrimaryButtonStyle())
+                        }
+                        ForEach(model.activeBlocks + model.blocks.filter { $0.phase == .inactive }) { block in
                             BlockPanel(
                                 block: block,
                                 edit: { edit(block) },
@@ -327,9 +326,9 @@ private struct BlocksPane: View {
                             )
                         }
                     }
-                    .frame(maxWidth: 780)
-                    .padding(30)
-                    .frame(maxWidth: .infinity, alignment: .top)
+                    .frame(maxWidth: 680, alignment: .leading)
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -346,7 +345,7 @@ private struct SetupIncompleteBanner: View {
                 .font(.title3)
             VStack(alignment: .leading, spacing: 6) {
                 Text("Finish setup to keep protection ready")
-                    .font(.headline)
+                    .font(PauseFont.display(18, relativeTo: .headline))
                 Text(
                     "Your active block and its unlock delays remain in place. Complete the missing setup step when you can."
                 )
@@ -374,113 +373,131 @@ private struct BlockPanel: View {
     let activate: () -> Void
     let delete: () -> Void
     let showUnlockGuidance: () -> Void
+    @State private var showsRules = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(block.draft.name)
-                        .font(PauseFont.display(23, relativeTo: .title2))
-                    Text(block.phase.statusText(elapsed: model.displayElapsed))
-                        .foregroundStyle(block.phase == .inactive ? PauseTheme.muted : PauseTheme.coral)
+        VStack(alignment: .leading, spacing: 16) {
+            BlockStatusPanel(block: block, showUnlockGuidance: showUnlockGuidance)
+
+            if block.phase == .inactive || block.phase.canRequestBreak || block.phase.canRequestFullEnd {
+                HStack(spacing: 12) {
+                    if block.phase == .inactive {
+                        Button("Start", action: activate)
+                            .buttonStyle(PausePrimaryButtonStyle())
+                            .accessibilityLabel("Start \(block.draft.name)")
+                        Button("Edit", action: edit)
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel("Edit \(block.draft.name)")
+                        Spacer()
+                        Menu {
+                            Button("Delete block", role: .destructive, action: delete)
+                        } label: {
+                            Image(systemName: "ellipsis")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .accessibilityLabel("More actions for \(block.draft.name)")
+                    } else {
+                        if block.phase.canRequestBreak {
+                            Button("Request a break") {
+                                Task { _ = await model.requestBreak(for: block) }
+                            }
+                            .buttonStyle(PausePrimaryButtonStyle())
+                            .accessibilityLabel("Request a break from \(block.draft.name)")
+                        }
+                        if block.phase.canRequestFullEnd {
+                            Button("Request full end") {
+                                Task { _ = await model.requestEnd(for: block) }
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel("Request full end for \(block.draft.name)")
+                        }
+                    }
                 }
-                Spacer()
-                Text(block.ruleSummary)
-                    .font(.callout)
-                    .foregroundStyle(PauseTheme.muted)
+                .controlSize(.large)
+                .disabled(block.phase == .inactive ? !model.canChangeBlocks : !model.canRequestUnlock)
             }
 
-            if block.phase != .inactive {
-                BlockStatusPanel(
-                    block: block,
-                    includesName: false,
-                    showUnlockGuidance: showUnlockGuidance
-                )
-            }
-
-            DisclosureGroup(block.phase == .inactive ? "Review rules" : "View fixed rules") {
-                FixedRulesView(draft: block.draft)
-                    .padding(.top, 8)
-            }
-
-            HStack(spacing: 12) {
-                if block.phase == .inactive {
-                    Button("Start", action: activate)
-                        .buttonStyle(PausePrimaryButtonStyle())
-                        .accessibilityLabel("Start \(block.draft.name)")
-                    Button("Edit", action: edit)
-                        .accessibilityLabel("Edit \(block.draft.name)")
-                    Button("Delete", role: .destructive, action: delete)
-                        .accessibilityLabel("Delete \(block.draft.name)")
-                } else if block.phase.canRequestBreak {
-                    Button("Request a break") {
-                        Task { _ = await model.requestBreak(for: block) }
-                    }
-                    .buttonStyle(PausePrimaryButtonStyle())
-                    .accessibilityLabel("Request a break from \(block.draft.name)")
-                    Button("Request full end") {
-                        Task { _ = await model.requestEnd(for: block) }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .accessibilityLabel("Request full end for \(block.draft.name)")
-                } else if block.phase.canRequestFullEnd {
-                    Button("Request full end") {
-                        Task { _ = await model.requestEnd(for: block) }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .accessibilityLabel("Request full end for \(block.draft.name)")
-                }
-                Spacer()
-                if block.phase != .inactive {
-                    Label("Rules fixed", systemImage: "lock.fill")
-                        .font(.caption)
+            Divider()
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { showsRules.toggle() }
+            } label: {
+                HStack(spacing: 10) {
+                    Text("Rules and delays")
+                    Spacer()
+                    Text(block.ruleSummary).foregroundStyle(PauseTheme.muted)
+                    Image(systemName: showsRules ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(PauseTheme.muted)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
-            .controlSize(.large)
-            .disabled(block.phase == .inactive ? !model.canChangeBlocks : !model.canRequestUnlock)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Rules and delays for \(block.draft.name)")
+            .accessibilityValue(showsRules ? "Expanded" : "Collapsed")
+            if showsRules {
+                FixedRulesView(draft: block.draft)
+            }
         }
-        .padding(20)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .settingsPanel()
     }
 }
 
 private struct BlockStatusPanel: View {
     @EnvironmentObject private var model: AppModel
     let block: ProtectedBlockSnapshot
-    var includesName = true
     var showUnlockGuidance: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: block.phase.symbol)
-                .font(.title2)
-                .foregroundStyle(PauseTheme.coral)
-                .frame(width: 34)
-            VStack(alignment: .leading, spacing: 7) {
-                if includesName {
-                    Text(block.draft.name).font(.headline)
-                }
-                Text(block.phase.statusText(elapsed: model.displayElapsed))
-                    .foregroundStyle(PauseTheme.ink)
-                if let detail = block.phase.detailText(elapsed: model.displayElapsed) {
-                    Text(detail)
-                        .font(.callout)
-                        .foregroundStyle(PauseTheme.muted)
-                }
-                if let showUnlockGuidance {
-                    Button("Looking to unlock?", action: showUnlockGuidance)
-                        .buttonStyle(.link)
-                        .accessibilityLabel("Looking to unlock?")
-                        .accessibilityHint("Opens guidance about waiting and full end requests.")
+        VStack(alignment: .leading, spacing: 8) {
+            Text(block.draft.name)
+                .font(PauseFont.display(22, relativeTo: .title2))
+                .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 8) {
+                Label(block.phase.statusText(elapsed: model.displayElapsed), systemImage: block.phase.symbol)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(block.phase == .inactive ? PauseTheme.muted : PauseTheme.coral)
+                if block.phase != .inactive, let showUnlockGuidance {
+                    Button(action: showUnlockGuidance) {
+                        Image(systemName: "info.circle")
+                            .padding(3)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PauseTheme.muted)
+                    .help("Looking to unlock sooner?")
+                    .accessibilityLabel("Looking to unlock sooner?")
+                    .accessibilityHint("Opens guidance about waiting and full end requests.")
                 }
             }
-            Spacer()
+            if let detail = block.phase.detailText(elapsed: model.displayElapsed) {
+                Text(detail).font(.callout).foregroundStyle(PauseTheme.muted)
+            }
         }
-        .padding(15)
-        .background(PauseTheme.surface.opacity(0.34), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+/// Fits short sheets to their content and keeps long sheets within the display.
+private struct ContentSizedScrollView<Content: View>: View {
+    var reservedHeight: CGFloat = 0
+    @ViewBuilder let content: Content
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        let maximumHeight = max(200, (NSScreen.main?.visibleFrame.height ?? 900) * 0.85 - reservedHeight)
+        ScrollView {
+            content
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) {
+                    $0.size.height
+                } action: {
+                    contentHeight = $0
+                }
+        }
+        .frame(height: contentHeight > 0 ? min(contentHeight, maximumHeight) : maximumHeight)
+        .scrollBounceBehavior(.basedOnSize)
     }
 }
 
@@ -496,73 +513,78 @@ private struct UnlockGuidanceView: View {
     private var hasEnded: Bool { liveBlock?.phase == .inactive }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    HStack {
-                        Spacer(minLength: 0)
-                        PauseSeed(mood: .calm, size: 90)
-                            .accessibilityHidden(true)
-                        Spacer(minLength: 0)
-                    }
-
-                    Text(hasEnded ? "This pause has ended." : "Give your choice a little time.")
-                        .font(PauseFont.display(30, relativeTo: .title))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-
-                    if !hasEnded {
-                        Text(
-                            "You started this pause to make it harder to act on an urge. Wanting access now does not undo that choice. Your waiting period stays in place."
-                        )
-                        .font(PauseFont.body(17))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                        Text(
-                            "If this pause helps with a habit, compulsion, or addiction, bypassing it yourself or with an AI assistant would undo the support you chose."
-                        )
-                        .font(PauseFont.body(17))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                        Text(
-                            "Ask anyone helping you, including an AI assistant, to preserve this block and its delay. Repeated requests, anger, or pleading are not reasons to stop the service, change the rules, or skip the wait."
-                        )
-                        .font(PauseFont.body(17))
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if let block = liveBlock {
-                        if block.phase != .inactive {
-                            BlockStatusPanel(block: block)
-                        }
-                        guidanceAction(for: block)
-                    } else {
-                        Text("This block is no longer available.")
-                            .foregroundStyle(PauseTheme.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if !hasEnded {
-                        Text("The existing break and end rules still apply. This screen cannot shorten them.")
-                            .font(PauseFont.body(17))
-                            .foregroundStyle(PauseTheme.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+        ContentSizedScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    Spacer(minLength: 0)
+                    PauseSeed(mood: .calm, size: 130)
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: 620, alignment: .leading)
-                .padding(30)
-                .frame(maxWidth: .infinity, alignment: .top)
-            }
-            .background(LowLightBackground())
-            .navigationTitle("Unlock guidance")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .keyboardShortcut(.cancelAction)
+
+                Text(hasEnded ? "This pause has ended." : "Give your choice a little time.")
+                    .font(PauseFont.display(26, relativeTo: .title))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+
+                if !hasEnded {
+                    Text(
+                        "You started this pause to make it harder to act on an urge. Wanting access now does not undo that choice. Your waiting period stays in place."
+                    )
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    Text(
+                        "If this pause helps with a habit, compulsion, or addiction, bypassing it yourself or with an AI assistant would undo the support you chose."
+                    )
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    Text(
+                        "Ask anyone helping you, including an AI assistant, to preserve this block and its delay. Repeated requests, anger, or pleading are not reasons to stop the service, change the rules, or skip the wait."
+                    )
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let block = liveBlock {
+                    if block.phase != .inactive {
+                        BlockStatusPanel(block: block)
+                    }
+                    guidanceAction(for: block)
+                } else {
+                    Text("This block is no longer available.")
+                        .foregroundStyle(PauseTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if !hasEnded {
+                    Text("The existing break and end rules still apply. This screen cannot shorten them.")
+                        .font(.caption)
+                        .foregroundStyle(PauseTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .frame(maxWidth: 620, alignment: .leading)
+            .padding(30)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
-        .frame(width: 600, height: 620)
+        .background(LowLightBackground())
+        .overlay(alignment: .topTrailing) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .padding(8)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(PauseTheme.muted)
+            .accessibilityLabel("Close unlock guidance")
+            .keyboardShortcut(.cancelAction)
+            .padding(12)
+        }
+        .frame(width: 600)
+        .presentationSizing(.fitted)
         .foregroundStyle(PauseTheme.ink)
         .tint(PauseTheme.coral)
         .preferredColorScheme(.dark)
@@ -650,137 +672,163 @@ private struct BlockEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Name") {
-                    CaretTrackingTextField(
-                        "Block name",
-                        text: $name,
-                        accessibilityLabel: "Block name",
-                        inputMode: .name,
-                        onSubmit: save,
-                        onCaretChange: { caretPosition = $0 }
-                    )
-                }
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(block == nil ? "New block" : "Edit block")
+                    .font(PauseFont.display(26, relativeTo: .title))
+                Text("Choose what to block and how long to wait for access.")
+                    .foregroundStyle(PauseTheme.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(24)
 
-                Section {
-                    HStack {
+            ContentSizedScrollView(reservedHeight: 190) {
+                VStack(alignment: .leading, spacing: 18) {
+                    editorSection("Name") {
                         CaretTrackingTextField(
-                            "example.com, *.xxx, or *.reddit.com/r/example",
-                            text: $domainInput,
-                            onSubmit: addDomain,
-                            onCaretChange: { caretPosition = $0 }
+                            "e.g. Focus time", text: $name, accessibilityLabel: "Block name",
+                            inputMode: .name, onSubmit: {}, onCaretChange: { caretPosition = $0 }
                         )
-                        Button("Add", action: addDomain)
-                            .disabled(domainInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .frame(height: 28)
                     }
-                    if !domains.isEmpty {
+
+                    editorSection("Websites") {
+                        HStack(spacing: 10) {
+                            CaretTrackingTextField(
+                                "example.com or example.com/page", text: $domainInput,
+                                accessibilityLabel: "Website", onSubmit: addDomain,
+                                onCaretChange: { caretPosition = $0 }
+                            )
+                            .frame(height: 28)
+                            Button("Add", action: addDomain)
+                                .disabled(domainInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                        Text("Add a whole site, a page, or a pattern such as *.example.com.")
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                        HStack(spacing: 8) {
+                            Text("Quick add").foregroundStyle(PauseTheme.muted)
+                            ForEach(SitePreset.allCases) { preset in
+                                Button(preset.rawValue) { addPreset(preset) }
+                            }
+                            Button("Adult websites") { includeAdultStarterList = true }
+                                .disabled(includeAdultStarterList)
+                        }
+                        .controlSize(.regular)
+                        if includeAdultStarterList || !domains.isEmpty || !urlPatterns.isEmpty {
+                            Divider()
+                        }
+                        if includeAdultStarterList {
+                            RemovableRule(
+                                title: "Adult websites", symbol: "shield.lefthalf.filled",
+                                detail: "A starter list of known sites. It does not cover every adult website."
+                            ) { includeAdultStarterList = false }
+                        }
                         ForEach(domains, id: \.self) { domain in
                             RemovableRule(title: domain, symbol: "globe") {
                                 domains.removeAll { $0 == domain }
                             }
                         }
-                    }
-                    ForEach(urlPatterns, id: \.self) { pattern in
-                        RemovableRule(title: pattern, symbol: "link") {
-                            urlPatterns.removeAll { $0 == pattern }
-                        }
-                    }
-                    HStack(spacing: 8) {
-                        Text("Quick add:").foregroundStyle(.secondary)
-                        ForEach(SitePreset.allCases) { preset in
-                            Button(preset.rawValue) { addPreset(preset) }
-                                .buttonStyle(.bordered)
-                        }
-                    }
-                } header: {
-                    Text("Websites and IP addresses")
-                } footer: {
-                    Text(
-                        "Add a whole site, a page path, or a * pattern. Connect your browsers in Settings to enable page redirects."
-                    )
-                }
-
-                Section {
-                    ForEach(applications) { application in
-                        RemovableRule(
-                            title: application.displayName,
-                            symbol: "app",
-                            detail: application.bundleIdentifier
-                        ) {
-                            applications.removeAll { $0.id == application.id }
-                        }
-                    }
-                    Button("Add applications…") {
-                        Task {
-                            let selected = await model.chooseApplications()
-                            for application in selected
-                            where !applications.contains(where: { $0.id == application.id }) {
-                                applications.append(application)
+                        ForEach(urlPatterns, id: \.self) { pattern in
+                            RemovableRule(title: pattern, symbol: "link") {
+                                urlPatterns.removeAll { $0 == pattern }
                             }
                         }
                     }
-                } header: {
-                    Text("Applications")
-                } footer: {
-                    Text("Hard Pause closes selected apps while this block is active. Unsaved work can be lost.")
-                }
 
-                Section {
-                    Toggle("Adult website starter list", isOn: $includeAdultStarterList)
-                } footer: {
-                    Text("This small local list is incomplete. It is not automatic website classification.")
-                }
+                    editorSection("Applications") {
+                        ForEach(applications) { application in
+                            RemovableRule(
+                                title: application.displayName, symbol: "app",
+                                detail: application.bundleIdentifier
+                            ) { applications.removeAll { $0.id == application.id } }
+                        }
+                        Button {
+                            Task {
+                                let selected = await model.chooseApplications()
+                                for application in selected
+                                where !applications.contains(where: { $0.id == application.id }) {
+                                    applications.append(application)
+                                }
+                            }
+                        } label: {
+                            Label("Add applications…", systemImage: "plus")
+                        }
+                        Text("Selected apps close while the block is active. Save your work before starting it.")
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                    }
 
-                Section("Access delays") {
-                    DurationPicker("Wait for a break", selection: $breakDelay, values: DelayValues.access)
-                    DurationPicker(
-                        "Wait for full end",
-                        selection: $fullUnlockDelay,
-                        values: DelayValues.access
-                    )
-                    DurationPicker("Break length", selection: $breakDuration, values: DelayValues.breaks)
-                }
-
-                Section {
-                    Toggle("End after a fixed duration", isOn: $hasFixedDuration)
-                    if hasFixedDuration {
-                        DurationPicker(
-                            "Active duration",
-                            selection: $fixedDuration,
-                            values: DelayValues.fixed
+                    editorSection("Access delays") {
+                        DurationPicker("Wait for a break", selection: $breakDelay, values: DelayValues.access)
+                        DurationPicker("Wait for full end", selection: $fullUnlockDelay, values: DelayValues.access)
+                        DurationPicker("Break length", selection: $breakDuration, values: DelayValues.breaks)
+                        Divider()
+                        HStack {
+                            Text("End automatically")
+                            Spacer()
+                            Toggle("End automatically", isOn: $hasFixedDuration)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+                        if hasFixedDuration {
+                            DurationPicker("End after", selection: $fixedDuration, values: DelayValues.fixed)
+                        }
+                        Text(
+                            hasFixedDuration
+                                ? "The block ends after this duration, even without a full-end request."
+                                : "The block continues until you request a full end and its waiting period finishes."
                         )
-                    }
-                } footer: {
-                    Text("With no fixed duration, the block continues until a full-end request finishes.")
-                }
-
-                if let validationMessage {
-                    Section {
-                        Label(validationMessage, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                        .font(.caption)
+                        .foregroundStyle(PauseTheme.muted)
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(LowLightBackground())
-            .navigationTitle(block == nil ? "New block" : "Edit block")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                if let validationMessage {
+                    Label(validationMessage, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack {
+                    Text("Saving does not start the block.")
+                        .font(.caption)
+                        .foregroundStyle(PauseTheme.muted)
+                    Spacer()
                     Button("Cancel") { dismiss() }
                         .keyboardShortcut(.cancelAction)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button(block == nil ? "Create block" : "Save changes", action: save)
                         .buttonStyle(PausePrimaryButtonStyle())
-                        .disabled(!model.canChangeBlocks)
+                        .disabled(
+                            !model.canChangeBlocks || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
                         .keyboardShortcut(.return, modifiers: .command)
                 }
             }
+            .padding(20)
         }
-        .frame(minWidth: 620, idealWidth: 680, minHeight: 650, idealHeight: 760)
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .background(LowLightBackground())
+        .frame(width: 660)
+        .presentationSizing(.fitted)
         .onDisappear { caretPosition = nil }
+    }
+
+    private func editorSection<Content: View>(
+        _ title: String, @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(PauseFont.display(18, relativeTo: .headline))
+                .accessibilityAddTraits(.isHeader)
+            content()
+        }
+        .settingsPanel()
     }
 
     private func addDomain() {
@@ -791,7 +839,7 @@ private struct BlockEditorView: View {
             if !urlPatterns.contains(pattern) { urlPatterns.append(pattern) }
         } else {
             validationMessage =
-                "Enter a domain, IP address, or website pattern such as *.reddit.com/r/example or *.xxx."
+                "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
             return
         }
         domainInput = ""
@@ -805,6 +853,10 @@ private struct BlockEditorView: View {
     }
 
     private func save() {
+        if !domainInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            addDomain()
+            guard domainInput.isEmpty else { return }
+        }
         do {
             let draft = try ProtectedBlockDraft(
                 name: name,
@@ -888,10 +940,17 @@ private struct DurationPicker: View {
     }
 
     var body: some View {
-        Picker(title, selection: $selection) {
-            ForEach(values, id: \.self) { seconds in
-                Text(seconds.longDuration).tag(seconds)
+        HStack {
+            Text(title)
+            Spacer()
+            Picker(title, selection: $selection) {
+                ForEach(Array(Set(values + [selection])).sorted(), id: \.self) { seconds in
+                    Text(seconds.longDuration).tag(seconds)
+                }
             }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 170, alignment: .trailing)
         }
     }
 }
@@ -900,28 +959,35 @@ private struct FixedRulesView: View {
     let draft: ProtectedBlockDraft
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            RuleSummaryLine(
-                title: "Websites",
-                value: (draft.rules.blockedDomains + draft.rules.blockedURLPatterns).isEmpty
-                    ? "None" : (draft.rules.blockedDomains + draft.rules.blockedURLPatterns).joined(separator: ", ")
-            )
-            RuleSummaryLine(
-                title: "Applications",
-                value: draft.rules.blockedApplications.isEmpty
-                    ? "None" : draft.rules.blockedApplications.map(\.displayName).joined(separator: ", ")
-            )
-            RuleSummaryLine(
-                title: "Adult list",
-                value: draft.rules.blocksStarterAdultSites ? "Included" : "Not included"
-            )
-            RuleSummaryLine(title: "Break wait", value: draft.breakDelay.longDuration)
-            RuleSummaryLine(title: "Full-end wait", value: draft.fullUnlockDelay.longDuration)
-            RuleSummaryLine(title: "Break length", value: draft.breakDuration.longDuration)
-            RuleSummaryLine(
-                title: "Fixed duration",
-                value: draft.elapsedDuration?.longDuration ?? "No fixed duration"
-            )
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Websites").font(.body.weight(.semibold))
+                let websites = draft.rules.blockedDomains + draft.rules.blockedURLPatterns
+                if websites.isEmpty && !draft.rules.blocksStarterAdultSites {
+                    Text("None").foregroundStyle(PauseTheme.muted)
+                }
+                if draft.rules.blocksStarterAdultSites {
+                    Text("Adult website starter list").foregroundStyle(PauseTheme.muted)
+                }
+                ForEach(websites, id: \.self) { website in
+                    Text(website).textSelection(.enabled).foregroundStyle(PauseTheme.muted)
+                }
+            }
+            if !draft.rules.blockedApplications.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Applications").font(.body.weight(.semibold))
+                    ForEach(draft.rules.blockedApplications) { application in
+                        Text(application.displayName).foregroundStyle(PauseTheme.muted)
+                    }
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                RuleSummaryLine(title: "Wait for a break", value: draft.breakDelay.longDuration)
+                RuleSummaryLine(title: "Wait for full end", value: draft.fullUnlockDelay.longDuration)
+                RuleSummaryLine(title: "Break length", value: draft.breakDuration.longDuration)
+                RuleSummaryLine(title: "Ends automatically", value: draft.elapsedDuration?.longDuration ?? "No")
+            }
         }
     }
 }
@@ -931,7 +997,9 @@ private struct RuleSummaryLine: View {
     let value: String
 
     var body: some View {
-        LabeledContent(title) {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+            Spacer(minLength: 20)
             Text(value)
                 .foregroundStyle(PauseTheme.muted)
                 .multilineTextAlignment(.trailing)
@@ -1016,7 +1084,7 @@ private struct MandatorySetupView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Getting ready")
-                    .font(.headline)
+                    .font(PauseFont.display(18, relativeTo: .headline))
                 Spacer()
                 Text("\(completedCount) of 3")
                     .font(.caption)
@@ -1148,7 +1216,7 @@ private struct SetupActionCard: View {
                     .font(.caption)
                     .foregroundStyle(PauseTheme.muted)
                 Text(title)
-                    .font(PauseFont.display(23, relativeTo: .title2))
+                    .font(PauseFont.display(20, relativeTo: .title2))
                 Text(detail)
                     .foregroundStyle(PauseTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1208,7 +1276,7 @@ private struct SetupChecklistView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label("Protection service", systemImage: "lock.shield")
-                    .font(.headline)
+                    .font(PauseFont.display(18, relativeTo: .headline))
                 Spacer()
                 if model.setupServiceReady {
                     setupReadyLabel
@@ -1233,17 +1301,13 @@ private struct SetupChecklistView: View {
     private var browserSteps: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Browser access")
-                .font(.headline)
+                .font(PauseFont.display(18, relativeTo: .headline))
             ForEach(model.browserReadiness) { browser in
                 HStack(alignment: .top, spacing: 10) {
                     Label(browser.name, systemImage: "globe")
                     Spacer()
                     if !browser.isInstalled {
                         Text("Not installed")
-                            .font(.caption)
-                            .foregroundStyle(PauseTheme.muted)
-                    } else if browser.permission == .previouslyGranted {
-                        Text("Browser closed · previously approved")
                             .font(.caption)
                             .foregroundStyle(PauseTheme.muted)
                     } else if browser.isReady {
@@ -1285,9 +1349,9 @@ private struct ProtectionSettingsPane: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Protection")
-                    .font(PauseFont.display(28, relativeTo: .title))
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Settings")
+                    .font(PauseFont.display(26, relativeTo: .title))
                 Text(
                     model.setupReady ? "Everything is ready on this Mac." : "Finish setup before starting a new block."
                 )
@@ -1296,7 +1360,7 @@ private struct ProtectionSettingsPane: View {
                 SetupChecklistView(showsService: !model.setupServiceReady)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Private by design").font(.headline)
+                    Text("Private by design").font(PauseFont.display(18, relativeTo: .headline))
                     Label(
                         "Rules and protection state stay on this Mac.",
                         systemImage: "lock.shield"
@@ -1320,14 +1384,14 @@ private struct ProtectionSettingsPane: View {
             }
             .frame(maxWidth: 680, alignment: .leading)
             .padding(24)
-            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
     private var serviceReadyPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Service connected", systemImage: "checkmark.shield.fill")
-                .font(.headline)
+                .font(PauseFont.display(18, relativeTo: .headline))
                 .foregroundStyle(PauseTheme.coral)
             if let protection = model.snapshot?.protection {
                 LabeledContent("Service version", value: protection.serviceVersion)
@@ -1347,7 +1411,7 @@ private struct ProtectionSettingsPane: View {
                 }
                 if !protection.recentApplicationClosures.isEmpty {
                     Divider()
-                    Text("Recent app closures").font(.headline)
+                    Text("Recent app closures").font(PauseFont.display(18, relativeTo: .headline))
                     ForEach(protection.recentApplicationClosures) { notice in
                         Label {
                             Text(
@@ -1362,7 +1426,6 @@ private struct ProtectionSettingsPane: View {
             Button("Check service now") { Task { await model.refresh() } }
                 .disabled(model.isBusy)
         }
-        .settingsPanel()
     }
 }
 
@@ -1443,7 +1506,10 @@ extension ProtectedBlockSnapshot {
             draft.rules.blockedDomains.count + draft.rules.blockedAdultDomains.count
             + draft.rules.blockedURLPatterns.count
         let apps = draft.rules.blockedApplications.count
-        return "\(sites) site\(sites == 1 ? "" : "s") · \(apps) app\(apps == 1 ? "" : "s")"
+        return [
+            sites > 0 ? "\(sites) site\(sites == 1 ? "" : "s")" : nil,
+            apps > 0 ? "\(apps) app\(apps == 1 ? "" : "s")" : nil,
+        ].compactMap { $0 }.joined(separator: " · ")
     }
 
     fileprivate var activationConfirmation: String {
