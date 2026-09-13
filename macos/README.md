@@ -35,7 +35,7 @@ An ad hoc signed local build can install and run the service without a paid Appl
 On first launch, complete the setup in the app:
 
 1. Select **Install protection** and approve the standard macOS administrator prompt. The app never handles the password.
-2. Select **Allow access** for each installed browser. Hard Pause opens the correct permission pane; approve access there and return to the app. The app detects the approval.
+2. Select **Allow access** for each installed browser. Keep the browser open and approve the macOS permission request. If access was denied, Hard Pause opens the permission pane. The app detects the approval.
 3. Enable **Start at login**.
 
 The normal setup does not require finding app files or using Terminal. Readiness is detected again before a block starts. Existing blocks retain their normal break and end controls if setup later needs attention.
@@ -64,7 +64,8 @@ The old Network Extension target and shared writable GUI policy file were remove
 
 - Add domains, IPs, or URL patterns in the same website field. Whole hosts retain network enforcement. Page paths and `*` patterns stay out of hosts and PF.
 - `reddit.com/r/example` matches that path and its descendants. `*.example.com` matches subdomains; add `example.com` for the bare host. `*.xxx` matches names under that TLD. `*` in a path or query matches any sequence.
-- Chrome and Safari use their tab automation APIs. Use **Allow access** in Hard Pause to open the required macOS permission pane. The browser monitor runs outside the App Sandbox so it can also use user-approved Accessibility controls for Firefox.
+- Chrome and Safari use their tab automation APIs. Use **Allow access** in Hard Pause to request macOS permission. The browser monitor runs outside the App Sandbox so it can also use user-approved Accessibility controls for Firefox.
+- Closing an approved browser keeps setup complete, including after restarting Hard Pause. Access is checked again when the browser runs; saved approval never authorizes tab access.
 - A loopback-only server exposes an exact allowlist of bundled pause-page, mascot, and font assets. Redirects contain no original URL, and the app stores no browsing history.
 - Normal window closure and Quit leave the app running while a website block is active. System logout is allowed. Starting a page-pattern block in the GUI requires browser permission and login startup.
 - Direct CLI activation is an administrative interface: configure browser access and login startup first. The root service does not perform browser automation.

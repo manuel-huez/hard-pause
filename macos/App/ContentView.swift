@@ -1046,9 +1046,12 @@ private struct MandatorySetupView: View {
                 SetupActionCard(
                     eyebrow: "Step 2 of 3",
                     title: "Allow \(browser.name)",
-                    detail: "Allow Hard Pause to check tab addresses in this installed browser.",
+                    detail: model.browserConnectionMessages[browser.id]
+                        ?? "Keep the browser open. Approve the macOS request so Hard Pause can check tab addresses.",
                     systemImage: "globe",
-                    actionTitle: "Allow access"
+                    actionTitle: "Allow access",
+                    isBusy: model.connectingBrowserID != nil,
+                    busyTitle: "Waiting for macOS approval…"
                 ) {
                     Task { await model.connectBrowser(browser.id) }
                 }
@@ -1237,6 +1240,10 @@ private struct SetupChecklistView: View {
                     Spacer()
                     if !browser.isInstalled {
                         Text("Not installed")
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                    } else if browser.permission == .previouslyGranted {
+                        Text("Browser closed · previously approved")
                             .font(.caption)
                             .foregroundStyle(PauseTheme.muted)
                     } else if browser.isReady {

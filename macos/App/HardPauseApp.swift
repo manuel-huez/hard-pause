@@ -19,7 +19,7 @@ struct HardPauseApp: App {
                 )
                 .frame(
                     minWidth: isCompactSetupWindow ? 640 : 800,
-                    minHeight: isCompactSetupWindow ? 520 : 420
+                    minHeight: 420
                 )
         }
         .defaultSize(width: 800, height: 420)
@@ -40,7 +40,7 @@ private enum HardPauseWindowMode: Equatable {
 
     var contentSize: NSSize {
         switch self {
-        case .setup: return NSSize(width: 640, height: 520)
+        case .setup: return NSSize(width: 640, height: 420)
         case .normal: return NSSize(width: 800, height: 420)
         }
     }

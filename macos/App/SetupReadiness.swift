@@ -11,6 +11,7 @@ enum BrowserPermissionState: Equatable, Sendable {
     case unknown
     case denied
     case granted
+    case previouslyGranted
 }
 
 struct BrowserSetupState: Identifiable, Equatable, Sendable {
@@ -19,7 +20,7 @@ struct BrowserSetupState: Identifiable, Equatable, Sendable {
     let isInstalled: Bool
     let permission: BrowserPermissionState
 
-    var isReady: Bool { !isInstalled || permission == .granted }
+    var isReady: Bool { !isInstalled || permission == .granted || permission == .previouslyGranted }
 }
 
 struct SetupAccessState: Equatable, Sendable {
@@ -27,7 +28,7 @@ struct SetupAccessState: Equatable, Sendable {
     let startsAtLogin: Bool
 }
 
-/// The OS owns permission grants. This value only combines fresh observations.
+/// Closed browsers can retain setup completion; tab access always needs a fresh OS check.
 enum SetupReadiness {
     static func ready(serviceReady: Bool, access: SetupAccessState) -> Bool {
         serviceReady && access.startsAtLogin && access.browsers.allSatisfy(\.isReady)

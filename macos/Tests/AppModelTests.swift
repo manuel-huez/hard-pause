@@ -65,6 +65,21 @@ final class AppModelTests: XCTestCase {
                 serviceReady: true, access: SetupAccessState(browsers: [granted], startsAtLogin: false)))
     }
 
+    func testPreviouslyApprovedClosedBrowserKeepsSetupComplete() {
+        let closed = BrowserSetupState(
+            id: "com.apple.Safari", name: "Safari", isInstalled: true, permission: .previouslyGranted)
+        XCTAssertTrue(
+            SetupReadiness.ready(
+                serviceReady: true, access: SetupAccessState(browsers: [closed], startsAtLogin: true)))
+        for permission in [BrowserPermissionState.denied, .unknown] {
+            let unapproved = BrowserSetupState(
+                id: closed.id, name: closed.name, isInstalled: true, permission: permission)
+            XCTAssertFalse(
+                SetupReadiness.ready(
+                    serviceReady: true, access: SetupAccessState(browsers: [unapproved], startsAtLogin: true)))
+        }
+    }
+
     func testInstallerQuotesPathsAsDataAtBothBoundaries() {
         XCTAssertEqual(ServiceInstaller.shellQuote("a'b"), "'a'\\''b'")
         XCTAssertEqual(ServiceInstaller.appleScriptQuote("a\\b\"c"), "\"a\\\\b\\\"c\"")

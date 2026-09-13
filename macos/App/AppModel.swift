@@ -18,6 +18,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var browserStatuses: [String: String] = [:]
     @Published private(set) var setupState: SetupState = .checking
     @Published private(set) var browserReadiness: [BrowserSetupState] = []
+    @Published private(set) var connectingBrowserID: String?
+    @Published private(set) var browserConnectionMessages: [String: String] = [:]
     @Published private(set) var isInstallingService = false
     @Published private(set) var startsAtLogin = false
     private let browserProtection = BrowserProtection()
@@ -208,8 +210,13 @@ final class AppModel: ObservableObject {
     }
 
     func connectBrowser(_ identifier: String) async {
+        guard connectingBrowserID == nil else { return }
+        connectingBrowserID = identifier
+        browserConnectionMessages[identifier] = nil
+        defer { connectingBrowserID = nil }
         await browserProtection.requestPermission(for: identifier)
         browserStatuses = browserProtection.statuses
+        browserConnectionMessages[identifier] = browserProtection.statuses[identifier]
         await refreshSetup()
     }
 
