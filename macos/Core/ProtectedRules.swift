@@ -120,6 +120,15 @@ enum URLPatternRule {
         return host
     }
 
+    /// Exact OS coverage for common hosts; the browser still checks every subdomain.
+    static func networkDomains(from input: String) -> [String] {
+        guard let pattern = parse(input), pattern.scheme == nil, pattern.port == nil,
+            pattern.resource == nil, case .subdomains(let suffix) = pattern.host,
+            suffix.contains(".")
+        else { return [] }
+        return ["www.\(suffix)"]
+    }
+
     static func matches(_ url: URL, pattern input: String) -> Bool {
         guard let pattern = parse(input), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
             var host = url.host?.lowercased()

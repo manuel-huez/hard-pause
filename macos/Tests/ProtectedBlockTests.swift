@@ -340,7 +340,7 @@ final class ProtectedBlockTests: XCTestCase {
         }
     }
 
-    func testURLPatternOnlyRulesValidateAndStayOutOfHostRules() throws {
+    func testWildcardRulesIncludeCommonHostCoverage() throws {
         let rules = ProtectedRules(
             blockedDomains: [],
             blockedApplications: [],
@@ -353,7 +353,27 @@ final class ProtectedBlockTests: XCTestCase {
             rules.blockedURLPatterns,
             ["*.example.com", "example.com/r/focus"]
         )
-        XCTAssertTrue(rules.allBlockedDomains.isEmpty)
+        XCTAssertEqual(rules.allBlockedDomains, ["www.example.com"])
+    }
+
+    func testNetworkAliasesDoNotBroadenScopedPatterns() {
+        for pattern in [
+            "https://*.example.com", "*.example.com:443", "*.example.com/videos",
+            "*.example.com/*", "example.com", "*.xxx",
+        ] {
+            XCTAssertEqual(URLPatternRule.networkDomains(from: pattern), [], pattern)
+        }
+        XCTAssertEqual(URLPatternRule.networkDomains(from: "*.example.com"), ["www.example.com"])
+    }
+
+    func testNetworkAliasesAreDeduplicatedAndPersistedAsExactRules() throws {
+        let rules = ProtectedRules(
+            blockedDomains: ["example.com", "www.example.com"], blockedApplications: [],
+            blocksStarterAdultSites: false, blockedURLPatterns: ["*.example.com", "*.example.com"]
+        )
+        XCTAssertEqual(rules.blockedDomains, ["example.com", "www.example.com"])
+        let decoded = try JSONDecoder().decode(ProtectedRules.self, from: JSONEncoder().encode(rules))
+        XCTAssertEqual(decoded, rules)
     }
 
     func testProtectedRulesDecodeLegacyDataWithoutURLPatterns() throws {
@@ -407,7 +427,7 @@ final class ProtectedBlockTests: XCTestCase {
         try state.activate(id: second.id, expectedRevision: second.revision, at: reading(0))
 
         let restrictions = state.effectiveRestrictions()
-        XCTAssertEqual(restrictions.blockedDomains, ["one.example", "two.example"])
+        XCTAssertEqual(restrictions.blockedDomains, ["one.example", "two.example", "www.example.com"])
         XCTAssertEqual(
             restrictions.blockedURLPatterns,
             ["*.example.com", "*.xxx", "example.com/r/focus"]

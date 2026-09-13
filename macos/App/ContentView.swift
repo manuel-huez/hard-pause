@@ -453,7 +453,7 @@ private struct BlockStatusPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(block.draft.name)
-                .font(PauseFont.display(22, relativeTo: .title2))
+                .font(PauseFont.display(18, relativeTo: .headline))
                 .accessibilityAddTraits(.isHeader)
             HStack(spacing: 8) {
                 Label(block.phase.statusText(elapsed: model.displayElapsed), systemImage: block.phase.symbol)
@@ -648,6 +648,7 @@ private struct BlockEditorView: View {
     @State private var urlPatterns: [String]
     @State private var applications: [ProtectedApplication]
     @State private var includeAdultStarterList: Bool
+    @State private var adultRulesExpanded = false
     @State private var breakDelay: TimeInterval
     @State private var fullUnlockDelay: TimeInterval
     @State private var breakDuration: TimeInterval
@@ -660,8 +661,10 @@ private struct BlockEditorView: View {
         _caretPosition = caretPosition
         let draft = block?.draft
         _name = State(initialValue: draft?.name ?? "")
-        _domains = State(initialValue: draft?.rules.blockedDomains ?? [])
-        _urlPatterns = State(initialValue: draft?.rules.blockedURLPatterns ?? [])
+        let patterns = draft?.rules.blockedURLPatterns ?? []
+        let networkAliases = Set(patterns.flatMap { URLPatternRule.networkDomains(from: $0) })
+        _domains = State(initialValue: (draft?.rules.blockedDomains ?? []).filter { !networkAliases.contains($0) })
+        _urlPatterns = State(initialValue: patterns)
         _applications = State(initialValue: draft?.rules.blockedApplications ?? [])
         _includeAdultStarterList = State(initialValue: draft?.rules.blocksStarterAdultSites ?? false)
         _breakDelay = State(initialValue: draft?.breakDelay ?? 3_600)
@@ -711,18 +714,25 @@ private struct BlockEditorView: View {
                             ForEach(SitePreset.allCases) { preset in
                                 Button(preset.rawValue) { addPreset(preset) }
                             }
-                            Button("Adult websites") { includeAdultStarterList = true }
-                                .disabled(includeAdultStarterList)
+                            Button("Adult websites") {
+                                includeAdultStarterList = true
+                                adultRulesExpanded = true
+                            }
+                            .disabled(includeAdultStarterList)
                         }
                         .controlSize(.regular)
                         if includeAdultStarterList || !domains.isEmpty || !urlPatterns.isEmpty {
                             Divider()
                         }
                         if includeAdultStarterList {
-                            RemovableRule(
-                                title: "Adult websites", symbol: "shield.lefthalf.filled",
-                                detail: "A starter list of known sites. It does not cover every adult website."
-                            ) { includeAdultStarterList = false }
+                            AdultRulesRow(
+                                domains: adultStarterDomains,
+                                isExpanded: $adultRulesExpanded,
+                                remove: {
+                                    includeAdultStarterList = false
+                                    adultRulesExpanded = false
+                                }
+                            )
                         }
                         ForEach(domains, id: \.self) { domain in
                             RemovableRule(title: domain, symbol: "globe") {
@@ -847,9 +857,23 @@ private struct BlockEditorView: View {
     }
 
     private func addPreset(_ preset: SitePreset) {
-        for domain in preset.domains where !domains.contains(domain) {
-            domains.append(domain)
+        for domain in preset.domains {
+            if !domains.contains(domain) {
+                domains.append(domain)
+            }
+            let wildcard = "*.\(domain)"
+            if !urlPatterns.contains(wildcard) {
+                urlPatterns.append(wildcard)
+            }
         }
+    }
+
+    private var adultStarterDomains: [String] {
+        guard includeAdultStarterList else { return [] }
+        if let existing = block?.draft.rules.blockedAdultDomains, !existing.isEmpty {
+            return existing
+        }
+        return StarterAdultRules.domains
     }
 
     private func save() {
@@ -890,6 +914,60 @@ private struct BlockEditorView: View {
     }
 }
 
+private struct AdultRulesRow: View {
+    let domains: [String]
+    @Binding var isExpanded: Bool
+    let remove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "shield.lefthalf.filled")
+                            .foregroundStyle(PauseTheme.coral)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Adult websites")
+                            Text("Starter list · \(domains.count) domains")
+                                .font(.caption)
+                                .foregroundStyle(PauseTheme.muted)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Adult websites")
+                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                .accessibilityHint("Shows the domains in the starter list")
+
+                Button(action: remove) {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove adult website starter list")
+            }
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(domains, id: \.self) { domain in
+                        Text(domain)
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                    }
+                }
+                .padding(.leading, 28)
+            }
+        }
+    }
+}
+
 private enum SitePreset: String, CaseIterable, Identifiable {
     case social = "Social"
     case video = "Video"
@@ -901,22 +979,15 @@ private enum SitePreset: String, CaseIterable, Identifiable {
         switch self {
         case .social:
             return [
-                "facebook.com", "www.facebook.com",
-                "instagram.com", "www.instagram.com",
-                "tiktok.com", "www.tiktok.com",
-                "x.com", "www.x.com",
+                "facebook.com", "instagram.com", "tiktok.com", "x.com",
             ]
         case .video:
             return [
-                "netflix.com", "www.netflix.com",
-                "twitch.tv", "www.twitch.tv",
-                "youtube.com", "www.youtube.com",
+                "netflix.com", "twitch.tv", "youtube.com",
             ]
         case .news:
             return [
-                "cnn.com", "www.cnn.com",
-                "news.google.com",
-                "reddit.com", "www.reddit.com",
+                "cnn.com", "news.google.com", "reddit.com",
             ]
         }
     }

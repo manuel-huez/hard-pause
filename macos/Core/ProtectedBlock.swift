@@ -37,7 +37,8 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         blockedURLPatterns: [String] = []
     ) {
         var seenDomains = Set<String>()
-        self.blockedDomains = blockedDomains.compactMap(DomainRule.normalize).filter {
+        let networkDomains = blockedURLPatterns.flatMap { URLPatternRule.networkDomains(from: $0) }
+        self.blockedDomains = (blockedDomains + networkDomains).compactMap(DomainRule.normalize).filter {
             seenDomains.insert($0).inserted
         }
         var seenApplications = Set<String>()
