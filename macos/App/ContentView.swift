@@ -647,8 +647,6 @@ private struct BlockEditorView: View {
     @State private var domains: [String]
     @State private var urlPatterns: [String]
     @State private var applications: [ProtectedApplication]
-    @State private var includeAdultStarterList: Bool
-    @State private var adultRulesExpanded = false
     @State private var breakDelay: TimeInterval
     @State private var fullUnlockDelay: TimeInterval
     @State private var breakDuration: TimeInterval
@@ -661,12 +659,22 @@ private struct BlockEditorView: View {
         _caretPosition = caretPosition
         let draft = block?.draft
         _name = State(initialValue: draft?.name ?? "")
-        let patterns = draft?.rules.blockedURLPatterns ?? []
+        let adultDomains = draft?.rules.blockedAdultDomains ?? []
+        var patterns = draft?.rules.blockedURLPatterns ?? []
+        for domain in adultDomains where !domain.hasPrefix("www.") {
+            guard adultDomains.contains("www.\(domain)") else { continue }
+            let wildcard = "*.\(domain)"
+            if !patterns.contains(wildcard) { patterns.append(wildcard) }
+        }
         let networkAliases = Set(patterns.flatMap { URLPatternRule.networkDomains(from: $0) })
-        _domains = State(initialValue: (draft?.rules.blockedDomains ?? []).filter { !networkAliases.contains($0) })
+        var editableDomains = (draft?.rules.blockedDomains ?? []).filter { !networkAliases.contains($0) }
+        for domain in adultDomains {
+            if domain.hasPrefix("www."), adultDomains.contains(String(domain.dropFirst(4))) { continue }
+            if !editableDomains.contains(domain) { editableDomains.append(domain) }
+        }
+        _domains = State(initialValue: editableDomains)
         _urlPatterns = State(initialValue: patterns)
         _applications = State(initialValue: draft?.rules.blockedApplications ?? [])
-        _includeAdultStarterList = State(initialValue: draft?.rules.blocksStarterAdultSites ?? false)
         _breakDelay = State(initialValue: draft?.breakDelay ?? 3_600)
         _fullUnlockDelay = State(initialValue: draft?.fullUnlockDelay ?? 86_400)
         _breakDuration = State(initialValue: draft?.breakDuration ?? 900)
@@ -714,32 +722,27 @@ private struct BlockEditorView: View {
                             ForEach(SitePreset.allCases) { preset in
                                 Button(preset.rawValue) { addPreset(preset) }
                             }
-                            Button("Adult websites") {
-                                includeAdultStarterList = true
-                                adultRulesExpanded = true
-                            }
-                            .disabled(includeAdultStarterList)
                         }
                         .controlSize(.regular)
-                        if includeAdultStarterList || !domains.isEmpty || !urlPatterns.isEmpty {
+                        if !domains.isEmpty || !urlPatterns.isEmpty {
                             Divider()
                         }
-                        if includeAdultStarterList {
-                            AdultRulesRow(
-                                domains: adultStarterDomains,
-                                isExpanded: $adultRulesExpanded,
-                                remove: {
-                                    includeAdultStarterList = false
-                                    adultRulesExpanded = false
-                                }
-                            )
-                        }
                         ForEach(domains, id: \.self) { domain in
-                            RemovableRule(title: domain, symbol: "globe") {
+                            let wildcard = "*.\(domain)"
+                            RemovableRule(
+                                title: domain,
+                                symbol: "globe",
+                                detail: urlPatterns.contains(wildcard) ? "Includes subdomains" : nil
+                            ) {
                                 domains.removeAll { $0 == domain }
+                                urlPatterns.removeAll { $0 == wildcard }
                             }
                         }
-                        ForEach(urlPatterns, id: \.self) { pattern in
+                        ForEach(
+                            urlPatterns.filter { pattern in
+                                !domains.contains { "*.\($0)" == pattern }
+                            }, id: \.self
+                        ) { pattern in
                             RemovableRule(title: pattern, symbol: "link") {
                                 urlPatterns.removeAll { $0 == pattern }
                             }
@@ -868,14 +871,6 @@ private struct BlockEditorView: View {
         }
     }
 
-    private var adultStarterDomains: [String] {
-        guard includeAdultStarterList else { return [] }
-        if let existing = block?.draft.rules.blockedAdultDomains, !existing.isEmpty {
-            return existing
-        }
-        return StarterAdultRules.domains
-    }
-
     private func save() {
         if !domainInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             addDomain()
@@ -887,7 +882,7 @@ private struct BlockEditorView: View {
                 rules: ProtectedRules(
                     blockedDomains: domains,
                     blockedApplications: applications,
-                    blocksStarterAdultSites: includeAdultStarterList,
+                    blocksStarterAdultSites: false,
                     blockedURLPatterns: urlPatterns
                 ),
                 breakDelay: breakDelay,
@@ -914,64 +909,11 @@ private struct BlockEditorView: View {
     }
 }
 
-private struct AdultRulesRow: View {
-    let domains: [String]
-    @Binding var isExpanded: Bool
-    let remove: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                Button {
-                    isExpanded.toggle()
-                } label: {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "shield.lefthalf.filled")
-                            .foregroundStyle(PauseTheme.coral)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Adult websites")
-                            Text("Starter list · \(domains.count) domains")
-                                .font(.caption)
-                                .foregroundStyle(PauseTheme.muted)
-                        }
-                        Spacer(minLength: 0)
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption)
-                            .foregroundStyle(PauseTheme.muted)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Adult websites")
-                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-                .accessibilityHint("Shows the domains in the starter list")
-
-                Button(action: remove) {
-                    Image(systemName: "minus.circle")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Remove adult website starter list")
-            }
-
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(domains, id: \.self) { domain in
-                        Text(domain)
-                            .font(.caption)
-                            .foregroundStyle(PauseTheme.muted)
-                    }
-                }
-                .padding(.leading, 28)
-            }
-        }
-    }
-}
-
 private enum SitePreset: String, CaseIterable, Identifiable {
     case social = "Social"
     case video = "Video"
     case news = "News"
+    case adult = "Adult websites"
 
     var id: String { rawValue }
 
@@ -989,6 +931,8 @@ private enum SitePreset: String, CaseIterable, Identifiable {
             return [
                 "cnn.com", "news.google.com", "reddit.com",
             ]
+        case .adult:
+            return StarterAdultRules.domains.filter { !$0.hasPrefix("www.") }
         }
     }
 }
