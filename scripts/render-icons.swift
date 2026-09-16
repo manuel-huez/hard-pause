@@ -6,6 +6,18 @@ let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let source = root.appendingPathComponent("web/mascot/first-frame.svg")
 guard let cloud = NSImage(contentsOf: source) else { fatalError("Cannot read cloud SVG") }
 
+// Keep iOS fallback and shield images identical to the shared web artwork.
+for (frame, asset) in [("first-frame", "LowLightCharacter"), ("first-frame-awake", "LowLightCharacterAwake")] {
+    let directory = root.appendingPathComponent("ios/App/Assets.xcassets/\(asset).imageset")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try Data(contentsOf: root.appendingPathComponent("web/mascot/\(frame).svg"))
+        .write(to: directory.appendingPathComponent("low-light-character.svg"))
+    if asset != "LowLightCharacter" {
+        try Data(contentsOf: root.appendingPathComponent("ios/App/Assets.xcassets/LowLightCharacter.imageset/Contents.json"))
+            .write(to: directory.appendingPathComponent("Contents.json"))
+    }
+}
+
 for platform in ["macos", "ios"] {
     let directory = root.appendingPathComponent("\(platform)/App/Assets.xcassets/AppIcon.appiconset")
     let contents =

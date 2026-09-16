@@ -1,6 +1,8 @@
 'use strict';
+const requestedMood = globalThis.location.hash.slice(1);
+const initialMood = ['resting', 'waiting'].includes(requestedMood) ? requestedMood : 'calm';
 globalThis.hardPauseMascot = globalThis.HardPauseMascot.mount(document.getElementById('mascot'), {
-  mood: 'calm',
+  mood: initialMood,
 });
 
 globalThis.requestAnimationFrame(() => {

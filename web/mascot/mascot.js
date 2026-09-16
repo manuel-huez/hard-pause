@@ -15,6 +15,22 @@
     waiting: { open: 0, smile: 2, gazeY: 3 },
     resting: { open: 0.9, smile: 7, gazeY: -2 },
   };
+  // Keep the face legible in the native 120 px view while retaining the
+  // cloud's restrained expression and wide sleepy curves.
+  const faceScale = 0.9;
+  const sleepyEyeWidth = 17.5;
+  const awakeEyeWidth = 6.6;
+  const awakeEyeHeight = 11.2;
+  const sleepyEyeCurve = 8.7;
+  const greetingCenterDuration = 0.26;
+  const greetingNodDuration = 0.48;
+  const greetingReturnDuration = 0.4;
+  const greetingSequenceDuration =
+    greetingCenterDuration + greetingNodDuration + greetingReturnDuration;
+  const gazeFollowDuration = 0.1;
+  const torsoFollowDuration = 0.3;
+  const gazeReturnDuration = 0.4;
+  const torsoReturnDuration = 0.4;
   const blend = (a, b, t) =>
     Object.fromEntries(Object.keys(a).map((key) => [key, mix(a[key], b[key], t)]));
   // A broad cumulus outline stays recognisably cloud-shaped in every pose.
@@ -81,7 +97,11 @@
 
       this.lookFrom = this.lookTo = { x: 0, y: 0 };
       this.lookChanged = -10;
+      this.torsoFrom = this.torsoTo = { x: 0, y: 0 };
+      this.torsoChanged = -10;
+      this.lookReturning = false;
       this.helloAt = -10;
+      this.greetingQueued = false;
       this.attentionFrom = this.attentionTo = 0;
       this.attentionChanged = -10;
       this.eyeFrom = this.eyeReducedFrom = { shape: this.to.open, lid: 1 };
@@ -104,15 +124,29 @@
 
     look(t) {
       // Fast initial response avoids restarting from zero speed while typing.
-      const progress = 1 - (1 - clamp((t - this.lookChanged) / 0.2)) ** 5;
+      const duration = this.lookReturning ? gazeReturnDuration : gazeFollowDuration;
+      const phase = clamp((t - this.lookChanged) / duration);
+      const progress = this.lookReturning ? ease(phase) : 1 - (1 - phase) ** 5;
       return blend(this.lookFrom, this.lookTo, progress);
     }
-    setLook(x, y, t) {
-      const target = { x: clamp(x, -1, 1) * 16, y: clamp(y, -1, 1) * 10 };
+    torsoLook(t) {
+      // Ease out immediately so frequent pointer updates keep moving the body
+      // instead of restarting a slow ease-in on every event.
+      const duration = this.lookReturning ? torsoReturnDuration : torsoFollowDuration;
+      const phase = clamp((t - this.torsoChanged) / duration);
+      const progress = this.lookReturning ? ease(phase) : 1 - (1 - phase) ** 3;
+      return blend(this.torsoFrom, this.torsoTo, progress);
+    }
+    setLook(x, y, t, returning = false) {
+      const target = { x: clamp(x, -1, 1) * 28, y: clamp(y, -1, 1) * 20 };
       if (target.x === this.lookTo.x && target.y === this.lookTo.y) return;
       this.lookFrom = this.look(t);
+      this.torsoFrom = this.torsoLook(t);
       this.lookTo = target;
+      this.torsoTo = target;
       this.lookChanged = t;
+      this.torsoChanged = t;
+      this.lookReturning = returning;
     }
     attention(t) {
       const elapsed = t - this.attentionChanged;
@@ -165,6 +199,21 @@
       if (age < 0 || age >= 3.11) return 0;
       return age < 0.45 ? ease(age / 0.45) : 1 - ease((age - 1.71) / 1.4);
     }
+    greetingFocus(t) {
+      const age = t - this.helloAt;
+      const nodEnds = greetingCenterDuration + greetingNodDuration;
+      if (age < 0 || age >= nodEnds + greetingReturnDuration) return 0;
+      if (age < greetingCenterDuration) return ease(age / greetingCenterDuration);
+      if (age < nodEnds) return 1;
+      return 1 - ease((age - nodEnds) / greetingReturnDuration);
+    }
+    nod(t, reduced = false) {
+      if (reduced) return 0;
+      const age = t - this.helloAt - greetingCenterDuration;
+      if (age < 0 || age >= greetingNodDuration) return 0;
+      const phase = (age % (greetingNodDuration / 2)) / (greetingNodDuration / 2);
+      return phase < 0.4 ? ease(phase / 0.4) : 1 - ease((phase - 0.4) / 0.6);
+    }
     setAttention(active, t) {
       const target = active ? 1 : 0;
       if (target === this.attentionTo) return;
@@ -178,7 +227,13 @@
       this.attentionChanged = t;
     }
     greet(t) {
-      if (t - this.helloAt <= 3.11) return;
+      if (t < this.helloAt + greetingSequenceDuration) {
+        this.greetingQueued = true;
+        return;
+      }
+      this.startGreeting(t);
+    }
+    startGreeting(t) {
       this.retargetEyes(
         this.attentionTo ? 1 : this.to.open,
         t,
@@ -186,13 +241,23 @@
         0.45,
       );
       this.helloAt = t;
+      this.greetingQueued = false;
+    }
+    advanceGreeting(t) {
+      if (!this.greetingQueued) return;
+      const next = this.helloAt + greetingSequenceDuration;
+      if (t >= next) this.startGreeting(next);
     }
     sample(t, reduced = false) {
+      this.advanceGreeting(t);
+      const greetingFocus = this.greetingFocus(t);
       const p = this.pose(t),
-        look = this.look(t);
+        look = blend(this.look(t), { x: 0, y: 0 }, greetingFocus),
+        torso = reduced ? { x: 0, y: 0 } : blend(this.torsoLook(t), { x: 0, y: 0 }, greetingFocus);
       const hello = this.greeting(t);
       const attention = this.attention(t);
       const awake = Math.max(hello, attention);
+      const nod = this.nod(t, reduced);
       const time = reduced ? 0 : t;
       const roll = reduced ? 0 : 0.026 * Math.sin(time * 0.43);
       // Small travelling ripples soften the sides without losing the cloud's lobes.
@@ -203,8 +268,16 @@
         const side = Math.min(1, Math.abs(nx)) * 0.8 + 0.2;
         const dx = reduced ? 0 : 2.8 * Math.sin(time * 0.78 - ny * 2.4 + nx) * side;
         const dy = reduced ? 0 : 1.8 * Math.sin(time * 0.62 + nx * 2.8 - ny) * side;
-        const xx = (x - 200) * breath + dx,
-          yy = (y - 220) * breath + dy;
+        // Gaze reshapes the plush contour instead of moving it as a rigid sprite.
+        // The upper lobes follow most; the bottom stays planted. The far side
+        // compresses slightly toward the centre to retain the cloud's volume.
+        const upper = ease(clamp((310 - y) / 205));
+        const torsoX = torso.x / 28,
+          torsoY = torso.y / 20;
+        const farSide = clamp(-nx * torsoX);
+        const perspective = 1 - Math.abs(torsoX) * farSide * upper * 0.035;
+        const xx = (x - 200) * breath * perspective + dx + torsoX * upper * 7,
+          yy = (y - 220) * breath + dy + torsoY * upper * 4;
         return [
           200 + xx * Math.cos(roll) - yy * Math.sin(roll),
           220 +
@@ -219,9 +292,9 @@
       const blink = eyePose.lid;
       const expressionOpen = eyePose.shape;
       const open = expressionOpen * blink;
-      const wander = 1 - attention;
+      const wander = (1 - attention) * (1 - greetingFocus);
       const yaw = look.x / 65 + (reduced ? 0 : 0.055 * Math.sin(time * 0.41) * wander);
-      const pitch = look.y / 90;
+      const pitch = look.y / 90 - nod * 0.075;
       // Every facial control point uses this same sphere projection, including
       // the mouth. Near/far foreshortening is a result of depth, not a second gaze.
       const project = (x, y) => {
@@ -235,9 +308,9 @@
       const point = (x, y) => project(x, y).map(round).join(' ');
       const eyes = [-43, 44].map((x, i) => {
         const y = i === 0 ? -10 : -7;
-        const w = mix(16, 4.1, expressionOpen);
-        const h = mix(0, 7.1, expressionOpen) * blink;
-        const curve = 8 * (1 - expressionOpen);
+        const w = mix(sleepyEyeWidth, awakeEyeWidth, expressionOpen);
+        const h = mix(0, awakeEyeHeight, expressionOpen) * blink;
+        const curve = sleepyEyeCurve * (1 - expressionOpen);
         const tilt = (i === 0 ? -1 : 1) * 0.035 * expressionOpen;
         const ep = (dx, dy) =>
           point(
@@ -247,7 +320,7 @@
         return `M${ep(-w, 0)}C${ep(-w, curve - h * 1.34)} ${ep(w, curve - h * 1.34)} ${ep(w, 0)}C${ep(w, curve + h * 1.34)} ${ep(-w, curve + h * 1.34)} ${ep(-w, 0)}Z`;
       });
       const fx = face[0] + look.x + (reduced ? 0 : 2 * Math.sin(time * 0.37) * wander);
-      const fy = face[1] + p.gazeY + look.y;
+      const fy = face[1] + p.gazeY + look.y + nod * 5;
       const smile = mix(p.smile, 8, awake);
       const mouth = `M${point(-7, 20)}C${point(-1, 20 + smile)} ${point(7, 20 + smile)} ${point(12, 20)}`;
       const light = flow(152, 143);
@@ -267,7 +340,7 @@
           return n - Math.floor(n);
         };
         const duration = 5 + variation(1);
-        const phase = clamp((age % 7 - variation(2) * 0.7) / duration);
+        const phase = clamp(((age % 7) - variation(2) * 0.7) / duration);
         const fade = ease(phase / 0.25) * (1 - ease((phase - 0.6) / 0.4));
         const x = 145 + variation(3) * 32 + (20 + variation(4) * 35) * phase;
         const y = 132 + variation(5) * 10 - (75 + variation(6) * 15) * phase;
@@ -281,7 +354,8 @@
         path,
         eyes,
         mouth,
-        face: `translate(${round(fx)} ${round(fy)}) rotate(${round(((roll * 180) / Math.PI) * 0.7)}) scale(.82)`,
+        character: `translate(0 ${round(nod * 3)})`,
+        face: `translate(${round(fx)} ${round(fy)}) rotate(${round(((roll * 180) / Math.PI) * 0.7)}) scale(${faceScale})`,
         light,
         moon: `translate(0 ${round(reduced ? 0 : 2 * Math.sin(time * 0.59))})`,
         roll,
@@ -289,11 +363,14 @@
         blink,
         sleepZ,
         eyeGeometry: {
-          width: mix(16, 4.1, expressionOpen),
-          height: 7.1 * open,
-          curve: 8 * (1 - expressionOpen),
+          width: mix(sleepyEyeWidth, awakeEyeWidth, expressionOpen),
+          height: awakeEyeHeight * open,
+          curve: sleepyEyeCurve * (1 - expressionOpen),
           shape: expressionOpen,
         },
+        gaze: look,
+        torso,
+        greetingFocus,
         pose: p,
       };
     }
@@ -304,11 +381,12 @@
       win = doc.defaultView;
     const id = `low-light-${++serial}`;
     const previousId = element.querySelector('img')?.id;
-    element.innerHTML = `<svg class="low-light-svg" viewBox="0 0 400 380" aria-hidden="true" focusable="false"><defs><radialGradient id="${id}-body" gradientUnits="userSpaceOnUse" cx="166" cy="120" r="225"><stop stop-color="#c6d5e9"/><stop offset=".55" stop-color="#94aaca"/><stop offset="1" stop-color="#637a9b"/></radialGradient><radialGradient id="${id}-halo"><stop stop-color="#8daeda" stop-opacity=".16"/><stop offset="1" stop-color="#8daeda" stop-opacity="0"/></radialGradient><linearGradient id="${id}-moon" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff4d3"/><stop offset="1" stop-color="#d2bf91"/></linearGradient><radialGradient id="${id}-shade"><stop stop-color="#233854" stop-opacity=".24"/><stop offset="1" stop-color="#233854" stop-opacity="0"/></radialGradient><clipPath id="${id}-clip"><path class="low-light-outline"/></clipPath><filter id="${id}-velvet" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="3" seed="12"/><feColorMatrix type="saturate" values="0"/></filter></defs><ellipse cx="200" cy="210" rx="197" ry="169" fill="url(#${id}-halo)"/><path class="low-light-moon" d="M326 67C301 68 282 90 282 115C282 148 312 170 343 158C317 158 298 139 300 115C301 94 312 78 326 67Z" fill="url(#${id}-moon)"/><path class="low-light-body" fill="url(#${id}-body)" stroke="#d1e1f4" stroke-opacity=".12" stroke-width="1"/><g clip-path="url(#${id}-clip)"><g class="low-light-plush"><ellipse cx="215" cy="318" rx="168" ry="91" fill="url(#${id}-shade)"/></g><rect x="20" y="90" width="360" height="220" filter="url(#${id}-velvet)" opacity=".07" class="low-light-texture"/></g><g class="low-light-sleep-z" aria-hidden="true"><text x="0" y="0" class="low-light-z">Z</text><text x="0" y="0" class="low-light-z">Z</text><text x="0" y="0" class="low-light-z">Z</text></g><g class="low-light-face"><path class="low-light-eye"/><path class="low-light-eye"/><path class="low-light-mouth"/></g></svg>`;
+    element.innerHTML = `<svg class="low-light-svg" viewBox="0 0 400 380" aria-hidden="true" focusable="false"><defs><radialGradient id="${id}-body" gradientUnits="userSpaceOnUse" cx="166" cy="120" r="225"><stop stop-color="#c6d5e9"/><stop offset=".55" stop-color="#94aaca"/><stop offset="1" stop-color="#637a9b"/></radialGradient><radialGradient id="${id}-halo"><stop stop-color="#8daeda" stop-opacity=".16"/><stop offset="1" stop-color="#8daeda" stop-opacity="0"/></radialGradient><linearGradient id="${id}-moon" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff4d3"/><stop offset="1" stop-color="#d2bf91"/></linearGradient><radialGradient id="${id}-shade"><stop stop-color="#233854" stop-opacity=".24"/><stop offset="1" stop-color="#233854" stop-opacity="0"/></radialGradient><clipPath id="${id}-clip"><path class="low-light-outline"/></clipPath><filter id="${id}-velvet" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="3" seed="12"/><feColorMatrix type="saturate" values="0"/></filter></defs><g class="low-light-character"><ellipse cx="200" cy="210" rx="197" ry="169" fill="url(#${id}-halo)"/><path class="low-light-moon" d="M326 67C301 68 282 90 282 115C282 148 312 170 343 158C317 158 298 139 300 115C301 94 312 78 326 67Z" fill="url(#${id}-moon)"/><path class="low-light-body" fill="url(#${id}-body)" stroke="#d1e1f4" stroke-opacity=".12" stroke-width="1"/><g clip-path="url(#${id}-clip)"><g class="low-light-plush"><ellipse cx="215" cy="318" rx="168" ry="91" fill="url(#${id}-shade)"/></g><rect x="20" y="90" width="360" height="220" filter="url(#${id}-velvet)" opacity=".07" class="low-light-texture"/></g><g class="low-light-sleep-z" aria-hidden="true"><text x="0" y="0" class="low-light-z">Z</text><text x="0" y="0" class="low-light-z">Z</text><text x="0" y="0" class="low-light-z">Z</text></g><g class="low-light-face"><path class="low-light-eye"/><path class="low-light-eye"/><path class="low-light-mouth"/></g></g></svg>`;
     const svg = element.querySelector('svg'),
       body = svg.querySelector('.low-light-body');
     if (previousId) svg.id = previousId;
-    const face = svg.querySelector('.low-light-face'),
+    const character = svg.querySelector('.low-light-character'),
+      face = svg.querySelector('.low-light-face'),
       eyes = svg.querySelectorAll('.low-light-eye');
     const mouth = svg.querySelector('.low-light-mouth'),
       moon = svg.querySelector('.low-light-moon');
@@ -329,6 +407,7 @@
       const f = engine.sample(clock, reduced);
       body.setAttribute('d', f.path);
       svg.querySelector('.low-light-outline').setAttribute('d', f.path);
+      character.setAttribute('transform', f.character);
       face.setAttribute('transform', f.face);
       eyes.forEach((eye, i) => eye.setAttribute('d', f.eyes[i]));
       mouth.setAttribute('d', f.mouth);
@@ -370,12 +449,12 @@
       }
     }
     function settle(seconds = 1.6) {
-      settlingUntil = clock + seconds;
+      settlingUntil = Math.max(settlingUntil, clock + seconds);
       sync();
     }
     function greet() {
       engine.greet(clock);
-      settle(3.2);
+      settle(4.8);
     }
     let externalAttention = { x: 0, y: 0, active: false };
     function pointer(event) {
@@ -390,7 +469,7 @@
     }
     function leave() {
       engine.setAttention(externalAttention.active, clock);
-      engine.setLook(externalAttention.x, externalAttention.y, clock);
+      engine.setLook(externalAttention.x, externalAttention.y, clock, true);
       settle(2);
     }
     function preference() {
@@ -404,16 +483,16 @@
     element.addEventListener('click', greet);
     element.addEventListener('pointermove', pointer);
     element.addEventListener('pointerleave', leave);
-    element.addEventListener('focus', greet);
     doc.addEventListener('visibilitychange', sync);
     media.addEventListener('change', preference);
     const api = {
       setAttention({ x = 0, y = 0, active = false } = {}) {
         externalAttention = { x: active ? x : 0, y: active ? y : 0, active };
         engine.setAttention(active, clock);
-        engine.setLook(externalAttention.x, externalAttention.y, clock);
+        engine.setLook(externalAttention.x, externalAttention.y, clock, !active);
         settle(2);
       },
+      greet,
       setMood(mood) {
         engine.setMood(mood, clock);
         element.dataset.mood = mood;
@@ -435,7 +514,6 @@
         element.removeEventListener('click', greet);
         element.removeEventListener('pointermove', pointer);
         element.removeEventListener('pointerleave', leave);
-        element.removeEventListener('focus', greet);
         doc.removeEventListener('visibilitychange', sync);
         media.removeEventListener('change', preference);
         element.replaceChildren();

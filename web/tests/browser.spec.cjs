@@ -1,3 +1,5 @@
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
 const { test, expect } = require('@playwright/test');
 
 const repositoryURL = 'https://github.com/manuel-huez/hard-pause';
@@ -123,4 +125,107 @@ test('bundled native renderer remains local and morphs without body zoom', async
   expect(hoveredBox.height).toBeCloseTo(initialBox.height, 1);
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
+});
+
+test('native 120 px renderer starts awake from the resting URL and keeps its face readable', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 120, height: 114 });
+  await page.goto('/mascot/native.html#resting');
+  await expect(page.locator('html')).toHaveAttribute('data-renderer-ready', 'true');
+
+  const eyeBoxes = await page.locator('.low-light-eye').evaluateAll((eyes) =>
+    eyes.map((eye) => {
+      const box = eye.getBoundingClientRect();
+      return { width: box.width, height: box.height };
+    }),
+  );
+  expect(eyeBoxes).toHaveLength(2);
+  for (const box of eyeBoxes) {
+    expect(box.width).toBeGreaterThan(3.5);
+    expect(box.height).toBeGreaterThan(5);
+  }
+  const mouthBox = await page.locator('.low-light-mouth').evaluate((mouth) => {
+    const box = mouth.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  });
+  expect(mouthBox.width).toBeGreaterThan(5);
+  expect(mouthBox.height).toBeGreaterThan(1.2);
+});
+
+test('native greeting API faces forward, nods, and returns to the latest target', async ({
+  page,
+}) => {
+  await page.goto('/mascot/native.html#resting');
+  await expect(page.locator('html')).toHaveAttribute('data-renderer-ready', 'true');
+  const result = await page.evaluate(async () => {
+    const face = document.querySelector('.low-light-face');
+    const character = document.querySelector('.low-light-character');
+    const faceX = () => Number(face.getAttribute('transform').match(/translate\(([-\d.]+)/)[1]);
+    globalThis.hardPauseMascot.setAttention({ x: 1, y: -0.4, active: true });
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 400));
+    const initialX = faceX();
+    globalThis.hardPauseMascot.greet();
+    const frames = [];
+    for (let index = 0; index < 32; index++) {
+      if (index === 9) globalThis.hardPauseMascot.setAttention({ x: -1, y: 0.5, active: true });
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+      frames.push({
+        x: faceX(),
+        character: character.getAttribute('transform'),
+      });
+    }
+    return { initialX, frames };
+  });
+  expect(result.initialX).toBeGreaterThan(220);
+  for (const frame of result.frames.slice(5, 14)) expect(Math.abs(frame.x - 200)).toBeLessThan(5);
+  expect(result.frames.at(-1).x).toBeLessThan(180);
+  const positions = result.frames.map(({ character }) =>
+    Number(character.match(/translate\(0 ([\d.]+)\)/)[1]),
+  );
+  const peaks = positions.filter(
+    (position, index) =>
+      position > 2.5 && position > positions[index - 1] && position >= positions[index + 1],
+  );
+  expect(peaks).toHaveLength(2);
+  expect(positions.at(-1)).toBe(0);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-renderer-ready', 'true');
+  const mouth = page.locator('.low-light-mouth');
+  const body = page.locator('.low-light-body');
+  await page.evaluate(() =>
+    globalThis.hardPauseMascot.setAttention({ x: 1, y: 0.5, active: true }),
+  );
+  await page.waitForTimeout(500);
+  const initialBody = await body.getAttribute('d');
+  const initialMouth = await mouth.getAttribute('d');
+  await page.evaluate(() => globalThis.hardPauseMascot.greet());
+  await page.waitForTimeout(500);
+  await expect(page.locator('.low-light-character')).toHaveAttribute('transform', 'translate(0 0)');
+  expect(await body.getAttribute('d')).toBe(initialBody);
+  expect(await mouth.getAttribute('d')).not.toBe(initialMouth);
+});
+
+test('RTA check reads only an exact rating tag in the page head', async ({ page }) => {
+  const source = readFileSync(join(__dirname, '../../macos/Core/AdultWebsiteRules.swift'), 'utf8');
+  const script = source.match(/static let script = """([\s\S]*?)"""/)[1];
+  await page.setContent(
+    '<head><meta NAME="RaTiNg" content=" rta-5042-1996-1400-1577-rta "></head><body></body>',
+  );
+  expect(await page.evaluate(script)).toBe(true);
+  await page.setContent(
+    '<head><meta http-equiv="Rating" content="RTA-5042-1996-1400-1577-RTA"></head>',
+  );
+  expect(await page.evaluate(script)).toBe(true);
+  for (const markup of [
+    '<head></head><body>RTA-5042-1996-1400-1577-RTA</body>',
+    '<head><!-- <meta name="rating" content="RTA-5042-1996-1400-1577-RTA"> --></head>',
+    '<head><meta name="description" content="RTA-5042-1996-1400-1577-RTA"></head>',
+    '<head><meta name="rating" content="NOT-RTA-5042-1996-1400-1577-RTA"></head>',
+  ]) {
+    await page.setContent(markup);
+    expect(await page.evaluate(script)).toBe(false);
+  }
 });

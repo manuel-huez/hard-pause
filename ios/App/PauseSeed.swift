@@ -26,6 +26,8 @@ struct PauseSeed: View {
     let mood: PauseSeedMood
     var size: CGFloat = 220
     var attention: CGPoint?
+    var greetingTrigger: Int = 0
+    var isAnimationPaused = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -37,13 +39,14 @@ struct PauseSeed: View {
             MascotWebView(
                 state: MascotNativeState(
                     mood: mood,
-                    isActive: isVisible && scenePhase == .active,
+                    isActive: isVisible && scenePhase == .active && !isAnimationPaused,
                     reduceMotion: reduceMotion,
-                    attention: attention
+                    attention: attention,
+                    greetingTrigger: greetingTrigger
                 ),
                 setRendererReady: { rendererIsReady = $0 }
             )
-            MascotFirstFrame()
+            MascotFirstFrame(mood: mood)
                 .opacity(rendererIsReady ? 0 : 1)
                 .allowsHitTesting(false)
         }
@@ -55,6 +58,7 @@ struct PauseSeed: View {
 }
 
 private struct MascotFirstFrame: View {
+    let mood: PauseSeedMood
     #if os(macOS)
         private static let image: NSImage? = {
             guard let url = Bundle.main.url(forResource: "first-frame", withExtension: "svg") else {
@@ -62,12 +66,24 @@ private struct MascotFirstFrame: View {
             }
             return NSImage(contentsOf: url)
         }()
+        private static let awakeImage: NSImage? = {
+            guard
+                let url = Bundle.main.url(
+                    forResource: "first-frame-awake", withExtension: "svg", subdirectory: "mascot")
+            else {
+                return nil
+            }
+            return NSImage(contentsOf: url)
+        }()
+        private var firstImage: NSImage? { mood == .resting ? Self.awakeImage ?? Self.image : Self.image }
     #elseif os(iOS)
         private static let image = UIImage(named: "LowLightCharacter")
+        private static let awakeImage = UIImage(named: "LowLightCharacterAwake")
+        private var firstImage: UIImage? { mood == .resting ? Self.awakeImage ?? Self.image : Self.image }
     #endif
 
     var body: some View {
-        if let image = Self.image {
+        if let image = firstImage {
             #if os(macOS)
                 firstFrame(Image(nsImage: image))
             #elseif os(iOS)
@@ -91,11 +107,13 @@ private struct MascotNativeState: Equatable {
     let attentionX: Double
     let attentionY: Double
     let hasAttention: Bool
+    let greetingTrigger: Int
 
-    init(mood: PauseSeedMood, isActive: Bool, reduceMotion: Bool, attention: CGPoint?) {
+    init(mood: PauseSeedMood, isActive: Bool, reduceMotion: Bool, attention: CGPoint?, greetingTrigger: Int) {
         self.mood = mood
         self.isActive = isActive
         self.reduceMotion = reduceMotion
+        self.greetingTrigger = greetingTrigger
         if let attention, attention.x.isFinite, attention.y.isFinite {
             attentionX = min(1, max(-1, Double(attention.x)))
             attentionY = min(1, max(-1, Double(attention.y)))
@@ -110,15 +128,15 @@ private struct MascotNativeState: Equatable {
 
 private struct MascotWebView: View {
     let state: MascotNativeState
-    @State private var bridge: MascotWebPageBridge
+    @StateObject private var bridge: MascotWebPageBridge
 
     init(
         state: MascotNativeState,
         setRendererReady: @escaping @MainActor (Bool) -> Void
     ) {
         self.state = state
-        _bridge = State(
-            initialValue: MascotWebPageBridge(setRendererReady: setRendererReady)
+        _bridge = StateObject(
+            wrappedValue: MascotWebPageBridge(setRendererReady: setRendererReady)
         )
     }
 
@@ -130,8 +148,8 @@ private struct MascotWebView: View {
             .webViewLinkPreviews(.disabled)
             .webViewTextSelection(.disabled)
             .onAppear {
-                bridge.startLoading()
                 bridge.update(state)
+                bridge.startLoading()
             }
             .onChange(of: state) { _, nextState in
                 bridge.update(nextState)
@@ -140,7 +158,7 @@ private struct MascotWebView: View {
 }
 
 @MainActor
-private final class MascotWebPageBridge {
+private final class MascotWebPageBridge: ObservableObject {
     static let readyHandlerName = "hardPauseMascotReady"
 
     let page: WebPage
@@ -200,10 +218,13 @@ private final class MascotWebPageBridge {
             loadStarted = false
             return
         }
+        var initialURL = URLComponents(url: htmlURL, resolvingAgainstBaseURL: false)
+        initialURL?.fragment = latestState?.mood.rawValue
+        let loadURL = initialURL?.url ?? htmlURL
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await event in page.load(htmlURL) {
+                for try await event in page.load(loadURL) {
                     switch event {
                     case .startedProvisionalNavigation:
                         navigationStarted()
@@ -231,7 +252,7 @@ private final class MascotWebPageBridge {
     }
 
     private func applyLatestState() {
-        guard documentIsReady, !isApplying else { return }
+        guard documentIsReady, rendererIsReady, !isApplying else { return }
         isApplying = true
         Task { [weak self] in
             await self?.applyLatestStateLoop()
@@ -240,9 +261,12 @@ private final class MascotWebPageBridge {
 
     private func applyLatestStateLoop() async {
         defer { isApplying = false }
-        while documentIsReady, let state = latestState, state != appliedState {
+        while documentIsReady, rendererIsReady, let state = latestState, state != appliedState {
             do {
-                _ = try await page.callJavaScript(Self.script(for: state))
+                let shouldGreet = state.greetingTrigger != (appliedState?.greetingTrigger ?? 0)
+                let applied = try await page.callJavaScript(
+                    Self.script(for: state, previous: appliedState, greet: shouldGreet), contentWorld: .page)
+                guard applied as? Bool == true else { return }
                 appliedState = state
             } catch {
                 #if DEBUG
@@ -294,21 +318,24 @@ private final class MascotWebPageBridge {
         publishReadinessIfReady()
     }
 
-    private static func script(for state: MascotNativeState) -> String {
+    private static func script(for state: MascotNativeState, previous: MascotNativeState?, greet: Bool) -> String {
         """
-        (() => {
-          const mascot = window.hardPauseMascot;
-          if (!mascot) return false;
+        const mascot = window.hardPauseMascot;
+        if (!mascot) return false;
+        mascot.setActive(\(state.isActive.javaScriptLiteral));
+        if (\((previous?.mood != state.mood).javaScriptLiteral)) {
           mascot.setMood('\(state.mood.rawValue)');
+        }
+        if (\((previous?.reduceMotion != state.reduceMotion).javaScriptLiteral)) {
           mascot.setReducedMotion(\(state.reduceMotion.javaScriptLiteral));
-          mascot.setAttention({
-            x: \(state.attentionX),
-            y: \(state.attentionY),
-            active: \(state.hasAttention.javaScriptLiteral)
-          });
-          mascot.setActive(\(state.isActive.javaScriptLiteral));
-          return true;
-        })();
+        }
+        mascot.setAttention({
+          x: \(state.attentionX),
+          y: \(state.attentionY),
+          active: \(state.hasAttention.javaScriptLiteral)
+        });
+        if (\(greet.javaScriptLiteral)) mascot.greet();
+        return true;
         """
     }
 }
