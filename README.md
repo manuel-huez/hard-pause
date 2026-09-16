@@ -15,7 +15,7 @@ Hard Pause is a local iPhone, iPad, and Mac app for intentional breaks from sele
 - A request affects only its block. Overlapping rules remain until every block that contains them allows access.
 - A fixed duration ends only its block and takes priority over a pending request or break.
 - Protection and storage failures must remain visible.
-- No account, telemetry, hosted API, browsing history, remote classification, browser extension, or paid enforcement tier.
+- No account, telemetry, hosted API, browsing-history uploads, remote classification, browser extension, or paid enforcement tier. Public adult-domain lists can refresh over HTTPS; checks stay on the device.
 
 ## Platform design
 
@@ -30,6 +30,8 @@ The macOS design uses no browser, Network Extension, or Endpoint Security extens
 The website and both native apps share the local renderer in `web/mascot/`. Native controls remain SwiftUI; only the character uses bundled web content. Preserve the renderer's `LICENSE.txt` and `NOTICE.txt` files.
 
 See [DESIGN.md](DESIGN.md) for the security boundaries and release checks. Each platform README has build instructions and current implementation details.
+
+See the [shared core plan](docs/shared-core-plan.md) for the proposed Rust engine and staged iOS, macOS, Windows, and Android integration.
 
 ## Development
 
