@@ -145,6 +145,64 @@ final class ProtectedBlockTests: XCTestCase {
         XCTAssertEqual(state.blocks.first?.activation?.pendingRequest, pending)
     }
 
+    func testPendingBreakCanBeCancelledWithoutRelaxingProtectionOrNaturalEnd() throws {
+        var state = ProtectedState()
+        let block = try state.create(makeDraft(elapsedDuration: 300))
+        try state.activate(id: block.id, expectedRevision: block.revision, at: reading(0))
+        try state.request(.breakAccess, id: block.id, at: reading(0))
+
+        try state.cancelBreakRequest(id: block.id, at: reading(30))
+
+        let cancelled = try XCTUnwrap(state.blocks.first)
+        XCTAssertEqual(cancelled.revision, 4)
+        XCTAssertNil(cancelled.activation?.pendingRequest)
+        XCTAssertEqual(cancelled.activation?.phase(), .active(naturalEndRemaining: 270))
+        XCTAssertEqual(state.effectiveRestrictions().blockedDomains, ["example.com"])
+        XCTAssertEqual(state.effectiveRestrictions().contributingBlockIDs, [block.id])
+    }
+
+    func testCancelBreakRejectsMissingRequestAndPreservesPendingFullUnlock() throws {
+        var state = ProtectedState()
+        let block = try state.create(makeDraft(fullUnlockDelay: 180))
+        try state.activate(id: block.id, expectedRevision: block.revision, at: reading(0))
+
+        XCTAssertThrowsError(try state.cancelBreakRequest(id: block.id, at: reading(30))) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .noPendingBreakRequest)
+        }
+
+        try state.request(.fullUnlock, id: block.id, at: reading(0))
+        let pendingUnlock = state.blocks.first?.activation?.pendingRequest
+        XCTAssertThrowsError(try state.cancelBreakRequest(id: block.id, at: reading(30))) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .noPendingBreakRequest)
+        }
+        XCTAssertEqual(state.blocks.first?.activation?.pendingRequest, pendingUnlock)
+        XCTAssertEqual(
+            state.blocks.first?.activation?.phase(),
+            .waitingForFullUnlock(remaining: 180, naturalEndRemaining: nil)
+        )
+    }
+
+    func testOnlyWaitingForBreakPhaseCanCancelBreak() {
+        XCTAssertTrue(
+            ProtectedBlockPhase.waitingForBreak(remaining: 30, naturalEndRemaining: nil).canCancelBreak
+        )
+        XCTAssertFalse(ProtectedBlockPhase.active(naturalEndRemaining: nil).canCancelBreak)
+        XCTAssertFalse(
+            ProtectedBlockPhase.waitingForFullUnlock(
+                remaining: 30,
+                naturalEndRemaining: nil
+            ).canCancelBreak
+        )
+        XCTAssertFalse(
+            ProtectedBlockPhase.breakActive(
+                remaining: 30,
+                fullUnlockRemaining: nil,
+                naturalEndRemaining: nil
+            ).canCancelBreak
+        )
+        XCTAssertFalse(ProtectedBlockPhase.inactive.canCancelBreak)
+    }
+
     func testRebootDoesNotAddUnverifiedElapsedTime() throws {
         var state = ProtectedState()
         let block = try state.create(makeDraft(fullUnlockDelay: 180))

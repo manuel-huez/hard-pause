@@ -22,7 +22,10 @@ final class FirefoxBrowserProtection {
         NSWorkspace.shared.open(settings)
     }
 
-    func check(rules: [ProtectedRules], page: URL) -> String {
+    func check(
+        rules: [ProtectedRules], page: URL, adultDomains: AdultDomainDatabase? = nil,
+        adultRating: (URL) -> Bool = { _ in false }
+    ) -> String {
         guard AXIsProcessTrusted() else {
             return "Allow Hard Pause in Accessibility."
         }
@@ -31,7 +34,10 @@ final class FirefoxBrowserProtection {
         else {
             return "Connected · activate Firefox to check its current tab."
         }
-        guard rules.contains(where: { !$0.allBlockedDomains.isEmpty || !$0.blockedURLPatterns.isEmpty })
+        guard
+            rules.contains(where: {
+                !$0.allBlockedDomains.isEmpty || !$0.blockedURLPatterns.isEmpty || $0.blocksAdultWebsites
+            })
         else {
             return "Connected · no website rules apply."
         }
@@ -45,7 +51,15 @@ final class FirefoxBrowserProtection {
         else {
             return "Cannot read the current Firefox tab."
         }
-        guard observedURL != page, BrowserURLMatcher.matches(observedURL, rules: rules) else {
+        guard observedURL != page,
+            BrowserURLMatcher.matches(
+                observedURL, rules: rules, adultDomains: adultDomains, hasAdultRating: adultRating(observedURL))
+        else {
+            if rules.contains(where: \.blocksAdultWebsites) {
+                return adultDomains == nil
+                    ? "Adult website list unavailable · check Settings"
+                    : "Checking current tab · local list and saved ratings; RTA detection unavailable"
+            }
             return "Checking current tab"
         }
         guard !Self.isBeingEdited(target.address, application: application) else {
@@ -65,7 +79,8 @@ final class FirefoxBrowserProtection {
             let currentURL = Self.url(from: Self.attribute(current.document, kAXURLAttribute)),
             currentURL.absoluteString == observedURL.absoluteString,
             currentURL != page,
-            BrowserURLMatcher.matches(currentURL, rules: rules),
+            BrowserURLMatcher.matches(
+                currentURL, rules: rules, adultDomains: adultDomains, hasAdultRating: adultRating(currentURL)),
             !Self.isBeingEdited(current.address, application: application),
             Self.focusAndSet(current.address, value: page.absoluteString)
         else {

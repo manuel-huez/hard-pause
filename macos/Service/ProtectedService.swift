@@ -41,9 +41,27 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         }
     }
 
+    func cancelBreak(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        handle(request, as: ProtectedBlockRequest.self, reply: reply) {
+            try engine.cancelBreak($0)
+        }
+    }
+
     func requestEnd(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
         handle(request, as: ProtectedBlockRequest.self, reply: reply) {
             try engine.requestEnd($0)
+        }
+    }
+
+    func prepareUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        handle(request, as: ProtectedBlockRequest.self, reply: reply) {
+            try engine.prepareUpdate($0)
+        }
+    }
+
+    func cancelUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        handle(request, as: ProtectedBlockRequest.self, reply: reply) {
+            try engine.cancelUpdate($0)
         }
     }
 
@@ -81,9 +99,13 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         case ProtectedStateError.activeBlockIsImmutable: code = "active_block_immutable"
         case ProtectedStateError.inactive: code = "block_inactive"
         case ProtectedStateError.pendingRequestExists: code = "request_pending"
+        case ProtectedStateError.noPendingBreakRequest: code = "break_request_not_pending"
         case ProtectedStateError.breakAlreadyActive: code = "break_active"
         case ProtectedStateError.blockLimitReached: code = "block_limit"
         case ProtectedStateError.aggregateLimitReached: code = "aggregate_limit"
+        case ProtectedStateError.updateUnavailable: code = "update_unavailable"
+        case ProtectedStateError.updateInProgress: code = "update_in_progress"
+        case ProtectedStateError.updateNotOwned: code = "update_not_owned"
         default: code = "service_error"
         }
         return .failure(

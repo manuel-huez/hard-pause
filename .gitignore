@@ -12,3 +12,5 @@ dist/
 
 playwright-report/
 test-results/
+
+/macos/Resources/AdultWebsites/domains.txt

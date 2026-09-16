@@ -130,9 +130,69 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         }
     }
 
+    func cancelBreak(_ request: ProtectedBlockRequest) throws -> ProtectedServiceSnapshot {
+        try mutate { state, reading in
+            try state.cancelBreakRequest(id: request.id, at: reading)
+        }
+    }
+
     func requestEnd(_ request: ProtectedBlockRequest) throws -> ProtectedServiceSnapshot {
         try mutate { state, reading in
             try state.request(.fullUnlock, id: request.id, at: reading)
+        }
+    }
+
+    func prepareUpdate(_ request: ProtectedBlockRequest) throws -> ProtectedServiceSnapshot {
+        try withLock {
+            let reading = clock.read()
+            try resumePendingCommitLocked(at: reading)
+            try reconcileLocked(at: reading, forceCheckpoint: false)
+            if state.updateGateToken == request.id {
+                return snapshotLocked(at: reading.wallTime)
+            }
+            guard state.updateGateToken == nil else {
+                throw ProtectedStateError.updateInProgress
+            }
+            let snapshot = snapshotLocked(at: reading.wallTime)
+            guard state.blocks.allSatisfy({ $0.activation == nil }),
+                state.effectiveRestrictions().contributingBlockIDs.isEmpty,
+                pendingSafetyProjection == nil,
+                pendingCommitCandidate == nil,
+                !journalCleanupPending,
+                snapshot.protection.isEnforcing,
+                snapshot.protection.lastAppliedAt != nil,
+                snapshot.protection.issues.isEmpty
+            else {
+                throw ProtectedStateError.updateUnavailable
+            }
+            var candidate = state
+            try candidate.prepareUpdate(token: request.id)
+            try commitLocked(
+                candidate,
+                at: reading,
+                saveRequired: true,
+                durableIntentRequiredBeforeTightening: true
+            )
+            return snapshotLocked(at: reading.wallTime)
+        }
+    }
+
+    func cancelUpdate(_ request: ProtectedBlockRequest) throws -> ProtectedServiceSnapshot {
+        try withLock {
+            let reading = clock.read()
+            try resumePendingCommitLocked(at: reading)
+            guard state.updateGateToken != nil else {
+                return snapshotLocked(at: reading.wallTime)
+            }
+            var candidate = state
+            try candidate.cancelUpdate(token: request.id)
+            try commitLocked(
+                candidate,
+                at: reading,
+                saveRequired: true,
+                durableIntentRequiredBeforeTightening: true
+            )
+            return snapshotLocked(at: reading.wallTime)
         }
     }
 
@@ -144,6 +204,9 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         try withLock {
             let reading = clock.read()
             try resumePendingCommitLocked(at: reading)
+            guard state.updateGateToken == nil else {
+                throw ProtectedStateError.updateInProgress
+            }
             try reconcileLocked(at: reading, forceCheckpoint: false)
             var candidate = state
             try operation(&candidate, reading)

@@ -1,0 +1,21 @@
+Adult website data: The Block List Project
+Source: https://blocklistproject.github.io/Lists/alt-version/porn-nl.txt
+Project: https://github.com/blocklistproject/Lists
+Retrieved: 2026-09-16
+The upstream domain file is bundled byte-for-byte in a lossless raw DEFLATE
+stream for Apple's Compression framework. Its source and license notices are
+retained here and in LICENSE.txt (Unlicense); the downloaded file states MIT.
+Hard Pause ignores unsupported host names, verifies the declared entry count,
+and checks domains locally. Updates fetch this same public file for all users.
+No visited URLs, cookies, account IDs, or classification requests are sent.
+A domain list is incomplete and can contain errors.
+
+Original SHA-256: 5e876678921406025032ac6fa9908cfce98216f6af0f7c0cd8e74a334b232dd4
+Reproduce domains.txt.deflate from the upstream bytes with Python zlib 1.2.12:
+python3 - <<'PY'
+from pathlib import Path
+import zlib
+d = Path("domains.txt").read_bytes()
+c = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS, 8, zlib.Z_DEFAULT_STRATEGY)
+Path("domains.txt.deflate").write_bytes(c.compress(d) + c.flush(zlib.Z_FINISH))
+PY

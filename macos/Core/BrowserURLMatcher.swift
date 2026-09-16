@@ -12,14 +12,17 @@ enum BrowserURLMatcher {
         }
     }
 
-    static func matches(_ url: URL, rules: [ProtectedRules]) -> Bool {
+    static func matches(
+        _ url: URL, rules: [ProtectedRules], adultDomains: AdultDomainDatabase? = nil, hasAdultRating: Bool = false
+    ) -> Bool {
         guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
             let host = url.host, let normalizedHost = DomainRule.normalize(host)
         else { return false }
         return rules.contains { rule in
-            rule.allBlockedDomains.contains(where: {
-                DomainRule.browserHost($0) == DomainRule.browserHost(normalizedHost)
-            })
+            (rule.blocksAdultWebsites && (hasAdultRating || adultDomains?.contains(normalizedHost) == true))
+                || rule.allBlockedDomains.contains(where: {
+                    DomainRule.browserHost($0) == DomainRule.browserHost(normalizedHost)
+                })
                 || rule.blockedURLPatterns.contains { URLPatternRule.matches(url, pattern: $0) }
         }
     }

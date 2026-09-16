@@ -34,6 +34,7 @@ protocol ProtectedServiceServing {
     func delete(id: UUID, expectedRevision: Int) async throws -> ProtectedServiceSnapshot
     func activate(id: UUID, expectedRevision: Int) async throws -> ProtectedServiceSnapshot
     func requestBreak(id: UUID) async throws -> ProtectedServiceSnapshot
+    func cancelBreak(id: UUID) async throws -> ProtectedServiceSnapshot
     func requestEnd(id: UUID) async throws -> ProtectedServiceSnapshot
 }
 
@@ -85,6 +86,11 @@ final class ProtectedServiceClient: ProtectedServiceServing {
     func requestBreak(id: UUID) async throws -> ProtectedServiceSnapshot {
         let payload = try ProtectedServiceCodec.encode(ProtectedBlockRequest(id: id))
         return try await perform { service, reply in service.requestBreak(payload, withReply: reply) }
+    }
+
+    func cancelBreak(id: UUID) async throws -> ProtectedServiceSnapshot {
+        let payload = try ProtectedServiceCodec.encode(ProtectedBlockRequest(id: id))
+        return try await perform { service, reply in service.cancelBreak(payload, withReply: reply) }
     }
 
     func requestEnd(id: UUID) async throws -> ProtectedServiceSnapshot {

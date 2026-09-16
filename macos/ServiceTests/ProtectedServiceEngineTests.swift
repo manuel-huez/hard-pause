@@ -2,6 +2,101 @@ import Foundation
 import XCTest
 
 final class ProtectedServiceEngineTests: XCTestCase {
+    func testUpdateGateSurvivesRestartAndBlocksActivationUntilOwnerCancels() throws {
+        let store = FakeProtectedStateStore()
+        let enforcer = FakeProtectionEnforcer()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try ProtectedServiceEngine(stateStore: store, enforcer: enforcer, clock: clock)
+        let created = try engine.create(ProtectedCreateRequest(draft: serviceTestDraft()))
+        let block = try XCTUnwrap(created.blocks.first)
+        let token = UUID()
+
+        _ = try engine.prepareUpdate(ProtectedBlockRequest(id: token))
+        let restarted = try ProtectedServiceEngine(
+            stateStore: store,
+            enforcer: FakeProtectionEnforcer(),
+            clock: clock
+        )
+        _ = try restarted.prepareUpdate(ProtectedBlockRequest(id: token))
+
+        XCTAssertThrowsError(
+            try restarted.activate(
+                ProtectedRevisionRequest(id: block.id, expectedRevision: block.revision)
+            )
+        ) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .updateInProgress)
+        }
+        XCTAssertThrowsError(
+            try restarted.prepareUpdate(ProtectedBlockRequest(id: UUID()))
+        ) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .updateInProgress)
+        }
+        XCTAssertThrowsError(
+            try restarted.cancelUpdate(ProtectedBlockRequest(id: UUID()))
+        ) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .updateNotOwned)
+        }
+
+        _ = try restarted.cancelUpdate(ProtectedBlockRequest(id: token))
+        _ = try restarted.cancelUpdate(ProtectedBlockRequest(id: token))
+        let activated = try restarted.activate(
+            ProtectedRevisionRequest(id: block.id, expectedRevision: block.revision)
+        )
+        XCTAssertFalse(activated.effectiveRestrictions.blockedDomains.isEmpty)
+    }
+
+    func testPrepareUpdateRejectsActiveState() throws {
+        let prepared = try activeState()
+        let store = FakeProtectedStateStore(prepared.state)
+        let engine = try ProtectedServiceEngine(
+            stateStore: store,
+            enforcer: FakeProtectionEnforcer(),
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+
+        XCTAssertThrowsError(
+            try engine.prepareUpdate(ProtectedBlockRequest(id: UUID()))
+        ) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .updateUnavailable)
+        }
+        XCTAssertNil(store.persisted.updateGateToken)
+    }
+
+    func testPrepareUpdateRejectsUnhealthyService() throws {
+        let store = FakeProtectedStateStore()
+        let enforcer = FakeProtectionEnforcer()
+        enforcer.outcome = EnforcementOutcome(
+            issues: [
+                ProtectionIssue(
+                    code: "test_issue",
+                    message: "Injected unhealthy service.",
+                    blockIDs: []
+                )
+            ],
+            closedApplications: []
+        )
+        let engine = try ProtectedServiceEngine(
+            stateStore: store,
+            enforcer: enforcer,
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+
+        XCTAssertThrowsError(
+            try engine.prepareUpdate(ProtectedBlockRequest(id: UUID()))
+        ) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .updateUnavailable)
+        }
+        XCTAssertNil(store.persisted.updateGateToken)
+    }
+
+    func testProtectedStateWithoutUpdateGateTokenDecodesAsUngated() throws {
+        let data = Data(#"{"schemaVersion":2,"blocks":[]}"#.utf8)
+
+        let state = try JSONDecoder().decode(ProtectedState.self, from: data)
+
+        XCTAssertNil(state.updateGateToken)
+    }
+
     func testExpiredBreakRelocksBeforeInvalidRequestReturnsError() throws {
         let prepared = try breakState(includeSecondBlock: false)
         let store = FakeProtectedStateStore(prepared.state)
@@ -19,6 +114,72 @@ final class ProtectedServiceEngineTests: XCTestCase {
 
         XCTAssertEqual(store.persisted.effectiveRestrictions().blockedDomains, ["a.example"])
         XCTAssertEqual(enforcer.applications.last?.blockedDomains, ["a.example"])
+    }
+
+    func testCancelBreakKeepsProtectionAndOtherFullUnlockDeadline() throws {
+        var state = ProtectedState()
+        let breakBlock = try state.create(
+            serviceTestDraft(name: "Break", domains: ["break.example"], breakDelay: 60)
+        )
+        let unlockBlock = try state.create(
+            serviceTestDraft(name: "Unlock", domains: ["unlock.example"], fullUnlockDelay: 180)
+        )
+        try state.activate(
+            id: breakBlock.id,
+            expectedRevision: breakBlock.revision,
+            at: serviceTestReading(0)
+        )
+        try state.activate(
+            id: unlockBlock.id,
+            expectedRevision: unlockBlock.revision,
+            at: serviceTestReading(0)
+        )
+        try state.request(.breakAccess, id: breakBlock.id, at: serviceTestReading(0))
+        try state.request(.fullUnlock, id: unlockBlock.id, at: serviceTestReading(0))
+        let store = FakeProtectedStateStore(state)
+        let enforcer = FakeProtectionEnforcer()
+        let clock = FakeServiceClock(serviceTestReading(30))
+        let engine = try ProtectedServiceEngine(stateStore: store, enforcer: enforcer, clock: clock)
+
+        let snapshot = try engine.cancelBreak(ProtectedBlockRequest(id: breakBlock.id))
+
+        XCTAssertEqual(
+            snapshot.blocks.first(where: { $0.id == breakBlock.id })?.phase,
+            .active(naturalEndRemaining: nil)
+        )
+        XCTAssertEqual(
+            snapshot.blocks.first(where: { $0.id == unlockBlock.id })?.phase,
+            .waitingForFullUnlock(remaining: 150, naturalEndRemaining: nil)
+        )
+        XCTAssertEqual(
+            Set(store.persisted.effectiveRestrictions().blockedDomains),
+            Set(["break.example", "unlock.example"])
+        )
+    }
+
+    func testCancelAtBreakDeadlinePersistsOpenedBreakBeforeReturningError() throws {
+        var state = ProtectedState()
+        let block = try state.create(
+            serviceTestDraft(domains: ["example.com"], breakDelay: 60, breakDuration: 60)
+        )
+        try state.activate(id: block.id, expectedRevision: block.revision, at: serviceTestReading(0))
+        try state.request(.breakAccess, id: block.id, at: serviceTestReading(0))
+        let store = FakeProtectedStateStore(state)
+        let enforcer = FakeProtectionEnforcer()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try ProtectedServiceEngine(stateStore: store, enforcer: enforcer, clock: clock)
+        clock.reading = serviceTestReading(60)
+
+        XCTAssertThrowsError(try engine.cancelBreak(ProtectedBlockRequest(id: block.id))) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .noPendingBreakRequest)
+        }
+
+        XCTAssertTrue(store.persisted.effectiveRestrictions().blockedDomains.isEmpty)
+        XCTAssertEqual(
+            engine.list().blocks.first?.phase,
+            .breakActive(remaining: 60, fullUnlockRemaining: nil, naturalEndRemaining: nil)
+        )
+        XCTAssertEqual(enforcer.applications.last?.blockedDomains, [])
     }
 
     func testRelockWriteFailureKeepsTighteningApplied() throws {

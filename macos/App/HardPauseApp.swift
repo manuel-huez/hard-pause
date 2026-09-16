@@ -8,7 +8,7 @@ struct HardPauseApp: App {
     @StateObject private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup {
+        Window("Hard Pause", id: "main") {
             ContentView()
                 .environmentObject(model)
                 .onAppear { lifecycle.model = model }
@@ -27,10 +27,35 @@ struct HardPauseApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
+
+        MenuBarExtra("Hard Pause", systemImage: "pause.circle") {
+            HardPauseMenu(model: model)
+        }
     }
 
     private var isCompactSetupWindow: Bool {
         model.activeBlocks.isEmpty && model.setupState != .ready
+    }
+}
+
+private struct HardPauseMenu: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Text(model.setupServiceReady ? "Protection service running" : "Protection needs attention")
+        if model.activeBlocks.isEmpty {
+            Text("No active plans")
+        } else if model.activeBlocks.count == 1 {
+            Text("1 active plan")
+        } else {
+            Text("\(model.activeBlocks.count) active plans")
+        }
+        Divider()
+        Button("Open Hard Pause") {
+            openWindow(id: "main")
+            NSApplication.shared.activate()
+        }
     }
 }
 

@@ -23,6 +23,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var isInstallingService = false
     @Published private(set) var startsAtLogin = false
     private let browserProtection = BrowserProtection()
+    @Published private(set) var adultDatabaseStatus = "Loading local adult website list…"
+
+    func refreshAdultDatabase() async {
+        await browserProtection.refreshAdultDatabase()
+        adultDatabaseStatus = browserProtection.adultDatabaseStatus
+    }
     private let setupProbe: (@MainActor () async -> SetupAccessState)?
     private var isCheckingSetup = false
     private var hasCheckedSetup = false
@@ -40,12 +46,16 @@ final class AppModel: ObservableObject {
         setupReady && canRequestUnlock
     }
     var canRequestUnlock: Bool {
-        serviceAvailability == .ready && !isBusy && !hasPendingMutation
+        serviceAvailability == .ready && !isBusy && !hasPendingMutation && !isInstallingService
     }
     var setupReady: Bool { setupState == .ready }
+    var needsServiceUpdate: Bool {
+        snapshot.map { $0.protection.serviceVersion != ProtectedServiceContract.serviceVersion } ?? false
+    }
     var setupServiceReady: Bool {
         serviceAvailability == .ready && snapshot?.protection.isEnforcing == true
             && snapshot?.protection.issues.isEmpty == true
+            && snapshot?.protection.serviceVersion == ProtectedServiceContract.serviceVersion
     }
 
     var installCommand: String? {
@@ -98,6 +108,58 @@ final class AppModel: ObservableObject {
         await mutate { try await service.create(draft) }
     }
 
+    /// Returns true once the plan is saved, even if starting it fails. The editor
+    /// must close in that case so a retry cannot create a duplicate plan.
+    func createAndActivate(_ draft: ProtectedBlockDraft) async -> Bool {
+        guard await adultFilterReady(for: draft.rules) else { return false }
+        while isCheckingSetup {
+            if Task.isCancelled { return false }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        await refresh()
+        await refreshSetup()
+        guard setupReady else {
+            errorMessage = "Finish setup before starting a new plan."
+            return false
+        }
+        var startWarning: String?
+        var unconfirmedState = false
+        let saved = await mutate {
+            let validated = try draft.validatedForMutation()
+            let before = try await service.list()
+            let knownIDs = Set(before.blocks.map(\.id))
+            let created = try await service.create(validated)
+            let candidates = created.blocks.filter {
+                !knownIDs.contains($0.id) && $0.draft == validated && $0.phase == .inactive
+            }
+            guard candidates.count == 1, let plan = candidates.first else {
+                startWarning =
+                    "Your plan was saved, but could not be identified safely to start it. Check Plans before trying again."
+                return created
+            }
+            do {
+                return try await service.activate(id: plan.id, expectedRevision: plan.revision)
+            } catch {
+                // A lost reply does not prove activation failed. Refresh if possible
+                // and never claim that a potentially active plan is inactive.
+                startWarning =
+                    "Your plan was saved, but its start could not be confirmed. Check Plans before trying again. \(error.localizedDescription)"
+                if let refreshed = try? await service.list() { return refreshed }
+                unconfirmedState = true
+                return created
+            }
+        }
+        if saved, let startWarning {
+            errorMessage = startWarning
+            if unconfirmedState {
+                snapshot = nil
+                serviceAvailability = .unavailable(startWarning)
+                updateSetupState()
+            }
+        }
+        return saved
+    }
+
     func update(
         id: UUID,
         expectedRevision: Int,
@@ -115,6 +177,7 @@ final class AppModel: ObservableObject {
     }
 
     func activate(_ block: ProtectedBlockSnapshot) async -> Bool {
+        guard await adultFilterReady(for: block.draft.rules) else { return false }
         while isCheckingSetup {
             if Task.isCancelled { return false }
             try? await Task.sleep(for: .milliseconds(25))
@@ -122,7 +185,7 @@ final class AppModel: ObservableObject {
         await refresh()
         await refreshSetup()
         guard setupReady else {
-            errorMessage = "Finish setup before starting a new block."
+            errorMessage = "Finish setup before starting a new plan."
             return false
         }
         return await mutate {
@@ -130,8 +193,25 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func adultFilterReady(for rules: ProtectedRules) async -> Bool {
+        guard rules.blocksAdultWebsites else { return true }
+        guard await browserProtection.hasAdultDatabase() else {
+            errorMessage = "The adult website list is unavailable. Update it in Settings before starting this plan."
+            return false
+        }
+        return true
+    }
+
     func requestBreak(for block: ProtectedBlockSnapshot) async -> Bool {
         await mutate { try await service.requestBreak(id: block.id) }
+    }
+
+    func cancelBreak(for block: ProtectedBlockSnapshot) async -> Bool {
+        guard !needsServiceUpdate else {
+            errorMessage = "Update Hard Pause protection before cancelling a break request."
+            return false
+        }
+        return await mutate { try await service.cancelBreak(id: block.id) }
     }
 
     func requestEnd(for block: ProtectedBlockSnapshot) async -> Bool {
@@ -170,10 +250,10 @@ final class AppModel: ObservableObject {
         _ operation: () async throws -> ProtectedServiceSnapshot
     ) async -> Bool {
         guard serviceAvailability == .ready else {
-            errorMessage = "Install and start the Hard Pause service before changing blocks."
+            errorMessage = "Install and start the Hard Pause service before changing plans."
             return false
         }
-        guard !isBusy, !hasPendingMutation else { return false }
+        guard !isBusy, !hasPendingMutation, !isInstallingService else { return false }
         hasPendingMutation = true
         defer { hasPendingMutation = false }
         while isRefreshing {
@@ -216,6 +296,7 @@ final class AppModel: ObservableObject {
         defer { connectingBrowserID = nil }
         await browserProtection.requestPermission(for: identifier)
         browserStatuses = browserProtection.statuses
+        adultDatabaseStatus = browserProtection.adultDatabaseStatus
         browserConnectionMessages[identifier] = browserProtection.statuses[identifier]
         await refreshSetup()
     }
@@ -236,9 +317,14 @@ final class AppModel: ObservableObject {
         if let setupProbe {
             access = await setupProbe()
         } else {
+            // SMAppService.status performs synchronous IPC. Keep its wait off
+            // the UI thread, including during trackpad momentum scrolling.
+            let loginStatus = Task.detached(priority: .utility) {
+                SMAppService.mainApp.status == .enabled
+            }
             access = await SetupAccessState(
                 browsers: browserProtection.readiness(),
-                startsAtLogin: SMAppService.mainApp.status == .enabled)
+                startsAtLogin: loginStatus.value)
         }
         browserReadiness = access.browsers
         startsAtLogin = access.startsAtLogin
@@ -247,11 +333,21 @@ final class AppModel: ObservableObject {
     }
 
     func installService() async {
-        guard !isInstallingService else { return }
+        guard !isInstallingService, !isBusy, !hasPendingMutation else { return }
         isInstallingService = true
         defer { isInstallingService = false }
+        while isRefreshing {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        if serviceAvailability == .ready {
+            await refresh()
+            guard let snapshot, snapshot.blocks.allSatisfy({ $0.phase == .inactive }) else {
+                errorMessage = "End all plans through their normal waiting periods before updating protection."
+                return
+            }
+        }
         do {
-            try await ServiceInstaller.install()
+            try await ServiceInstaller.install(updateExisting: needsServiceUpdate)
             await refresh()
             await refreshSetup()
         } catch InstallerError.cancelled {
@@ -283,15 +379,17 @@ final class AppModel: ObservableObject {
             await refresh()
             await refreshSetup()
         }
-        await browserProtection.check(snapshot: snapshot)
+        await browserProtection.check(snapshot: snapshot) { [weak self] in self?.snapshot }
         browserStatuses = browserProtection.statuses
+        adultDatabaseStatus = browserProtection.adultDatabaseStatus
     }
 
     private func accept(_ nextSnapshot: ProtectedServiceSnapshot) {
         snapshot = nextSnapshot
         keepsBrowserProtectionRunning = nextSnapshot.blocks.contains {
             $0.phase != .inactive
-                && (!$0.draft.rules.allBlockedDomains.isEmpty || !$0.draft.rules.blockedURLPatterns.isEmpty)
+                && (!$0.draft.rules.allBlockedDomains.isEmpty || !$0.draft.rules.blockedURLPatterns.isEmpty
+                    || $0.draft.rules.blocksAdultWebsites)
         }
         if keepsBrowserProtectionRunning && browserActivity == nil {
             browserActivity = ProcessInfo.processInfo.beginActivity(

@@ -90,6 +90,27 @@ private final class ProtectedServiceCLIClient {
         return try perform { service, reply in service.requestEnd(payload, withReply: reply) }
     }
 
+    func prepareUpdate(_ request: ProtectedBlockRequest) throws -> ProtectedServiceSnapshot {
+        try requireCurrentServiceVersion()
+        let payload = try ProtectedServiceCodec.encode(request)
+        return try perform { service, reply in service.prepareUpdate(payload, withReply: reply) }
+    }
+
+    func cancelUpdate(_ request: ProtectedBlockRequest) throws -> ProtectedServiceSnapshot {
+        try requireCurrentServiceVersion()
+        let payload = try ProtectedServiceCodec.encode(request)
+        return try perform { service, reply in service.cancelUpdate(payload, withReply: reply) }
+    }
+
+    private func requireCurrentServiceVersion() throws {
+        let installedVersion = try list().protection.serviceVersion
+        guard installedVersion == ProtectedServiceContract.serviceVersion else {
+            throw CLIError.service(
+                "The installed Hard Pause service does not support safe updates."
+            )
+        }
+    }
+
     private func perform(
         _ operation: (ProtectedServiceXPC, @escaping (NSData) -> Void) -> Void
     ) throws -> ProtectedServiceSnapshot {
@@ -138,6 +159,8 @@ private func usage() -> String {
       hard-pause activate <block-id> <expected-revision>
       hard-pause break <block-id>
       hard-pause end <block-id>
+      hard-pause prepare-update <token>
+      hard-pause cancel-update <token>
       hard-pause can-uninstall
       hard-pause agent-guidance
 
@@ -244,10 +267,15 @@ private func run() throws {
             expectedRevision: try revision(arguments[2])
         )
         snapshot = command == "delete" ? try client.delete(request) : try client.activate(request)
-    case "break", "end":
+    case "break", "end", "prepare-update", "cancel-update":
         guard arguments.count == 2 else { throw CLIError.usage(usage()) }
         let request = ProtectedBlockRequest(id: try identifier(arguments[1]))
-        snapshot = command == "break" ? try client.requestBreak(request) : try client.requestEnd(request)
+        switch command {
+        case "break": snapshot = try client.requestBreak(request)
+        case "end": snapshot = try client.requestEnd(request)
+        case "prepare-update": snapshot = try client.prepareUpdate(request)
+        default: snapshot = try client.cancelUpdate(request)
+        }
     case "can-uninstall":
         guard arguments.count == 1 else { throw CLIError.usage(usage()) }
         let current = try client.list()

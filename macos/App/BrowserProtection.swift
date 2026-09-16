@@ -11,6 +11,17 @@ final class BrowserProtection: ObservableObject {
     private let pageServer = LocalPausePageServer()
     private let firefox = FirefoxBrowserProtection()
     private let worker = BrowserAutomationWorker()
+    private let adultDatabase = AdultWebsiteDatabase()
+    private let adultRatings = AdultRatingStore()
+    private(set) var adultDatabaseStatus = "Loading local adult website list…"
+
+    func hasAdultDatabase() async -> Bool { await adultDatabase.current() != nil }
+
+    func refreshAdultDatabase() async {
+        await adultDatabase.refreshIfNeeded(force: true)
+        adultDatabaseStatus = await adultDatabase.status
+        if adultRatings.saveFailed { adultDatabaseStatus += " · RTA cache could not be saved" }
+    }
 
     nonisolated static let browsers = [
         (id: "com.google.Chrome", name: "Chrome"),
@@ -80,7 +91,11 @@ final class BrowserProtection: ObservableObject {
         return result
     }
 
-    func check(snapshot: ProtectedServiceSnapshot?) async {
+    func check(
+        snapshot: ProtectedServiceSnapshot?,
+        currentSnapshot: @escaping @MainActor @Sendable () -> ProtectedServiceSnapshot?
+    ) async {
+        adultRatings.pruneIfNeeded()
         guard !isChecking else { return }
         isChecking = true
         defer { isChecking = false }
@@ -89,6 +104,10 @@ final class BrowserProtection: ObservableObject {
             return
         }
         let rules = BrowserURLMatcher.rules(from: snapshot)
+        let database = await adultDatabase.current()
+        await adultDatabase.refreshIfNeeded()
+        adultDatabaseStatus = await adultDatabase.status
+        if adultRatings.saveFailed { adultDatabaseStatus += " · RTA cache could not be saved" }
         pageServer.start()
         guard let page = pageServer.pageURL else {
             for browser in Self.browsers {
@@ -102,7 +121,10 @@ final class BrowserProtection: ObservableObject {
                 continue
             }
             if browser.id == "org.mozilla.firefox" {
-                statuses[browser.id] = firefox.check(rules: rules, page: page)
+                let currentRules = currentSnapshot().map(BrowserURLMatcher.rules) ?? []
+                statuses[browser.id] = firefox.check(rules: currentRules, page: page, adultDomains: database) {
+                    self.adultRatings.contains($0)
+                }
                 continue
             }
             let permission = await worker.permission(browser.id, prompt: false)
@@ -110,12 +132,35 @@ final class BrowserProtection: ObservableObject {
                 statuses[browser.id] = "Connect this browser to enable page redirects."
                 continue
             }
-            if rules.allSatisfy({ $0.allBlockedDomains.isEmpty && $0.blockedURLPatterns.isEmpty }) {
+            if rules.allSatisfy({
+                $0.allBlockedDomains.isEmpty && $0.blockedURLPatterns.isEmpty && !$0.blocksAdultWebsites
+            }) {
                 statuses[browser.id] = "Connected · no website rules apply."
                 continue
             }
-            let success = await worker.check(browser.id, rules: rules, page: page)
-            statuses[browser.id] = success ? "Checking tabs" : "Cannot check tabs. Check Automation permission."
+            let outcome = await worker.check(
+                browser.id, rules: rules, page: page, adultDomains: database,
+                cachedRating: { self.adultRatings.contains($0) },
+                authorize: { url, ratedAdult in
+                    guard let latest = currentSnapshot() else { return false }
+                    let active = BrowserURLMatcher.rules(from: latest)
+                    if ratedAdult && active.contains(where: \.blocksAdultWebsites) { self.adultRatings.record(url) }
+                    return BrowserURLMatcher.matches(
+                        url, rules: active, adultDomains: database, hasAdultRating: ratedAdult)
+                }
+            )
+            if !outcome.success {
+                statuses[browser.id] = "Cannot check tabs. Check Automation permission."
+            } else if database == nil && rules.contains(where: \.blocksAdultWebsites) {
+                statuses[browser.id] = "Adult website list unavailable · check Settings"
+            } else if outcome.rtaUnavailable {
+                statuses[browser.id] =
+                    "Website list active · RTA unavailable. Enable Allow JavaScript from Apple Events in this browser."
+            } else {
+                statuses[browser.id] =
+                    rules.contains(where: \.blocksAdultWebsites)
+                    ? "Checking tabs · local list and RTA tags" : "Checking tabs"
+            }
         }
     }
 }
@@ -145,10 +190,22 @@ private actor BrowserAutomationWorker {
         return status == errAEEventNotPermitted ? .denied : .unknown
     }
 
-    func check(_ identifier: String, rules: [ProtectedRules], page: URL) -> Bool {
+    struct CheckOutcome {
+        let success: Bool
+        let rtaUnavailable: Bool
+    }
+
+    func check(
+        _ identifier: String, rules: [ProtectedRules], page: URL, adultDomains: AdultDomainDatabase?,
+        cachedRating: @escaping @MainActor @Sendable (URL) -> Bool,
+        authorize: @escaping @MainActor @Sendable (URL, Bool) -> Bool
+    ) async -> CheckOutcome {
+        var rtaUnavailable = false
         // Only fixed, allowlisted application IDs enter the scripts. Tab URLs and the
         // destination are escaped as data, and the tab URL is checked again before a redirect.
-        guard BrowserProtection.browsers.contains(where: { $0.id == identifier }) else { return false }
+        guard BrowserProtection.browsers.contains(where: { $0.id == identifier }) else {
+            return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable)
+        }
         let source = """
             with timeout of 2 seconds
                 tell application id "\(identifier)"
@@ -167,14 +224,16 @@ private actor BrowserAutomationWorker {
             end timeout
             """
         var error: NSDictionary?
-        guard let script = NSAppleScript(source: source) else { return false }
+        guard let script = NSAppleScript(source: source) else {
+            return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable)
+        }
         let result = script.executeAndReturnError(&error)
-        guard error == nil else { return false }
-        if result.numberOfItems == 0 { return true }
+        guard error == nil else { return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable) }
+        if result.numberOfItems == 0 { return CheckOutcome(success: true, rtaUnavailable: rtaUnavailable) }
         for index in 1...result.numberOfItems {
             guard let item = result.atIndex(index), item.numberOfItems == 3,
                 let raw = item.atIndex(3)?.stringValue,
-                let url = URL(string: raw), url != page, BrowserURLMatcher.matches(url, rules: rules)
+                let url = URL(string: raw), url != page, ["http", "https"].contains(url.scheme?.lowercased() ?? "")
             else { continue }
             let windowReference: String
             if identifier == "com.google.Chrome" {
@@ -187,6 +246,37 @@ private actor BrowserAutomationWorker {
             }
             let tabIndex = item.atIndex(2)?.int32Value ?? 0
             guard tabIndex > 0 else { continue }
+            let matched = BrowserURLMatcher.matches(url, rules: rules, adultDomains: adultDomains)
+            let categoryActive = rules.contains(where: \.blocksAdultWebsites)
+            var ratedAdult = categoryActive ? await cachedRating(url) : false
+            if !matched && !ratedAdult && categoryActive && !rtaUnavailable {
+                let execution =
+                    identifier == "com.google.Chrome"
+                    ? "execute t javascript " : "do JavaScript "
+                let command =
+                    identifier == "com.google.Chrome"
+                    ? execution + Self.literal(AdultPageRating.script)
+                    : execution + Self.literal(AdultPageRating.script) + " in t"
+                let inspect = """
+                    with timeout of 2 seconds
+                        tell application id "\(identifier)"
+                            set t to tab \(tabIndex) of window id \(windowReference)
+                            if URL of t is not \(Self.literal(raw)) then return false
+                            set adultRating to (\(command))
+                            if URL of t is \(Self.literal(raw)) then return adultRating
+                            return false
+                        end tell
+                    end timeout
+                    """
+                error = nil
+                if let ratingScript = NSAppleScript(source: inspect) {
+                    let rating = ratingScript.executeAndReturnError(&error)
+                    if error == nil { ratedAdult = rating.booleanValue } else { rtaUnavailable = true }
+                } else {
+                    rtaUnavailable = true
+                }
+            }
+            guard matched || ratedAdult, await authorize(url, ratedAdult) else { continue }
             let redirect = """
                 with timeout of 2 seconds
                     tell application id "\(identifier)"
@@ -199,9 +289,9 @@ private actor BrowserAutomationWorker {
                 """
             error = nil
             NSAppleScript(source: redirect)?.executeAndReturnError(&error)
-            if error != nil { return false }
+            if error != nil { return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable) }
         }
-        return true
+        return CheckOutcome(success: true, rtaUnavailable: rtaUnavailable)
     }
 
     private static func literal(_ string: String) -> String {

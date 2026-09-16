@@ -33,6 +33,9 @@ targets:
         buildPhase: resources
       - path: Resources/PrivacyInfo.xcprivacy
         buildPhase: resources
+      - path: Resources/AdultWebsites
+        type: folder
+        buildPhase: resources
       - path: Resources/BlockedPage
         type: folder
         buildPhase: resources
@@ -124,6 +127,8 @@ targets:
       - App/AppModel.swift
       - App/SetupReadiness.swift
       - App/ServiceInstaller.swift
+      - App/AdultRatingStore.swift
+      - App/AdultWebsiteDatabase.swift
       - App/BrowserProtection.swift
       - App/LocalPausePageServer.swift
       - App/FirefoxBrowserProtection.swift

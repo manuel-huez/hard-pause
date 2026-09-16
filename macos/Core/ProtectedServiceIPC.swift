@@ -2,7 +2,7 @@ import Foundation
 
 enum ProtectedServiceContract {
     static let machServiceName = "org.hardpause.service"
-    static let serviceVersion = "1"
+    static let serviceVersion = "4"
     static let maximumPayloadBytes = 1_048_576
     static let supportDirectory = "/Library/Application Support/HardPause"
     static let enrollmentPath = "\(supportDirectory)/enrollment-v1.json"
@@ -17,7 +17,10 @@ enum ProtectedServiceContract {
     func delete(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func activate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func requestBreak(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func cancelBreak(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func requestEnd(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func prepareUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func cancelUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
 }
 
 struct ProtectedCreateRequest: Codable, Equatable, Sendable {

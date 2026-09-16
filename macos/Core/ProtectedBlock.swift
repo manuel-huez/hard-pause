@@ -26,6 +26,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
     let blockedAdultDomains: [String]
     let adultRulesVersion: Int?
     let blockedURLPatterns: [String]
+    let blocksAdultWebsites: Bool
 
     var blocksStarterAdultSites: Bool { !blockedAdultDomains.isEmpty }
     var allBlockedDomains: [String] { blockedDomains + blockedAdultDomains }
@@ -34,8 +35,10 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         blockedDomains: [String],
         blockedApplications: [ProtectedApplication],
         blocksStarterAdultSites: Bool,
-        blockedURLPatterns: [String] = []
+        blockedURLPatterns: [String] = [],
+        blocksAdultWebsites: Bool = false
     ) {
+        self.blocksAdultWebsites = blocksAdultWebsites
         var seenDomains = Set<String>()
         let networkDomains = blockedURLPatterns.flatMap { URLPatternRule.networkDomains(from: $0) }
         self.blockedDomains = (blockedDomains + networkDomains).compactMap(DomainRule.normalize).filter {
@@ -58,8 +61,10 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         blockedApplications: [ProtectedApplication],
         blockedAdultDomains: [String],
         adultRulesVersion: Int?,
-        blockedURLPatterns: [String] = []
+        blockedURLPatterns: [String] = [],
+        blocksAdultWebsites: Bool = false
     ) {
+        self.blocksAdultWebsites = blocksAdultWebsites
         self.blockedDomains = blockedDomains
         self.blockedApplications = blockedApplications
         self.blockedAdultDomains = blockedAdultDomains
@@ -73,6 +78,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         case blockedAdultDomains
         case adultRulesVersion
         case blockedURLPatterns
+        case blocksAdultWebsites
     }
 
     init(from decoder: Decoder) throws {
@@ -88,7 +94,9 @@ struct ProtectedRules: Codable, Equatable, Sendable {
             blockedURLPatterns: try container.decodeIfPresent(
                 [String].self,
                 forKey: .blockedURLPatterns
-            ) ?? []
+            ) ?? [],
+            blocksAdultWebsites: container.contains(.blocksAdultWebsites)
+                ? try container.decode(Bool.self, forKey: .blocksAdultWebsites) : false
         )
     }
 
@@ -99,6 +107,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         try container.encode(blockedAdultDomains, forKey: .blockedAdultDomains)
         try container.encodeIfPresent(adultRulesVersion, forKey: .adultRulesVersion)
         try container.encode(blockedURLPatterns, forKey: .blockedURLPatterns)
+        if blocksAdultWebsites { try container.encode(true, forKey: .blocksAdultWebsites) }
     }
 
     func validateForPersistence(allowLegacyApplicationIdentity: Bool = false) throws {
@@ -111,7 +120,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         }
         guard
             !blockedDomains.isEmpty || !blockedAdultDomains.isEmpty
-                || !blockedApplications.isEmpty || !blockedURLPatterns.isEmpty
+                || !blockedApplications.isEmpty || !blockedURLPatterns.isEmpty || blocksAdultWebsites
         else {
             throw ProtectedStateError.invalid("Add at least one website or application.")
         }
@@ -264,6 +273,14 @@ struct ProtectedActivation: Codable, Equatable, Sendable {
         )
     }
 
+    mutating func cancelBreakRequest(at reading: ClockReading) throws {
+        guard advance(to: reading) else { throw ProtectedStateError.inactive }
+        guard pendingRequest?.kind == .breakAccess else {
+            throw ProtectedStateError.noPendingBreakRequest
+        }
+        pendingRequest = nil
+    }
+
     @discardableResult
     mutating func advance(to reading: ClockReading) -> Bool {
         accrue(to: reading)
@@ -371,6 +388,11 @@ enum ProtectedBlockPhase: Codable, Equatable, Sendable {
         fullUnlockRemaining: TimeInterval?,
         naturalEndRemaining: TimeInterval?
     )
+
+    var canCancelBreak: Bool {
+        if case .waitingForBreak = self { return true }
+        return false
+    }
 }
 
 struct ProtectedBlockRecord: Codable, Equatable, Identifiable, Sendable {
@@ -413,6 +435,19 @@ struct ProtectedBlockRecord: Codable, Equatable, Identifiable, Sendable {
         revision += 1
     }
 
+    mutating func cancelBreakRequest(at reading: ClockReading) throws {
+        guard var activation else { throw ProtectedStateError.inactive }
+        do {
+            try activation.cancelBreakRequest(at: reading)
+        } catch ProtectedStateError.inactive {
+            self.activation = nil
+            revision += 1
+            throw ProtectedStateError.inactive
+        }
+        self.activation = activation
+        revision += 1
+    }
+
     @discardableResult
     mutating func advance(to reading: ClockReading) -> Bool {
         guard var activation else { return false }
@@ -440,10 +475,46 @@ struct ProtectedState: Codable, Equatable, Sendable {
 
     let schemaVersion: Int
     private(set) var blocks: [ProtectedBlockRecord]
+    private(set) var updateGateToken: UUID?
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case blocks
+        case updateGateToken
+    }
 
     init(blocks: [ProtectedBlockRecord] = []) {
         schemaVersion = Self.currentSchemaVersion
         self.blocks = blocks
+        updateGateToken = nil
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        blocks = try container.decode([ProtectedBlockRecord].self, forKey: .blocks)
+        updateGateToken = try container.decodeIfPresent(UUID.self, forKey: .updateGateToken)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(blocks, forKey: .blocks)
+        try container.encodeIfPresent(updateGateToken, forKey: .updateGateToken)
+    }
+
+    mutating func prepareUpdate(token: UUID) throws {
+        if let updateGateToken {
+            guard updateGateToken == token else { throw ProtectedStateError.updateInProgress }
+            return
+        }
+        updateGateToken = token
+    }
+
+    mutating func cancelUpdate(token: UUID) throws {
+        guard let updateGateToken else { return }
+        guard updateGateToken == token else { throw ProtectedStateError.updateNotOwned }
+        self.updateGateToken = nil
     }
 
     mutating func create(_ draft: ProtectedBlockDraft) throws -> ProtectedBlockRecord {
@@ -485,6 +556,13 @@ struct ProtectedState: Codable, Equatable, Sendable {
             throw ProtectedStateError.blockNotFound
         }
         try blocks[index].request(kind, at: reading)
+    }
+
+    mutating func cancelBreakRequest(id: UUID, at reading: ClockReading) throws {
+        guard let index = blocks.firstIndex(where: { $0.id == id }) else {
+            throw ProtectedStateError.blockNotFound
+        }
+        try blocks[index].cancelBreakRequest(at: reading)
     }
 
     @discardableResult
@@ -719,9 +797,13 @@ enum ProtectedStateError: LocalizedError, Equatable {
     case activeBlockIsImmutable
     case inactive
     case pendingRequestExists
+    case noPendingBreakRequest
     case breakAlreadyActive
     case blockLimitReached
     case aggregateLimitReached
+    case updateUnavailable
+    case updateInProgress
+    case updateNotOwned
 
     var errorDescription: String? {
         switch self {
@@ -731,10 +813,15 @@ enum ProtectedStateError: LocalizedError, Equatable {
         case .activeBlockIsImmutable: return "An active block cannot be changed or deleted."
         case .inactive: return "The block is not active."
         case .pendingRequestExists: return "A request is already waiting and cannot be replaced."
+        case .noPendingBreakRequest: return "There is no pending break request to cancel."
         case .breakAlreadyActive: return "This block is already on a break."
         case .blockLimitReached: return "Hard Pause supports up to 128 saved blocks."
         case .aggregateLimitReached:
             return "The saved blocks contain too many rules for the protection service."
+        case .updateUnavailable:
+            return "The service is not healthy and inactive, so it cannot prepare for an update."
+        case .updateInProgress: return "Another Hard Pause update is already in progress."
+        case .updateNotOwned: return "This update request does not own the service update gate."
         }
     }
 }

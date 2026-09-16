@@ -21,17 +21,21 @@ fail() {
 
 usage() {
     cat >&2 <<'EOF'
-Usage: sudo install-macos-service.sh [--reenroll]
+Usage: sudo install-macos-service.sh [--update | --reenroll]
 
+--update replaces the installed service and CLI while preserving the enrolled
+user and approved code requirements. Every block must be inactive.
 --reenroll replaces the enrolled user and pinned GUI/CLI code requirements.
 EOF
     exit 64
 }
 
 reenroll=0
+update_existing=0
 case "${1:-}" in
     "") ;;
     --reenroll) reenroll=1 ;;
+    --update) update_existing=1 ;;
     *) usage ;;
 esac
 [[ $# -le 1 ]] || usage
@@ -76,11 +80,50 @@ if [[ -e "${enrollment_destination}" ]]; then
         || fail "the existing enrollment is not root-owned"
     managed_install=1
 fi
-if [[ ${managed_install} -eq 1 && ${reenroll} -ne 1 ]]; then
-    fail "an enrollment already exists; use --reenroll only when you intend to replace it"
+if [[ ${update_existing} -eq 1 && ${managed_install} -ne 1 ]]; then
+    fail "--update requires an existing managed enrollment"
+fi
+if [[ ${managed_install} -eq 1 && ${reenroll} -ne 1 && ${update_existing} -ne 1 ]]; then
+    fail "an enrollment already exists; use --update to update code or --reenroll to replace it"
 fi
 if [[ ${managed_install} -eq 1 ]]; then
     /bin/cat "${guidance_source}" >&2
+fi
+
+existing_enrolled_uid=""
+existing_requirements=()
+if [[ ${update_existing} -eq 1 ]]; then
+    existing_schema_version=$(/usr/bin/plutil -extract schemaVersion raw -expect integer -o - \
+        "${enrollment_destination}" 2>/dev/null) \
+        || fail "the existing enrollment schema cannot be read"
+    [[ "${existing_schema_version}" == 1 ]] \
+        || fail "the existing enrollment schema is unsupported"
+    existing_enrolled_uid=$(/usr/bin/plutil -extract enrolledUID raw -expect integer -o - \
+        "${enrollment_destination}" 2>/dev/null) \
+        || fail "the enrolled user cannot be read from the existing enrollment"
+    [[ "${existing_enrolled_uid}" =~ ^[0-9]+$ && "${existing_enrolled_uid}" -gt 0 ]] \
+        || fail "the existing enrollment contains an invalid user"
+    [[ "${existing_enrolled_uid}" == "${sudo_uid}" ]] \
+        || fail "the existing enrollment belongs to a different user"
+
+    /usr/bin/plutil -extract approvedClientRequirements xml1 -expect array -o /dev/null \
+        "${enrollment_destination}" >/dev/null 2>&1 \
+        || fail "the existing enrollment has an invalid code-requirements list"
+    for requirement_index in 0 1 2 3 4 5 6 7; do
+        if requirement=$(/usr/bin/plutil -extract "approvedClientRequirements.${requirement_index}" raw -expect string -o - \
+            "${enrollment_destination}" 2>/dev/null); then
+            [[ -n "${requirement}" ]] || fail "the existing enrollment contains an empty code requirement"
+            existing_requirements+=("${requirement}")
+        else
+            break
+        fi
+    done
+    [[ ${#existing_requirements[@]} -ge 1 ]] \
+        || fail "the existing enrollment has no approved code requirements"
+    if /usr/bin/plutil -extract "approvedClientRequirements.8" raw -expect string -o - "${enrollment_destination}" \
+        >/dev/null 2>&1; then
+        fail "the existing enrollment has too many approved code requirements"
+    fi
 fi
 
 validate_parent() {
@@ -110,6 +153,9 @@ stage=$(/usr/bin/mktemp -d "/tmp/hard-pause-install.XXXXXX")
 rollback_armed=0
 previous_service_loaded=0
 preserve_stage=0
+update_gate_cleanup_needed=0
+update_gate_token=""
+update_gate_token_path="${stage}/update-gate-token"
 managed_destinations=(
     "${service_destination}"
     "${cli_destination}"
@@ -168,11 +214,29 @@ rollback_install() {
     fi
 }
 
+release_update_gate() {
+    [[ ${update_gate_cleanup_needed} -eq 1 ]] || return 0
+    if /bin/launchctl print "system/${label}" >/dev/null 2>&1 \
+        && /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
+            "${cli_source}" cancel-update "${update_gate_token}" \
+            >"${stage}/cancel-update.json" 2>"${stage}/cancel-update.stderr"; then
+        update_gate_cleanup_needed=0
+        return 0
+    fi
+    preserve_stage=1
+    echo "hard-pause installer: the service update gate could not be cancelled." >&2
+    echo "hard-pause installer: the recovery token is retained at ${update_gate_token_path}." >&2
+    return 1
+}
+
 finish_install() {
     local installer_exit_code=$?
     trap - EXIT
     if [[ ${installer_exit_code} -ne 0 && ${rollback_armed} -eq 1 ]]; then
         rollback_install
+    fi
+    if [[ ${installer_exit_code} -ne 0 && ${update_gate_cleanup_needed} -eq 1 ]]; then
+        release_update_gate || true
     fi
     if [[ ${preserve_stage} -eq 0 ]]; then
         /bin/rm -rf -- "${stage}"
@@ -180,6 +244,86 @@ finish_install() {
     exit "${installer_exit_code}"
 }
 trap finish_install EXIT
+
+verify_inactive_snapshot() {
+    local snapshot=$1
+    local plist_snapshot="${snapshot}.plist"
+    local index=0
+    local phase
+    local inactive_keys
+    local is_enforcing
+    local issue_count
+    local contributor_count
+    /usr/bin/sed -E 's/:[[:space:]]*null([,}])/: ""\1/g' "${snapshot}" >"${plist_snapshot}" \
+        || fail "the installed CLI returned an unreadable protected-state list"
+    /usr/bin/plutil -extract blocks xml1 -expect array -o /dev/null "${plist_snapshot}" >/dev/null 2>&1 \
+        || fail "the installed CLI returned an unreadable protected-state list"
+    is_enforcing=$(/usr/bin/plutil -extract protection.isEnforcing raw -expect bool -o - "${plist_snapshot}" 2>/dev/null) \
+        || fail "the installed CLI returned an unreadable protection status"
+    [[ "${is_enforcing}" == true ]] \
+        || fail "the installed CLI reports protection is not enforcing; update stopped"
+    issue_count=$(/usr/bin/plutil -extract protection.issues raw -expect array -o - "${plist_snapshot}" 2>/dev/null) \
+        || fail "the installed CLI returned an unreadable protection issue list"
+    [[ "${issue_count}" == 0 ]] \
+        || fail "the installed CLI reports protection issues; update stopped"
+    contributor_count=$(
+        /usr/bin/plutil -extract effectiveRestrictions.contributingBlockIDs raw -expect array -o - \
+            "${plist_snapshot}" 2>/dev/null
+    ) || fail "the installed CLI returned an unreadable restriction ownership list"
+    [[ "${contributor_count}" == 0 ]] \
+        || fail "the installed CLI reports enforced restrictions; update stopped"
+    while [[ ${index} -lt 128 ]]; do
+        if phase=$(
+            /usr/bin/plutil -extract "blocks.${index}.phase" raw -expect dictionary -o - "${plist_snapshot}" \
+                2>/dev/null
+        ); then
+            [[ "${phase}" == inactive ]] \
+                || fail "the installed CLI reports an active or unknown block; update stopped"
+            inactive_keys=$(/usr/bin/plutil -extract "blocks.${index}.phase.inactive" raw -expect dictionary -o - \
+                "${plist_snapshot}" 2>/dev/null) \
+                || fail "the installed CLI returned an invalid inactive block phase"
+            [[ -z "${inactive_keys}" ]] \
+                || fail "the installed CLI returned an invalid inactive block phase"
+        elif /usr/bin/plutil -extract "blocks.${index}" xml1 -o /dev/null "${plist_snapshot}" >/dev/null 2>&1; then
+            fail "the installed CLI returned a block with an unreadable phase"
+        else
+            return 0
+        fi
+        index=$((index + 1))
+    done
+    if /usr/bin/plutil -extract "blocks.${index}" xml1 -o /dev/null "${plist_snapshot}" >/dev/null 2>&1; then
+        fail "the installed CLI returned too many blocks to verify safely"
+    fi
+}
+
+verify_staged_requirement() {
+    local role=$1
+    local path=$2
+    local requirement
+    for requirement in "${existing_requirements[@]}"; do
+        if /usr/bin/codesign --verify --strict -R="${requirement}" "${path}" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+    fail "the staged ${role} does not satisfy any enrolled code requirement"
+}
+
+verify_existing_inactive_blocks() {
+    local snapshot=$1
+    [[ -x "${cli_destination}" && ! -L "${cli_destination}" ]] \
+        || fail "--update requires the existing installed CLI"
+    /bin/launchctl print "system/${label}" >/dev/null 2>&1 \
+        || fail "--update requires the existing service to be running"
+    local existing_health="${stage}/${snapshot}"
+    /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
+        "${cli_destination}" list >"${existing_health}" 2>"${stage}/${snapshot}.stderr" \
+        || fail "the installed CLI could not authenticate and list protected state; update stopped"
+    verify_inactive_snapshot "${existing_health}"
+}
+
+if [[ ${update_existing} -eq 1 ]]; then
+    verify_existing_inactive_blocks "existing-health-check.json"
+fi
 
 /usr/bin/install -m 0755 "${service_source}" "${stage}/hard-pause-service"
 /usr/bin/install -m 0755 "${cli_source}" "${stage}/hard-pause"
@@ -208,15 +352,20 @@ extract_requirement() {
 
 gui_requirement=$(extract_requirement "${app_bundle}")
 cli_requirement=$(extract_requirement "${stage}/hard-pause")
-enrollment_stage="${stage}/enrollment-v1.json"
-/usr/bin/plutil -create xml1 "${enrollment_stage}"
-/usr/bin/plutil -insert schemaVersion -integer 1 "${enrollment_stage}"
-/usr/bin/plutil -insert enrolledUID -integer "${sudo_uid}" "${enrollment_stage}"
-/usr/bin/plutil -insert approvedClientRequirements -array "${enrollment_stage}"
-/usr/bin/plutil -insert approvedClientRequirements.0 -string "${gui_requirement}" "${enrollment_stage}"
-/usr/bin/plutil -insert approvedClientRequirements.1 -string "${cli_requirement}" "${enrollment_stage}"
-/usr/bin/plutil -convert json "${enrollment_stage}"
-/bin/chmod 0600 "${enrollment_stage}"
+if [[ ${update_existing} -eq 1 ]]; then
+    verify_staged_requirement "GUI" "${app_bundle}"
+    verify_staged_requirement "CLI" "${stage}/hard-pause"
+else
+    enrollment_stage="${stage}/enrollment-v1.json"
+    /usr/bin/plutil -create xml1 "${enrollment_stage}"
+    /usr/bin/plutil -insert schemaVersion -integer 1 "${enrollment_stage}"
+    /usr/bin/plutil -insert enrolledUID -integer "${sudo_uid}" "${enrollment_stage}"
+    /usr/bin/plutil -insert approvedClientRequirements -array "${enrollment_stage}"
+    /usr/bin/plutil -insert approvedClientRequirements.0 -string "${gui_requirement}" "${enrollment_stage}"
+    /usr/bin/plutil -insert approvedClientRequirements.1 -string "${cli_requirement}" "${enrollment_stage}"
+    /usr/bin/plutil -convert json "${enrollment_stage}"
+    /bin/chmod 0600 "${enrollment_stage}"
+fi
 
 /usr/bin/install -d -m 0700 "${stage}/rollback"
 for index in "${!managed_destinations[@]}"; do
@@ -226,6 +375,18 @@ for index in "${!managed_destinations[@]}"; do
         had_previous[index]=1
     fi
 done
+
+if [[ ${update_existing} -eq 1 ]]; then
+    update_gate_token=$(/usr/bin/uuidgen) || fail "could not create an update gate token"
+    /usr/bin/printf '%s\n' "${update_gate_token}" >"${update_gate_token_path}"
+    /bin/chmod 0600 "${update_gate_token_path}"
+    update_gate_cleanup_needed=1
+    /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
+        "${cli_source}" prepare-update "${update_gate_token}" \
+        >"${stage}/update-gate-health-check.json" 2>"${stage}/update-gate-health-check.stderr" \
+        || fail "the installed service could not prepare safely for the update"
+    verify_inactive_snapshot "${stage}/update-gate-health-check.json"
+fi
 
 if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
     [[ ${managed_install} -eq 1 ]] \
@@ -254,7 +415,9 @@ fi
 /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause" "${cli_destination}"
 /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause-uninstall" "${uninstaller_destination}"
 /usr/bin/install -o root -g wheel -m 0644 "${stage}/${label}.plist" "${plist_destination}"
-/usr/bin/install -o root -g wheel -m 0600 "${enrollment_stage}" "${enrollment_destination}"
+if [[ ${update_existing} -eq 0 ]]; then
+    /usr/bin/install -o root -g wheel -m 0600 "${enrollment_stage}" "${enrollment_destination}"
+fi
 /usr/bin/install -o root -g wheel -m 0644 "${stage}/AGENTS.md" "${guidance_destination}"
 /usr/bin/install -o root -g wheel -m 0600 "${stage}/AGENTS.md" "${state_guidance_destination}"
 
@@ -264,11 +427,19 @@ fi
     || fail "launchd could not enable ${label}"
 /bin/launchctl kickstart -k "system/${label}" \
     || fail "launchd could not start ${label}"
-/bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
-    "${cli_destination}" list >"${stage}/health-check.json" \
-    || fail "the installed service did not pass its authenticated health check"
-
-rollback_armed=0
+if [[ ${update_existing} -eq 1 ]]; then
+    rollback_armed=0
+    /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
+        "${cli_destination}" cancel-update "${update_gate_token}" >"${stage}/health-check.json" \
+        || fail "the installed service did not release its update gate"
+    verify_inactive_snapshot "${stage}/health-check.json"
+    update_gate_cleanup_needed=0
+else
+    /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
+        "${cli_destination}" list >"${stage}/health-check.json" \
+        || fail "the installed service did not pass its authenticated health check"
+    rollback_armed=0
+fi
 
 echo "Hard Pause enrolled user ${sudo_user} (${sudo_uid}) and started ${label}."
 echo "Installed CLI: ${cli_destination}"

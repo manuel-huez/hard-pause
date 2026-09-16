@@ -46,13 +46,16 @@ The built app includes the installer, uninstaller, validation script, service ex
 sudo '/path/to/HardPause.app/Contents/Resources/install-macos-service.sh'
 ```
 
-Installation enrolls the current non-root user and the signed requirements of the GUI and command-line tool. The service rejects another user or binary. Re-run the installer only when you intend to replace that enrollment, such as after a signing requirement changes.
+Installation enrolls the current non-root user and the signed requirements of the GUI and command-line tool. The service rejects another user or binary. **Update protection** uses `--update` to retain enrollment and saved plans; all plans must be inactive and protection must report no issues. The installed service must support the update gate, which prevents plan changes until the update finishes and survives service restarts. Older services fail closed. Replacement clients must satisfy the existing signing requirements. Use `--reenroll` only when you intend to replace enrollment, such as after a signing requirement changes.
 
 Do not test installation on a primary Mac until the installer, removal, reboot, and recovery checks pass. The development checks do not install launchd files, change hosts or PF rules, or close real apps.
 
 ## Enforcement boundary
 
-- Each saved host name becomes an exact protected hosts entry. Add required subdomains as separate rules. The bundled adult starter list includes common bare and `www` names, but it is small and incomplete.
+- Each saved host name becomes an exact protected hosts entry. The **Include subdomains** switch adds browser coverage for all subdomains and an exact `www` hosts entry.
+- **Block adult websites** checks a bundled local domain database, refreshed daily from The Block List Project. Updates contain no browsing data; failed or incomplete downloads retain the last valid list. Database matches include subdomains. This category uses browser protection, not system-wide DNS filtering.
+- Chrome and Safari can also read RTA rating meta tags from the current page when **Allow JavaScript from Apple Events** is enabled. No separate page fetch occurs. Firefox uses the domain list and saved ratings but cannot read new RTA tags; RTA response headers are not inspected. Positive RTA page matches are cached locally for 24 hours across restarts, as URL hashes and expiry times in a private file. An RTA page label does not classify its entire host. No filter catches every adult site.
+- iOS retains Apple's automatic web-content filter; this macOS database does not replace it.
 - Literal IPv4 and IPv6 rules use an owned PF child anchor. The service does not resolve domains to CDN addresses, reload the main PF ruleset, flush global state, or disable PF.
 - Selected apps are closed while a contributing block is active. The service checks their signed designated requirements. Closing an app can lose unsaved work and does not prevent an administrator from changing the system.
 - Active block rules stay fixed. A break removes only that block from the effective union; overlapping blocks continue to apply. A fixed duration can end its block before a pending request completes.
