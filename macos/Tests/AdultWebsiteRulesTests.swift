@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import XCTest
 
@@ -7,28 +6,31 @@ final class AdultWebsiteRulesTests: XCTestCase {
         Data(("# Entries: \(domains.count)\n" + domains.joined(separator: "\n") + "\n").utf8)
     }
 
-    func testBundledCompressedDatabaseRoundTripsAndLoadsOffline() async throws {
-        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Resources/AdultWebsites/domains.txt.deflate")
-        let data = try AdultWebsiteDatabase.decompressedBundle(at: source)
-        XCTAssertEqual(data.count, 18_467_911)
-        XCTAssertEqual(
-            SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
-            "5e876678921406025032ac6fa9908cfce98216f6af0f7c0cd8e74a334b232dd4"
-        )
-        let missingCache = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathComponent("domains.txt")
-        let store = AdultWebsiteDatabase(bundleURL: source, cacheURL: missingCache)
-        let loaded = await store.current()
-        let database = try XCTUnwrap(loaded)
-        XCTAssertGreaterThan(database.domains.count, 900_000)
-        XCTAssertTrue(database.contains("pornhub.com"))
-        XCTAssertFalse(database.contains("example.com"))
+    func testValidCacheLoadsWithoutNetwork() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = root.appendingPathComponent("domains.txt")
+        let data = fixture((0..<1_000).map { "site\($0).example" })
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try data.write(to: cache)
+
+        let database = await AdultWebsiteDatabase(cacheURL: cache).current()
+
+        XCTAssertEqual(database?.domains.count, 1_000)
+        XCTAssertTrue(database?.contains("site999.example") == true)
     }
 
-    func testBundledDatabaseRejectsInvalidCompressedData() {
-        XCTAssertThrowsError(try AdultWebsiteDatabase.decompressBundle(Data("not deflate".utf8)))
+    func testFreshInvalidCacheIsRejected() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = root.appendingPathComponent("domains.txt")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("<html>network error</html>".utf8).write(to: cache)
+        let store = AdultWebsiteDatabase(cacheURL: cache)
+
+        let database = await store.current()
+
+        XCTAssertNil(database)
     }
 
     func testDatabaseMatchesWholeLabelsOnly() throws {
@@ -169,7 +171,7 @@ final class AdultWebsiteRulesTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let file = root.appendingPathComponent("domains.txt")
-        let store = AdultWebsiteDatabase(bundleURL: nil, cacheURL: file)
+        let store = AdultWebsiteDatabase(cacheURL: file)
         let original = fixture((0..<2_000).map { "site\($0).example" })
         try await store.install(data: original)
         do {
@@ -185,7 +187,7 @@ final class AdultWebsiteRulesTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let cache = root.appendingPathComponent("domains.txt")
-        let store = AdultWebsiteDatabase(bundleURL: nil, cacheURL: cache)
+        let store = AdultWebsiteDatabase(cacheURL: cache)
         let data = fixture((0..<1_000).map { "site\($0).example" })
         try await store.install(data: data)
         do {
@@ -195,7 +197,7 @@ final class AdultWebsiteRulesTests: XCTestCase {
         let current = await store.current()
         XCTAssertTrue(current?.contains("site999.example") == true)
         XCTAssertEqual(try Data(contentsOf: cache), data)
-        let reopened = AdultWebsiteDatabase(bundleURL: nil, cacheURL: cache)
+        let reopened = AdultWebsiteDatabase(cacheURL: cache)
         let restored = await reopened.current()
         XCTAssertEqual(restored?.domains.count, 1_000)
     }

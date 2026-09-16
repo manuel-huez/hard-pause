@@ -1,26 +1,16 @@
-import Compression
 import Foundation
 
 /// Downloads the same public file for everyone. Visited addresses never enter this actor.
 actor AdultWebsiteDatabase {
     static let source = URL(string: "https://blocklistproject.github.io/Lists/alt-version/porn-nl.txt")!
-    private let bundleURL: URL?
     private let cacheURL: URL
     private var loaded = false
     private var database: AdultDomainDatabase?
     private var lastAttempt = Date.distantPast
     private var refreshTask: Task<Void, Never>?
-    private(set) var status = "Loading local adult website list…"
+    private(set) var status = "Checking saved adult website list…"
 
-    init(
-        bundleURL: URL? = Bundle.main.url(
-            forResource: "domains.txt",
-            withExtension: "deflate",
-            subdirectory: "AdultWebsites"
-        ),
-        cacheURL: URL? = nil
-    ) {
-        self.bundleURL = bundleURL
+    init(cacheURL: URL? = nil) {
         self.cacheURL =
             cacheURL
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -32,55 +22,25 @@ actor AdultWebsiteDatabase {
             loaded = true
             if let data = Self.plainData(at: cacheURL), let parsed = try? AdultDomainDatabase(data: data) {
                 database = parsed
-            } else if let bundleURL, let data = try? Self.decompressedBundle(at: bundleURL),
-                let parsed = try? AdultDomainDatabase(data: data)
-            {
-                database = parsed
             }
             status =
                 if let database {
                     "\(database.domains.count.formatted()) domains · local checks"
                 } else {
-                    "Adult website list unavailable. RTA checks remain available."
+                    "Adult website list not downloaded yet."
                 }
         }
         return database
     }
 
-    static func decompressedBundle(at url: URL) throws -> Data {
-        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-            size <= AdultDomainDatabase.maximumBytes
-        else { throw AdultDatabaseError.invalidData }
-        return try decompressBundle(Data(contentsOf: url, options: .mappedIfSafe))
-    }
-
-    static func decompressBundle(_ compressed: Data) throws -> Data {
-        guard !compressed.isEmpty, compressed.count <= AdultDomainDatabase.maximumBytes else {
-            throw AdultDatabaseError.invalidData
-        }
-        var decompressed = Data()
-        do {
-            let filter = try OutputFilter(.decompress, using: .zlib) { chunk in
-                guard let chunk else { return }
-                guard chunk.count <= AdultDomainDatabase.maximumBytes - decompressed.count else {
-                    throw AdultDatabaseError.invalidData
-                }
-                decompressed.append(chunk)
-            }
-            try filter.write(compressed)
-            try filter.finalize()
-        } catch {
-            throw AdultDatabaseError.invalidData
-        }
-        guard !decompressed.isEmpty else { throw AdultDatabaseError.invalidData }
-        return decompressed
-    }
-
     func refreshIfNeeded(force: Bool = false) {
         _ = current()
-        guard refreshTask == nil, force || Date().timeIntervalSince(lastAttempt) >= 3_600 else { return }
+        let retryInterval: TimeInterval = database == nil ? 60 : 3_600
+        guard refreshTask == nil, force || Date().timeIntervalSince(lastAttempt) >= retryInterval else { return }
         let modified = (try? cacheURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        guard force || modified == nil || Date().timeIntervalSince(modified!) >= 86_400 else { return }
+        guard force || database == nil || modified == nil || Date().timeIntervalSince(modified!) >= 86_400 else {
+            return
+        }
         lastAttempt = Date()
         status =
             database == nil ? "Downloading adult website list…" : "Updating website list · local checks remain active"
@@ -126,7 +86,7 @@ actor AdultWebsiteDatabase {
         } catch {
             status =
                 database == nil
-                ? "Adult website list unavailable. RTA checks remain available."
+                ? "Adult website list unavailable. Retrying automatically."
                 : "\(database!.domains.count.formatted()) domains · update failed; using saved list"
         }
     }

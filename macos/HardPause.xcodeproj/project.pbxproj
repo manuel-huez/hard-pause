@@ -30,7 +30,6 @@
 		1BA1EB905DBED60099A4D88F /* ProtectedServiceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67932AFAB8002B6016394A3 /* ProtectedServiceEngine.swift */; };
 		1CFF81DCB16B1D6A363EB17F /* LocalPausePageServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CE020B75644E033DA2B68E /* LocalPausePageServer.swift */; };
 		1D1BAA8F84E08006B10CF6F4 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
-		1D50B5AC0EC72E020D9ED618 /* AdultWebsites in Resources */ = {isa = PBXBuildFile; fileRef = 05B1318E9F984FF012C1F55A /* AdultWebsites */; };
 		20F45CFF8C35A4E693083AAB /* AgentCommitmentGuidance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */; };
 		271780DEEA027871BD257E4A /* ServiceSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07578D74BB9C3F153392F59 /* ServiceSupport.swift */; };
 		2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515D0ACE76FFE733C3585779 /* HardPauseApp.swift */; };
@@ -136,7 +135,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		05B1318E9F984FF012C1F55A /* AdultWebsites */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AdultWebsites; path = Resources/AdultWebsites; sourceTree = SOURCE_ROOT; };
 		10FAA4EF0128CE063FB7AC7C /* Recursive.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Recursive.ttf; sourceTree = "<group>"; };
 		14A1729B8F0309D32FF35968 /* ProtectedRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedRules.swift; sourceTree = "<group>"; };
 		15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserURLMatcher.swift; sourceTree = "<group>"; };
@@ -346,7 +344,6 @@
 		BB64F0CE409913EE67F6E000 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				05B1318E9F984FF012C1F55A /* AdultWebsites */,
 				A132D52C40502F34307579F9 /* BlockedPage */,
 				1A97B9164197B452C7956E60 /* PrivacyInfo.xcprivacy */,
 			);
@@ -597,7 +594,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				40B01687BD87C09E359882A9 /* AGENTS.md in Resources */,
-				1D50B5AC0EC72E020D9ED618 /* AdultWebsites in Resources */,
 				7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */,
 				F840DB0305648A2860A3684B /* BlockedPage in Resources */,
 				4498954D0B4C85B7117832BF /* PrivacyInfo.xcprivacy in Resources */,

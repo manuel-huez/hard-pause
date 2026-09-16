@@ -25,8 +25,8 @@ final class AppModel: ObservableObject {
     private let browserProtection = BrowserProtection()
     @Published private(set) var adultDatabaseStatus = "Loading local adult website list…"
 
-    func refreshAdultDatabase() async {
-        await browserProtection.refreshAdultDatabase()
+    func refreshAdultDatabase(force: Bool = true) async {
+        await browserProtection.refreshAdultDatabase(force: force)
         adultDatabaseStatus = browserProtection.adultDatabaseStatus
     }
     private let setupProbe: (@MainActor () async -> SetupAccessState)?
@@ -77,6 +77,7 @@ final class AppModel: ObservableObject {
         self.setupProbe = setupProbe
         guard automaticallyRefreshes else { return }
         Task {
+            await refreshAdultDatabase(force: false)
             await refresh()
             await refreshSetup()
         }
@@ -196,7 +197,8 @@ final class AppModel: ObservableObject {
     private func adultFilterReady(for rules: ProtectedRules) async -> Bool {
         guard rules.blocksAdultWebsites else { return true }
         guard await browserProtection.hasAdultDatabase() else {
-            errorMessage = "The adult website list is unavailable. Update it in Settings before starting this plan."
+            errorMessage =
+                "The adult website list must finish downloading before this plan can start. Check the download in Settings."
             return false
         }
         return true

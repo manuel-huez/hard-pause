@@ -17,8 +17,8 @@ final class BrowserProtection: ObservableObject {
 
     func hasAdultDatabase() async -> Bool { await adultDatabase.current() != nil }
 
-    func refreshAdultDatabase() async {
-        await adultDatabase.refreshIfNeeded(force: true)
+    func refreshAdultDatabase(force: Bool = true) async {
+        await adultDatabase.refreshIfNeeded(force: force)
         adultDatabaseStatus = await adultDatabase.status
         if adultRatings.saveFailed { adultDatabaseStatus += " · RTA cache could not be saved" }
     }
@@ -99,15 +99,13 @@ final class BrowserProtection: ObservableObject {
         guard !isChecking else { return }
         isChecking = true
         defer { isChecking = false }
+        await refreshAdultDatabase(force: false)
         guard let snapshot else {
             for browser in Self.browsers { statuses[browser.id] = "Waiting for the protection service." }
             return
         }
         let rules = BrowserURLMatcher.rules(from: snapshot)
         let database = await adultDatabase.current()
-        await adultDatabase.refreshIfNeeded()
-        adultDatabaseStatus = await adultDatabase.status
-        if adultRatings.saveFailed { adultDatabaseStatus += " · RTA cache could not be saved" }
         pageServer.start()
         guard let page = pageServer.pageURL else {
             for browser in Self.browsers {

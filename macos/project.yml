@@ -33,9 +33,6 @@ targets:
         buildPhase: resources
       - path: Resources/PrivacyInfo.xcprivacy
         buildPhase: resources
-      - path: Resources/AdultWebsites
-        type: folder
-        buildPhase: resources
       - path: Resources/BlockedPage
         type: folder
         buildPhase: resources
