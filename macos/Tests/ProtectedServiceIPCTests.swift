@@ -87,4 +87,53 @@ final class ProtectedServiceIPCTests: XCTestCase {
         XCTAssertLessThanOrEqual(status.issues[0].code.utf8.count, 64)
         XCTAssertLessThanOrEqual(status.issues[0].message.utf8.count, 256)
     }
+
+    func testAppleLockdownSnapshotContainsNoCredentialField() throws {
+        let snapshot = AppleLockdownSnapshot(
+            phase: .pendingSetup,
+            fullUnlockDelay: 3_600,
+            remainingDelay: nil,
+            enablesAdultFilter: true,
+            filterWasAlreadyEnabled: false,
+            shareAcrossDevicesVerified: nil,
+            operationID: UUID()
+        )
+
+        let encoded = try ProtectedServiceCodec.encode(snapshot) as Data
+        let text = String(decoding: encoded, as: UTF8.self)
+
+        XCTAssertFalse(text.contains("passcode"))
+        XCTAssertFalse(text.contains("credential"))
+    }
+
+    func testAppleLockdownCredentialDescriptionRedactsPasscode() {
+        let snapshot = AppleLockdownSnapshot(
+            phase: .pendingSetup,
+            fullUnlockDelay: 3_600,
+            remainingDelay: nil,
+            enablesAdultFilter: false,
+            filterWasAlreadyEnabled: false,
+            shareAcrossDevicesVerified: false,
+            operationID: UUID()
+        )
+        let operation = AppleLockdownCredentialOperation(
+            operationID: snapshot.operationID!,
+            passcode: "4820",
+            snapshot: snapshot
+        )
+
+        XCTAssertFalse(String(describing: operation).contains("4820"))
+        XCTAssertTrue(String(describing: operation).contains("<redacted>"))
+    }
+
+    func testSafeUpdateVersionsAllowV4MigrationAndRejectUnknownVersions() {
+        XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "4"))
+        XCTAssertTrue(
+            ProtectedServiceContract.supportsSafeUpdate(
+                from: ProtectedServiceContract.serviceVersion
+            )
+        )
+        XCTAssertFalse(ProtectedServiceContract.supportsSafeUpdate(from: "3"))
+        XCTAssertFalse(ProtectedServiceContract.supportsSafeUpdate(from: ""))
+    }
 }

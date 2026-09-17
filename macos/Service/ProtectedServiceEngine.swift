@@ -114,8 +114,17 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         }
     }
 
-    func activate(_ request: ProtectedRevisionRequest) throws -> ProtectedServiceSnapshot {
+    func activate(
+        _ request: ProtectedRevisionRequest,
+        appleLockdownActive: Bool = false
+    ) throws -> ProtectedServiceSnapshot {
         try mutate { state, reading in
+            if state.blocks.first(where: { $0.id == request.id })?.draft.protectionMode
+                == .lockdown,
+                !appleLockdownActive
+            {
+                throw AppleLockdownError.protectionNotActive
+            }
             try state.activate(
                 id: request.id,
                 expectedRevision: request.expectedRevision,
@@ -279,7 +288,15 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         let oldRestrictions = state.effectiveRestrictions()
         let candidateRestrictions = candidate.effectiveRestrictions()
         let stagedRestrictions = oldRestrictions.union(candidateRestrictions)
-        let needsPrecommitApply = stagedRestrictions != oldRestrictions
+        let plan = PauseCoreTransactionPlan(
+            requiresSchedulePrerequisite: false,
+            hasTightening: stagedRestrictions != oldRestrictions,
+            intentFailurePolicy: durableIntentRequiredBeforeTightening ? .stop : .continueForSafety,
+            savesCandidate: saveRequired,
+            hasRelaxation: candidateRestrictions != stagedRestrictions
+        )
+        let stages = plan.orderedStages
+        let needsPrecommitApply = stages.contains(.applyTightening)
         var stagedOutcome = EnforcementOutcome.success
         var intentWasSaved = false
 
@@ -293,7 +310,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
                     message: error.localizedDescription,
                     blockIDs: stagedRestrictions.contributingBlockIDs
                 )
-                if durableIntentRequiredBeforeTightening { throw error }
+                if plan.intentFailurePolicy == .stop { throw error }
             }
             do {
                 stagedOutcome = try enforcer.apply(stagedRestrictions, state: candidate, at: reading.wallTime)
@@ -316,7 +333,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         }
 
         do {
-            if saveRequired { try stateStore.save(candidate) }
+            if stages.contains(.saveCandidate) { try stateStore.save(candidate) }
         } catch {
             pendingSafetyProjection = SafetyProjection(
                 restrictions: stagedRestrictions,
@@ -351,7 +368,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
                 throw error
             }
         }
-        if candidateRestrictions != stagedRestrictions {
+        if stages.contains(.applyRelaxation) {
             do {
                 let outcome = try enforcer.apply(
                     candidateRestrictions,

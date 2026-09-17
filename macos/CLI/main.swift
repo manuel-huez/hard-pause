@@ -23,11 +23,11 @@ private enum CLIError: LocalizedError {
     }
 }
 
-private final class CLIReplyBox: @unchecked Sendable {
+private final class CLIReplyBox<Value>: @unchecked Sendable {
     private let lock = NSLock()
-    private var stored: Result<ProtectedServiceSnapshot, Error>?
+    private var stored: Result<Value, Error>?
 
-    func finish(_ result: Result<ProtectedServiceSnapshot, Error>) -> Bool {
+    func finish(_ result: Result<Value, Error>) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         guard stored == nil else { return false }
@@ -35,7 +35,7 @@ private final class CLIReplyBox: @unchecked Sendable {
         return true
     }
 
-    var result: Result<ProtectedServiceSnapshot, Error>? {
+    var result: Result<Value, Error>? {
         lock.lock()
         defer { lock.unlock() }
         return stored
@@ -102,9 +102,17 @@ private final class ProtectedServiceCLIClient {
         return try perform { service, reply in service.cancelUpdate(payload, withReply: reply) }
     }
 
+    func appleLockdownStatus() throws -> AppleLockdownSnapshot {
+        let reply = try performApple { service, callback in
+            service.appleLockdownStatus(withReply: callback)
+        }
+        guard let snapshot = reply.snapshot else { throw CLIError.invalidReply }
+        return snapshot
+    }
+
     private func requireCurrentServiceVersion() throws {
         let installedVersion = try list().protection.serviceVersion
-        guard installedVersion == ProtectedServiceContract.serviceVersion else {
+        guard ProtectedServiceContract.supportsSafeUpdate(from: installedVersion) else {
             throw CLIError.service(
                 "The installed Hard Pause service does not support safe updates."
             )
@@ -114,7 +122,7 @@ private final class ProtectedServiceCLIClient {
     private func perform(
         _ operation: (ProtectedServiceXPC, @escaping (NSData) -> Void) -> Void
     ) throws -> ProtectedServiceSnapshot {
-        let box = CLIReplyBox()
+        let box = CLIReplyBox<ProtectedServiceSnapshot>()
         let completed = DispatchSemaphore(value: 0)
         let finish: @Sendable (Result<ProtectedServiceSnapshot, Error>) -> Void = { result in
             if box.finish(result) { completed.signal() }
@@ -136,6 +144,44 @@ private final class ProtectedServiceCLIClient {
                     finish(.failure(CLIError.service(error.message)))
                 } else {
                     finish(.failure(CLIError.invalidReply))
+                }
+            } catch {
+                finish(.failure(error))
+            }
+        }
+        guard completed.wait(timeout: .now() + 5) == .success else {
+            throw CLIError.timedOut
+        }
+        guard let result = box.result else { throw CLIError.invalidReply }
+        return try result.get()
+    }
+
+    private func performApple(
+        _ operation: (ProtectedServiceXPC, @escaping (NSData) -> Void) -> Void
+    ) throws -> AppleLockdownServiceReply {
+        let box = CLIReplyBox<AppleLockdownServiceReply>()
+        let completed = DispatchSemaphore(value: 0)
+        let finish: @Sendable (Result<AppleLockdownServiceReply, Error>) -> Void = { result in
+            if box.finish(result) { completed.signal() }
+        }
+        guard
+            let service = connection.remoteObjectProxyWithErrorHandler({ error in
+                finish(.failure(CLIError.connection(error.localizedDescription)))
+            }) as? ProtectedServiceXPC
+        else {
+            throw CLIError.connection("The Hard Pause service interface is unavailable.")
+        }
+
+        operation(service) { data in
+            do {
+                let reply = try ProtectedServiceCodec.decode(
+                    AppleLockdownServiceReply.self,
+                    from: data
+                )
+                if let error = reply.error {
+                    finish(.failure(CLIError.service(error.message)))
+                } else {
+                    finish(.success(reply))
                 }
             } catch {
                 finish(.failure(error))
@@ -281,6 +327,10 @@ private func run() throws {
         let current = try client.list()
         let activeNames = activeBlockNames(in: current)
         guard activeNames.isEmpty else { throw CLIError.uninstallBlocked(activeNames) }
+        let appleLockdown = try client.appleLockdownStatus()
+        guard appleLockdown.phase == .inactive else {
+            throw CLIError.uninstallBlocked(["Screen Time protection"])
+        }
         print("Hard Pause protection is inactive. The service can be removed.")
         return
     default:

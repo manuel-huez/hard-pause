@@ -1,0 +1,298 @@
+import Foundation
+import XCTest
+
+final class AppleProtectionEngineTests: XCTestCase {
+    func testSetupPersistsIntentAndReadsCredentialBackBeforeReturning() throws {
+        let events = TestEventLog()
+        let store = FakeAppleLockdownStateStore(events: events)
+        let vault = FakeAppleLockdownVault(events: events)
+        let engine = try AppleLockdownEngine(
+            stateStore: store,
+            credentialVault: vault,
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(["4820"]),
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+
+        let operation = try engine.beginSetup(setupRequest())
+
+        XCTAssertEqual(operation.passcode, "4820")
+        XCTAssertEqual(operation.snapshot.phase, .pendingSetup)
+        XCTAssertEqual(
+            events.values,
+            [
+                "save-apple-state:provisioningSetup",
+                "read-credential",
+                "save-credential",
+                "read-credential",
+                "save-apple-state:pendingSetup",
+            ]
+        )
+        let encodedState = try JSONEncoder().encode(store.persisted)
+        XCTAssertFalse(String(decoding: encodedState, as: UTF8.self).contains("4820"))
+        let encodedSnapshot = try JSONEncoder().encode(operation.snapshot)
+        XCTAssertFalse(String(decoding: encodedSnapshot, as: UTF8.self).contains("4820"))
+    }
+
+    func testSetupDoesNotCreateCredentialBeforeDurableIntent() throws {
+        let store = FakeAppleLockdownStateStore()
+        store.saveFailures = 1
+        let vault = FakeAppleLockdownVault()
+        let engine = try AppleLockdownEngine(
+            stateStore: store,
+            credentialVault: vault,
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(),
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+
+        XCTAssertThrowsError(try engine.beginSetup(setupRequest()))
+        XCTAssertTrue(vault.values.isEmpty)
+        XCTAssertEqual(store.persisted.phase, .inactive)
+    }
+
+    func testPendingSetupResumesWithSameCredentialAfterRestart() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let first = try AppleLockdownEngine(
+            stateStore: store,
+            credentialVault: vault,
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(["4820"]),
+            clock: clock
+        )
+        let initial = try first.beginSetup(setupRequest())
+        let restarted = try AppleLockdownEngine(
+            stateStore: store,
+            credentialVault: vault,
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(["9999"]),
+            clock: clock
+        )
+
+        let resumed = try restarted.resumeSetup(
+            AppleLockdownOperationRequest(operationID: initial.operationID)
+        )
+
+        XCTAssertEqual(resumed.passcode, "4820")
+        XCTAssertEqual(resumed.operationID, initial.operationID)
+    }
+
+    func testSetupCannotCompleteAfterCredentialDisappears() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let engine = try AppleLockdownEngine(
+            stateStore: store,
+            credentialVault: vault,
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(["4820"]),
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+        let setup = try engine.beginSetup(setupRequest())
+        vault.values.removeAll()
+
+        XCTAssertThrowsError(
+            try engine.completeSetup(
+                AppleLockdownOperationRequest(operationID: setup.operationID)
+            )
+        ) { error in
+            XCTAssertEqual(error as? AppleLockdownError, .credentialUnavailable)
+        }
+        XCTAssertEqual(store.persisted.phase, .pendingSetup)
+    }
+
+    func testPendingSetupCannotDeleteCredentialThroughCancellationEndpoint() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let engine = try AppleLockdownEngine(
+            stateStore: store,
+            credentialVault: vault,
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(["4820"]),
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+        let setup = try engine.beginSetup(setupRequest())
+
+        XCTAssertThrowsError(
+            try engine.confirmSetupNotApplied(
+                AppleLockdownOperationRequest(operationID: setup.operationID)
+            )
+        ) { error in
+            XCTAssertEqual(error as? AppleLockdownError, .setupCancellationUnavailable)
+        }
+        XCTAssertEqual(store.persisted.phase, .pendingSetup)
+        XCTAssertEqual(vault.values.values.first, "4820")
+    }
+
+    func testReleaseNeedsVerifiedElapsedTimeAndInactiveHealthyNormalProtection() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try configuredEngine(store: store, vault: vault, clock: clock)
+        _ = try engine.requestEnd()
+
+        clock.reading = serviceTestReading(120, boot: "boot-b")
+        XCTAssertEqual(try engine.status().remainingDelay, 60)
+        clock.reading = serviceTestReading(180, boot: "boot-b")
+        XCTAssertEqual(try engine.status().phase, .readyForRelease)
+
+        XCTAssertThrowsError(
+            try engine.beginRelease(normalProtectionIsInactiveAndHealthy: false)
+        ) { error in
+            XCTAssertEqual(
+                error as? AppleLockdownError,
+                .normalProtectionActiveOrUnhealthy
+            )
+        }
+        XCTAssertEqual(store.persisted.phase, .waitingForFullUnlock)
+
+        let release = try engine.beginRelease(normalProtectionIsInactiveAndHealthy: true)
+        XCTAssertEqual(release.passcode, "4820")
+        XCTAssertEqual(release.snapshot.phase, .releaseInProgress)
+        XCTAssertFalse(vault.values.isEmpty)
+
+        let completed = try engine.completeRelease(
+            AppleLockdownOperationRequest(operationID: release.operationID)
+        )
+        XCTAssertEqual(completed.phase, .inactive)
+        XCTAssertTrue(vault.values.isEmpty)
+    }
+
+    func testUnverifiedNativeReleaseKeepsCredential() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try configuredEngine(store: store, vault: vault, clock: clock)
+        _ = try engine.requestEnd()
+        clock.reading = serviceTestReading(60)
+
+        _ = try engine.beginRelease(normalProtectionIsInactiveAndHealthy: true)
+
+        XCTAssertEqual(store.persisted.phase, .releaseInProgress)
+        XCTAssertFalse(vault.values.isEmpty)
+        XCTAssertThrowsError(try engine.requireSafeMaintenance())
+    }
+
+    func testReleaseCleanupFailureKeepsDurableRecoveryStateAndCredential() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try configuredEngine(store: store, vault: vault, clock: clock)
+        _ = try engine.requestEnd()
+        clock.reading = serviceTestReading(60)
+        let release = try engine.beginRelease(normalProtectionIsInactiveAndHealthy: true)
+        vault.deleteFailures = 1
+
+        XCTAssertThrowsError(
+            try engine.completeRelease(
+                AppleLockdownOperationRequest(operationID: release.operationID)
+            )
+        )
+        XCTAssertEqual(store.persisted.phase, .completingRelease)
+        XCTAssertFalse(vault.values.isEmpty)
+
+        XCTAssertEqual(try engine.status().phase, .inactive)
+        XCTAssertTrue(vault.values.isEmpty)
+    }
+
+    func testLockdownPlanActivationRequiresConfirmedScreenTimeProtection() throws {
+        let stateStore = FakeProtectedStateStore()
+        let protectedEngine = try ProtectedServiceEngine(
+            stateStore: stateStore,
+            enforcer: FakeProtectionEnforcer(),
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+        let snapshot = try protectedEngine.create(
+            ProtectedCreateRequest(
+                draft: serviceTestDraft(protectionMode: .lockdown)
+            )
+        )
+        let block = try XCTUnwrap(snapshot.blocks.first)
+        let request = ProtectedRevisionRequest(id: block.id, expectedRevision: block.revision)
+
+        XCTAssertThrowsError(try protectedEngine.activate(request)) { error in
+            XCTAssertEqual(error as? AppleLockdownError, .protectionNotActive)
+        }
+        XCTAssertNoThrow(
+            try protectedEngine.activate(request, appleLockdownActive: true)
+        )
+    }
+
+    func testEndpointBlocksNewActivationAfterReleaseCredentialIsAuthorized() throws {
+        let normalClock = FakeServiceClock(serviceTestReading(0))
+        let protectedEngine = try ProtectedServiceEngine(
+            stateStore: FakeProtectedStateStore(),
+            enforcer: FakeProtectionEnforcer(),
+            clock: normalClock
+        )
+        let created = try protectedEngine.create(
+            ProtectedCreateRequest(draft: serviceTestDraft())
+        )
+        let block = try XCTUnwrap(created.blocks.first)
+        let appleStore = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let appleClock = FakeServiceClock(serviceTestReading(0))
+        let appleEngine = try configuredEngine(
+            store: appleStore,
+            vault: vault,
+            clock: appleClock
+        )
+        _ = try appleEngine.requestEnd()
+        appleClock.reading = serviceTestReading(60)
+        let endpoint = ProtectedServiceEndpoint(
+            engine: protectedEngine,
+            appleLockdown: appleEngine,
+            coordinator: ProtectedServiceCoordinator()
+        )
+        var releaseReply: AppleLockdownServiceReply?
+        endpoint.beginAppleLockdownRelease { data in
+            releaseReply = try? ProtectedServiceCodec.decode(
+                AppleLockdownServiceReply.self,
+                from: data
+            )
+        }
+        XCTAssertNotNil(releaseReply?.credential)
+
+        let activation = try ProtectedServiceCodec.encode(
+            ProtectedRevisionRequest(id: block.id, expectedRevision: block.revision)
+        )
+        var activationReply: ProtectedServiceReply?
+        endpoint.activate(activation) { data in
+            activationReply = try? ProtectedServiceCodec.decode(
+                ProtectedServiceReply.self,
+                from: data
+            )
+        }
+
+        XCTAssertNil(activationReply?.snapshot)
+        XCTAssertEqual(activationReply?.error?.message, AppleLockdownError.releaseInProgress.localizedDescription)
+        XCTAssertTrue(
+            protectedEngine.list().blocks.allSatisfy {
+                if case .inactive = $0.phase { return true }
+                return false
+            }
+        )
+    }
+
+    private func configuredEngine(
+        store: FakeAppleLockdownStateStore,
+        vault: FakeAppleLockdownVault,
+        clock: FakeServiceClock
+    ) throws -> AppleLockdownEngine {
+        let engine = try AppleLockdownEngine(
+            stateStore: store,
+            credentialVault: vault,
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(["4820"]),
+            clock: clock
+        )
+        let setup = try engine.beginSetup(setupRequest())
+        _ = try engine.completeSetup(
+            AppleLockdownOperationRequest(operationID: setup.operationID)
+        )
+        return engine
+    }
+
+    private func setupRequest() -> AppleLockdownSetupRequest {
+        AppleLockdownSetupRequest(
+            fullUnlockDelay: 60,
+            enablesAdultFilter: true,
+            filterWasAlreadyEnabled: false,
+            shareAcrossDevicesVerified: nil
+        )
+    }
+}

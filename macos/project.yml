@@ -19,6 +19,10 @@ targets:
     sources:
       - App
       - Core
+      - ../core/Sources/PauseCore
+      - path: ../data/adult-domains
+        type: folder
+        buildPhase: resources
       - ../ios/App/Theme.swift
       - ../ios/App/PauseSeed.swift
       - ../ios/App/CaretTrackingTextField.swift
@@ -93,6 +97,7 @@ targets:
     sources:
       - Service
       - Core
+      - ../core/Sources/PauseCore
     settings:
       base:
         PRODUCT_NAME: hard-pause-service
@@ -109,6 +114,7 @@ targets:
     sources:
       - CLI
       - Core
+      - ../core/Sources/PauseCore
     settings:
       base:
         PRODUCT_NAME: hard-pause
@@ -121,7 +127,10 @@ targets:
     sources:
       - Tests
       - Core
+      - ../core/Sources/PauseCore
       - App/AppModel.swift
+      - App/AppleProtectionModel.swift
+      - App/AppleScreenTimeAutomation.swift
       - App/SetupReadiness.swift
       - App/ServiceInstaller.swift
       - App/AdultRatingStore.swift
@@ -144,6 +153,7 @@ targets:
         excludes:
           - main.swift
       - Core
+      - ../core/Sources/PauseCore
       - ServiceTests
     settings:
       base:

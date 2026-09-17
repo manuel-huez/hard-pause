@@ -25,6 +25,7 @@ final class LockControllerTests: XCTestCase {
             controller.createBlock()
             let createdID = try XCTUnwrap(controller.selectedBlockID)
             XCTAssertNotEqual(createdID, originalID)
+            XCTAssertEqual(try repository.load().block(id: createdID)?.draftPolicy.preventsAppRemoval, true)
 
             controller.draftName = "Deep work"
             XCTAssertEqual(try repository.load().block(id: createdID)?.name, "Deep work")
@@ -32,6 +33,85 @@ final class LockControllerTests: XCTestCase {
             controller.deleteSelectedBlock()
             XCTAssertNil(try repository.load().block(id: createdID))
             XCTAssertEqual(controller.selectedBlockID, originalID)
+        }
+    }
+
+    func testCreateAndStartStoresConfiguredProtectionAtomically() throws {
+        try withController { controller, repository, _ in
+            var policy = LockPolicy()
+            policy.manualDomains = ["example.com"]
+            policy.preventsAppRemoval = true
+            policy.requiresAutomaticDateAndTime = true
+            policy.fullUnlockDelay = 86_400
+
+            let id = try XCTUnwrap(
+                controller.createBlock(name: "Deep work", policy: policy, activate: true)
+            )
+
+            let stored = try XCTUnwrap(repository.load().block(id: id))
+            XCTAssertEqual(stored.name, "Deep work")
+            XCTAssertEqual(stored.state.phase, .locked)
+            XCTAssertEqual(stored.state.policy.preventsAppRemoval, true)
+            XCTAssertEqual(stored.state.policy.requiresAutomaticDateAndTime, true)
+            XCTAssertEqual(stored.state.policy.fullUnlockDelay, 86_400)
+        }
+    }
+
+    func testUpdateRejectsAnActivePlanAndPreservesFrozenRules() throws {
+        try withController { controller, repository, _ in
+            controller.draftName = "Study"
+            controller.activate()
+            let id = try XCTUnwrap(controller.selectedBlockID)
+            let before = try XCTUnwrap(repository.load().block(id: id))
+            var replacement = before.draftPolicy
+            replacement.preventsAppRemoval.toggle()
+
+            XCTAssertFalse(controller.updateBlock(id: id, name: "Changed", policy: replacement))
+
+            let after = try XCTUnwrap(repository.load().block(id: id))
+            XCTAssertEqual(after, before)
+            XCTAssertNotNil(controller.errorMessage)
+        }
+    }
+
+    func testCancelBreakRequestReturnsPlanToBlocking() throws {
+        try withController { controller, repository, _ in
+            controller.activate()
+            let id = try XCTUnwrap(controller.selectedBlockID)
+            controller.requestBreak(blockID: id)
+            XCTAssertEqual(try repository.load().block(id: id)?.state.phase, .waitingForBreak)
+
+            controller.cancelBreakRequest(blockID: id)
+
+            XCTAssertEqual(try repository.load().block(id: id)?.state.phase, .locked)
+            XCTAssertNil(try repository.load().block(id: id)?.state.nextTransitionAt)
+        }
+    }
+
+    func testCreateRejectsNonFiniteDurationBeforeSaving() throws {
+        try withController { controller, repository, _ in
+            var policy = LockPolicy()
+            policy.waitDuration = .nan
+            let before = try repository.load()
+
+            XCTAssertNil(controller.createBlock(name: "Invalid", policy: policy, activate: false))
+
+            XCTAssertEqual(try repository.load(), before)
+            XCTAssertEqual(controller.errorMessage, LockPolicyError.invalidDuration.localizedDescription)
+        }
+    }
+
+    func testManualDomainEntryDoesNotBroadenAURLPath() throws {
+        try withController { controller, _, _ in
+            let before = controller.draftPolicy.manualDomains
+
+            XCTAssertFalse(controller.addManualDomain("example.com/private"))
+
+            XCTAssertEqual(controller.draftPolicy.manualDomains, before)
+            XCTAssertEqual(
+                controller.errorMessage,
+                "Enter a whole domain such as example.com. Paths, ports, query text, and wildcards are not supported."
+            )
         }
     }
 

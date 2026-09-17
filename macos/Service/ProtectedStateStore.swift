@@ -11,7 +11,11 @@ protocol ProtectedStateStoring: AnyObject {
 }
 
 enum OfflineServiceMaintenance {
-    static func requireSafeNormalUninstall(stateStore: ProtectedStateStoring) throws {
+    static func requireSafeNormalUninstall(
+        stateStore: ProtectedStateStoring,
+        appleLockdownStore: AppleLockdownStateStoring,
+        appleLockdownVault: AppleLockdownCredentialVault
+    ) throws {
         let state = try stateStore.load()
         let activeNames = state.blocks.compactMap { block in
             block.activation == nil ? nil : block.draft.name
@@ -19,6 +23,17 @@ enum OfflineServiceMaintenance {
         guard activeNames.isEmpty else {
             throw ServiceRuntimeError.invalidInstall(
                 "protection is active for: \(activeNames.joined(separator: ", "))"
+            )
+        }
+        let appleLockdownState = try appleLockdownStore.load()
+        guard !appleLockdownState.preventsMaintenance else {
+            throw ServiceRuntimeError.invalidInstall(
+                "Screen Time protection setup, protection, or release is still active"
+            )
+        }
+        guard try !appleLockdownVault.containsAnyCredential() else {
+            throw ServiceRuntimeError.invalidInstall(
+                "a Screen Time protection credential still exists"
             )
         }
     }

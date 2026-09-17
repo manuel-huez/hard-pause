@@ -36,12 +36,83 @@ protocol ProtectedServiceServing {
     func requestBreak(id: UUID) async throws -> ProtectedServiceSnapshot
     func cancelBreak(id: UUID) async throws -> ProtectedServiceSnapshot
     func requestEnd(id: UUID) async throws -> ProtectedServiceSnapshot
+    func appleLockdownStatus() async throws -> AppleLockdownSnapshot
+    func beginAppleLockdownSetup(
+        _ request: AppleLockdownSetupRequest
+    ) async throws -> AppleLockdownCredentialOperation
+    func resumeAppleLockdownSetup(
+        operationID: UUID
+    ) async throws -> AppleLockdownCredentialOperation
+    func completeAppleLockdownSetup(operationID: UUID) async throws -> AppleLockdownSnapshot
+    func confirmAppleLockdownSetupNotApplied(
+        operationID: UUID
+    ) async throws -> AppleLockdownSnapshot
+    func requestAppleLockdownEnd() async throws -> AppleLockdownSnapshot
+    func beginAppleLockdownRelease() async throws -> AppleLockdownCredentialOperation
+    func completeAppleLockdownRelease(operationID: UUID) async throws -> AppleLockdownSnapshot
+}
+
+extension ProtectedServiceServing {
+    func appleLockdownStatus() async throws -> AppleLockdownSnapshot {
+        throw ProtectedServiceClientError.unavailable(
+            "Screen Time protection is unavailable in this service client."
+        )
+    }
+
+    func beginAppleLockdownSetup(
+        _ request: AppleLockdownSetupRequest
+    ) async throws -> AppleLockdownCredentialOperation {
+        throw ProtectedServiceClientError.unavailable(
+            "Screen Time protection is unavailable in this service client."
+        )
+    }
+
+    func resumeAppleLockdownSetup(
+        operationID: UUID
+    ) async throws -> AppleLockdownCredentialOperation {
+        throw ProtectedServiceClientError.unavailable(
+            "Screen Time protection is unavailable in this service client."
+        )
+    }
+
+    func completeAppleLockdownSetup(operationID: UUID) async throws -> AppleLockdownSnapshot {
+        throw ProtectedServiceClientError.unavailable(
+            "Screen Time protection is unavailable in this service client."
+        )
+    }
+
+    func confirmAppleLockdownSetupNotApplied(
+        operationID: UUID
+    ) async throws -> AppleLockdownSnapshot {
+        throw ProtectedServiceClientError.unavailable(
+            "Screen Time protection is unavailable in this service client."
+        )
+    }
+
+    func requestAppleLockdownEnd() async throws -> AppleLockdownSnapshot {
+        throw ProtectedServiceClientError.unavailable(
+            "Screen Time protection is unavailable in this service client."
+        )
+    }
+
+    func beginAppleLockdownRelease() async throws -> AppleLockdownCredentialOperation {
+        throw ProtectedServiceClientError.unavailable(
+            "Screen Time protection is unavailable in this service client."
+        )
+    }
+
+    func completeAppleLockdownRelease(operationID: UUID) async throws -> AppleLockdownSnapshot {
+        throw ProtectedServiceClientError.unavailable(
+            "Screen Time protection is unavailable in this service client."
+        )
+    }
 }
 
 @MainActor
 final class ProtectedServiceClient: ProtectedServiceServing {
     private var connection: NSXPCConnection?
     private var pendingCalls: [UUID: CheckedContinuation<ProtectedServiceSnapshot, Error>] = [:]
+    private var pendingAppleCalls: [UUID: CheckedContinuation<AppleLockdownServiceReply, Error>] = [:]
 
     deinit {
         connection?.invalidationHandler = nil
@@ -98,6 +169,81 @@ final class ProtectedServiceClient: ProtectedServiceServing {
         return try await perform { service, reply in service.requestEnd(payload, withReply: reply) }
     }
 
+    func appleLockdownStatus() async throws -> AppleLockdownSnapshot {
+        let reply = try await performApple { service, callback in
+            service.appleLockdownStatus(withReply: callback)
+        }
+        return try appleSnapshot(from: reply)
+    }
+
+    func beginAppleLockdownSetup(
+        _ request: AppleLockdownSetupRequest
+    ) async throws -> AppleLockdownCredentialOperation {
+        let payload = try ProtectedServiceCodec.encode(request)
+        let reply = try await performApple { service, callback in
+            service.beginAppleLockdownSetup(payload, withReply: callback)
+        }
+        return try appleCredential(from: reply)
+    }
+
+    func resumeAppleLockdownSetup(
+        operationID: UUID
+    ) async throws -> AppleLockdownCredentialOperation {
+        let payload = try ProtectedServiceCodec.encode(
+            AppleLockdownOperationRequest(operationID: operationID)
+        )
+        let reply = try await performApple { service, callback in
+            service.resumeAppleLockdownSetup(payload, withReply: callback)
+        }
+        return try appleCredential(from: reply)
+    }
+
+    func completeAppleLockdownSetup(operationID: UUID) async throws -> AppleLockdownSnapshot {
+        let payload = try ProtectedServiceCodec.encode(
+            AppleLockdownOperationRequest(operationID: operationID)
+        )
+        let reply = try await performApple { service, callback in
+            service.completeAppleLockdownSetup(payload, withReply: callback)
+        }
+        return try appleSnapshot(from: reply)
+    }
+
+    func confirmAppleLockdownSetupNotApplied(
+        operationID: UUID
+    ) async throws -> AppleLockdownSnapshot {
+        let payload = try ProtectedServiceCodec.encode(
+            AppleLockdownOperationRequest(operationID: operationID)
+        )
+        let reply = try await performApple { service, callback in
+            service.confirmAppleLockdownSetupNotApplied(payload, withReply: callback)
+        }
+        return try appleSnapshot(from: reply)
+    }
+
+    func requestAppleLockdownEnd() async throws -> AppleLockdownSnapshot {
+        let reply = try await performApple { service, callback in
+            service.requestAppleLockdownEnd(withReply: callback)
+        }
+        return try appleSnapshot(from: reply)
+    }
+
+    func beginAppleLockdownRelease() async throws -> AppleLockdownCredentialOperation {
+        let reply = try await performApple { service, callback in
+            service.beginAppleLockdownRelease(withReply: callback)
+        }
+        return try appleCredential(from: reply)
+    }
+
+    func completeAppleLockdownRelease(operationID: UUID) async throws -> AppleLockdownSnapshot {
+        let payload = try ProtectedServiceCodec.encode(
+            AppleLockdownOperationRequest(operationID: operationID)
+        )
+        let reply = try await performApple { service, callback in
+            service.completeAppleLockdownRelease(payload, withReply: callback)
+        }
+        return try appleSnapshot(from: reply)
+    }
+
     private func perform(
         _ invoke: @escaping (ProtectedServiceXPC, @escaping (NSData) -> Void) -> Void
     ) async throws -> ProtectedServiceSnapshot {
@@ -152,6 +298,82 @@ final class ProtectedServiceClient: ProtectedServiceServing {
         }
     }
 
+    private func performApple(
+        _ invoke: @escaping (ProtectedServiceXPC, @escaping (NSData) -> Void) -> Void
+    ) async throws -> AppleLockdownServiceReply {
+        let connection = activeConnection()
+        return try await withCheckedThrowingContinuation { continuation in
+            let callID = UUID()
+            pendingAppleCalls[callID] = continuation
+
+            guard
+                let service = connection.remoteObjectProxyWithErrorHandler({ [weak self] error in
+                    Task { @MainActor in
+                        self?.finishApple(callID, with: .failure(error))
+                    }
+                }) as? ProtectedServiceXPC
+            else {
+                finishApple(
+                    callID,
+                    with: .failure(
+                        ProtectedServiceClientError.unavailable(
+                            "The Hard Pause service interface is unavailable."
+                        )
+                    )
+                )
+                return
+            }
+
+            invoke(service) { [weak self] data in
+                Task { @MainActor in
+                    guard let self else { return }
+                    do {
+                        let reply = try ProtectedServiceCodec.decode(
+                            AppleLockdownServiceReply.self,
+                            from: data
+                        )
+                        if let error = reply.error {
+                            self.finishApple(
+                                callID,
+                                with: .failure(ProtectedServiceClientError.service(error.message))
+                            )
+                        } else {
+                            self.finishApple(callID, with: .success(reply))
+                        }
+                    } catch {
+                        self.finishApple(callID, with: .failure(error))
+                    }
+                }
+            }
+
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.finishApple(
+                    callID,
+                    with: .failure(ProtectedServiceClientError.timedOut)
+                )
+            }
+        }
+    }
+
+    private func appleSnapshot(
+        from reply: AppleLockdownServiceReply
+    ) throws -> AppleLockdownSnapshot {
+        guard let snapshot = reply.snapshot else {
+            throw ProtectedServiceClientError.invalidReply
+        }
+        return snapshot
+    }
+
+    private func appleCredential(
+        from reply: AppleLockdownServiceReply
+    ) throws -> AppleLockdownCredentialOperation {
+        guard let credential = reply.credential else {
+            throw ProtectedServiceClientError.invalidReply
+        }
+        return credential
+    }
+
     private func activeConnection() -> NSXPCConnection {
         if let connection { return connection }
         let next = NSXPCConnection(
@@ -185,10 +407,23 @@ final class ProtectedServiceClient: ProtectedServiceServing {
         for continuation in pending.values {
             continuation.resume(throwing: ProtectedServiceClientError.unavailable(message))
         }
+        let pendingApple = pendingAppleCalls
+        pendingAppleCalls.removeAll()
+        for continuation in pendingApple.values {
+            continuation.resume(throwing: ProtectedServiceClientError.unavailable(message))
+        }
     }
 
     private func finish(_ id: UUID, with result: Result<ProtectedServiceSnapshot, Error>) {
         guard let continuation = pendingCalls.removeValue(forKey: id) else { return }
+        continuation.resume(with: result)
+    }
+
+    private func finishApple(
+        _ id: UUID,
+        with result: Result<AppleLockdownServiceReply, Error>
+    ) {
+        guard let continuation = pendingAppleCalls.removeValue(forKey: id) else { return }
         continuation.resume(with: result)
     }
 }

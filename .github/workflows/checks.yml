@@ -42,7 +42,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Check Swift formatting
-        run: xcrun swift-format lint --strict --recursive ios/App ios/Shared ios/Extensions ios/Tests macos/App macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
+        run: xcrun swift-format lint --strict --recursive core/Sources core/Tests ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
+      - name: Test shared Apple core
+        run: swift test --package-path core
       - name: Generate native projects
         run: |
           brew install xcodegen
@@ -57,6 +59,8 @@ jobs:
         run: |
           device_id=$(python3 scripts/select-simulator.py)
           xcodebuild -project ios/HardPause.xcodeproj -scheme HardPause -destination "platform=iOS Simulator,id=$device_id" -derivedDataPath build/ios -resultBundlePath build/ios-tests.xcresult CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+      - name: Build iOS device app and extensions
+        run: xcodebuild -project ios/HardPause.xcodeproj -scheme HardPause -destination 'generic/platform=iOS' -derivedDataPath build/ios-device CODE_SIGNING_ALLOWED=NO build
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

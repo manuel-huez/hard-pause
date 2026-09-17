@@ -7,6 +7,7 @@ private func writeStandardError(_ message: String) {
 
 private func runRecoveryCleanup() throws {
     try OwnedRuleCleanup.run(hosts: HostsEnforcer(), packetFilter: PFEnforcer())
+    try SystemFileKeychainAppleLockdownVault().deleteAll()
 }
 
 do {
@@ -24,7 +25,9 @@ do {
             throw ServiceRuntimeError.authorizationFailed("offline uninstall verification requires root")
         }
         try OfflineServiceMaintenance.requireSafeNormalUninstall(
-            stateStore: JSONProtectedStateStore()
+            stateStore: JSONProtectedStateStore(),
+            appleLockdownStore: JSONAppleLockdownStateStore(),
+            appleLockdownVault: SystemFileKeychainAppleLockdownVault()
         )
         exit(EXIT_SUCCESS)
     }
@@ -54,12 +57,21 @@ do {
         applications: ApplicationEnforcer(enrolledUID: uid_t(enrollment.enrolledUID))
     )
     let engine = try ProtectedServiceEngine(stateStore: store, enforcer: enforcer)
-    let delegate = ProtectedServiceListenerDelegate(engine: engine, authorizer: authorizer)
+    let appleLockdown = try AppleLockdownEngine(
+        stateStore: JSONAppleLockdownStateStore(),
+        credentialVault: SystemFileKeychainAppleLockdownVault()
+    )
+    let delegate = ProtectedServiceListenerDelegate(
+        engine: engine,
+        appleLockdown: appleLockdown,
+        authorizer: authorizer
+    )
     let listener = NSXPCListener(
         machServiceName: ProtectedServiceContract.machServiceName
     )
     listener.delegate = delegate
     engine.start()
+    appleLockdown.start()
     listener.activate()
     dispatchMain()
 } catch {

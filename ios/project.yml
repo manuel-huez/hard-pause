@@ -27,6 +27,7 @@ targets:
       - path: Shared
         excludes:
           - PrivacyInfo.xcprivacy
+      - path: ../core/Sources/PauseCore
       - path: Shared/PrivacyInfo.xcprivacy
         buildPhase: resources
       - path: App/Resources
@@ -75,6 +76,7 @@ targets:
       - path: Shared
         excludes:
           - PrivacyInfo.xcprivacy
+      - path: ../core/Sources/PauseCore
       - path: Shared/PrivacyInfo.xcprivacy
         buildPhase: resources
     info:
@@ -159,13 +161,28 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGNING_ALLOWED: NO
 
+  HardPauseUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: HardPause
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hardpause.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: HardPause
+
 schemes:
   HardPause:
     build:
       targets:
         HardPause: all
         HardPauseTests: [test]
+        HardPauseUITests: [test]
     test:
       gatherCoverageData: true
       targets:
         - HardPauseTests
+        - HardPauseUITests

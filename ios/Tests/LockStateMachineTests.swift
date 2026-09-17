@@ -5,6 +5,80 @@ import XCTest
 final class LockStateMachineTests: XCTestCase {
     private let noon = Date(timeIntervalSince1970: 1_800_000_000)
 
+    func testHardPauseRejectsBreaksAndForcesDeviceProtection() throws {
+        var state = LockState()
+        var policy = LockPolicy()
+        policy.protectionMode = .lockdown
+        policy.preventsAppRemoval = false
+        policy.requiresAutomaticDateAndTime = false
+        try LockStateMachine.activate(
+            &state,
+            policy: policy,
+            at: noon,
+            elapsedTime: reading(100)
+        )
+
+        XCTAssertEqual(state.policy.protectionMode, .lockdown)
+        XCTAssertTrue(state.policy.preventsAppRemoval)
+        XCTAssertTrue(state.policy.requiresAutomaticDateAndTime)
+        let activated = state
+        XCTAssertThrowsError(
+            try LockStateMachine.requestBreak(&state, at: noon, elapsedTime: reading(100))
+        ) { error in
+            XCTAssertEqual(error as? LockStateError, .breaksUnavailableInHardPause)
+        }
+        XCTAssertEqual(state, activated)
+    }
+
+    func testHardPauseRejectsFixedDuration() {
+        var state = LockState()
+        var policy = LockPolicy()
+        policy.protectionMode = .lockdown
+        policy.fixedDuration = 3_600
+
+        XCTAssertThrowsError(
+            try LockStateMachine.activate(
+                &state,
+                policy: policy,
+                at: noon,
+                elapsedTime: reading(100)
+            )
+        ) { error in
+            XCTAssertEqual(error as? LockPolicyError, .fixedDurationUnavailableInLockdown)
+        }
+        XCTAssertEqual(state, LockState())
+    }
+
+    func testHardPauseFullUnlockStillUsesConfiguredDelay() throws {
+        var state = LockState()
+        var policy = LockPolicy()
+        policy.protectionMode = .lockdown
+        policy.fullUnlockDelay = 14_400
+        try LockStateMachine.activate(
+            &state,
+            policy: policy,
+            at: noon,
+            elapsedTime: reading(100)
+        )
+
+        try LockStateMachine.requestEnd(&state, at: noon, elapsedTime: reading(100))
+        XCTAssertEqual(state.phase, .waitingForEnd)
+        XCTAssertEqual(state.nextTransitionAt, noon.addingTimeInterval(14_400))
+
+        LockStateMachine.reconcile(
+            &state,
+            at: noon.addingTimeInterval(14_399),
+            elapsedTime: reading(14_499)
+        )
+        XCTAssertEqual(state.phase, .waitingForEnd)
+        LockStateMachine.reconcile(
+            &state,
+            at: noon.addingTimeInterval(14_400),
+            elapsedTime: reading(14_500)
+        )
+        XCTAssertEqual(state.phase, .inactive)
+    }
+
     func testBreakWaitsThenRelocksOnOriginalSchedule() throws {
         var state = try activeState()
 
@@ -64,6 +138,74 @@ final class LockStateMachineTests: XCTestCase {
             XCTAssertEqual(error as? LockStateError, .requestAlreadyPending)
         }
         XCTAssertEqual(state, pending)
+    }
+
+    func testPendingBreakCanBeCancelledWithoutChangingFixedEnd() throws {
+        var state = LockState()
+        var policy = LockPolicy()
+        policy.waitDuration = 3_600
+        policy.breakDuration = 900
+        policy.fixedDuration = 7_200
+        try LockStateMachine.activate(
+            &state,
+            policy: policy,
+            at: noon,
+            elapsedTime: reading(100)
+        )
+        try LockStateMachine.requestBreak(&state, at: noon, elapsedTime: reading(100))
+        let automaticEndAt = state.automaticEndAt
+
+        try LockStateMachine.cancelBreak(
+            &state,
+            at: noon.addingTimeInterval(30),
+            elapsedTime: reading(130)
+        )
+
+        XCTAssertEqual(state.phase, .locked)
+        XCTAssertNil(state.nextTransitionAt)
+        XCTAssertNil(state.breakEndsAt)
+        XCTAssertEqual(state.automaticEndAt, automaticEndAt)
+        XCTAssertEqual(state.lastEvaluationDate, noon.addingTimeInterval(30))
+        XCTAssertEqual(state.monitoringEndsAt, automaticEndAt)
+    }
+
+    func testCancelBreakRejectsMissingOrFullUnlockRequest() throws {
+        var state = try activeState()
+        XCTAssertThrowsError(
+            try LockStateMachine.cancelBreak(&state, at: noon, elapsedTime: reading(100))
+        ) { error in
+            XCTAssertEqual(error as? LockStateError, .noPendingBreakRequest)
+        }
+
+        try LockStateMachine.requestEnd(&state, at: noon, elapsedTime: reading(100))
+        let pendingUnlock = state
+        XCTAssertThrowsError(
+            try LockStateMachine.cancelBreak(&state, at: noon, elapsedTime: reading(100))
+        ) { error in
+            XCTAssertEqual(error as? LockStateError, .noPendingBreakRequest)
+        }
+        XCTAssertEqual(state, pendingUnlock)
+    }
+
+    func testFullUnlockRequestDuringBreakRestoresBlocking() throws {
+        var state = try activeState()
+        try LockStateMachine.requestBreak(&state, at: noon, elapsedTime: reading(100))
+        LockStateMachine.reconcile(
+            &state,
+            at: noon.addingTimeInterval(3_600),
+            elapsedTime: reading(3_700)
+        )
+        XCTAssertEqual(state.phase, .breakActive)
+
+        try LockStateMachine.requestEnd(
+            &state,
+            at: noon.addingTimeInterval(3_600),
+            elapsedTime: reading(3_700)
+        )
+
+        XCTAssertEqual(state.phase, .waitingForEnd)
+        XCTAssertTrue(state.blocksTargets)
+        XCTAssertNil(state.breakEndsAt)
     }
 
     func testForwardOrBackwardWallClockDoesNotSkipDelayDuringSameBoot() throws {

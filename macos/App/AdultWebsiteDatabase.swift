@@ -4,13 +4,19 @@ import Foundation
 actor AdultWebsiteDatabase {
     static let source = URL(string: "https://blocklistproject.github.io/Lists/alt-version/porn-nl.txt")!
     private let cacheURL: URL
+    private let supplementData: Data?
     private var loaded = false
     private var database: AdultDomainDatabase?
     private var lastAttempt = Date.distantPast
     private var refreshTask: Task<Void, Never>?
     private(set) var status = "Checking saved adult website list…"
 
-    init(cacheURL: URL? = nil) {
+    init(cacheURL: URL? = nil, supplementData: Data? = nil) {
+        self.supplementData =
+            supplementData
+            ?? Bundle.main.url(
+                forResource: "supplement", withExtension: "txt", subdirectory: "adult-domains"
+            ).flatMap { try? Data(contentsOf: $0) }
         self.cacheURL =
             cacheURL
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -20,7 +26,9 @@ actor AdultWebsiteDatabase {
     func current() -> AdultDomainDatabase? {
         if !loaded {
             loaded = true
-            if let data = Self.plainData(at: cacheURL), let parsed = try? AdultDomainDatabase(data: data) {
+            if let data = Self.plainData(at: cacheURL),
+                let parsed = try? AdultDomainDatabase(data: data, supplementData: supplementData)
+            {
                 database = parsed
             }
             status =
@@ -48,7 +56,7 @@ actor AdultWebsiteDatabase {
     }
 
     func install(data: Data) throws {
-        let next = try AdultDomainDatabase(data: data)
+        let next = try AdultDomainDatabase(data: data, supplementData: supplementData)
         if let database, next.domains.count < database.domains.count * 4 / 5 {
             throw AdultDatabaseError.invalidData
         }

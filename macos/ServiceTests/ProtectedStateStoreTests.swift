@@ -9,7 +9,11 @@ final class ProtectedStateStoreTests: XCTestCase {
         let store = FakeProtectedStateStore(state)
 
         XCTAssertNoThrow(
-            try OfflineServiceMaintenance.requireSafeNormalUninstall(stateStore: store)
+            try OfflineServiceMaintenance.requireSafeNormalUninstall(
+                stateStore: store,
+                appleLockdownStore: FakeAppleLockdownStateStore(),
+                appleLockdownVault: FakeAppleLockdownVault()
+            )
         )
 
         try state.activate(
@@ -20,7 +24,11 @@ final class ProtectedStateStoreTests: XCTestCase {
         store.persisted = state
 
         XCTAssertThrowsError(
-            try OfflineServiceMaintenance.requireSafeNormalUninstall(stateStore: store)
+            try OfflineServiceMaintenance.requireSafeNormalUninstall(
+                stateStore: store,
+                appleLockdownStore: FakeAppleLockdownStateStore(),
+                appleLockdownVault: FakeAppleLockdownVault()
+            )
         ) { error in
             guard case ServiceRuntimeError.invalidInstall(let message) = error else {
                 return XCTFail("Unexpected error: \(error)")
@@ -53,6 +61,96 @@ final class ProtectedStateStoreTests: XCTestCase {
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
         let backups = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
         XCTAssertEqual(backups.filter { $0.hasPrefix("state-v2-") }.count, 2)
+    }
+
+    func testOfflineCheckRejectsPendingScreenTimeSetup() throws {
+        var appleState = AppleLockdownState()
+        try appleState.beginSetup(
+            AppleLockdownSetupRequest(
+                fullUnlockDelay: 60,
+                enablesAdultFilter: false,
+                filterWasAlreadyEnabled: true,
+                shareAcrossDevicesVerified: nil
+            )
+        )
+
+        XCTAssertThrowsError(
+            try OfflineServiceMaintenance.requireSafeNormalUninstall(
+                stateStore: FakeProtectedStateStore(),
+                appleLockdownStore: FakeAppleLockdownStateStore(appleState),
+                appleLockdownVault: FakeAppleLockdownVault()
+            )
+        ) { error in
+            guard case ServiceRuntimeError.invalidInstall(let message) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertTrue(message.contains("Screen Time protection"))
+        }
+    }
+
+    func testOfflineCheckRejectsOrphanedScreenTimeCredential() throws {
+        let vault = FakeAppleLockdownVault()
+        vault.values[UUID()] = "4820"
+
+        XCTAssertThrowsError(
+            try OfflineServiceMaintenance.requireSafeNormalUninstall(
+                stateStore: FakeProtectedStateStore(),
+                appleLockdownStore: FakeAppleLockdownStateStore(),
+                appleLockdownVault: vault
+            )
+        ) { error in
+            guard case ServiceRuntimeError.invalidInstall(let message) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertTrue(message.contains("credential"))
+        }
+    }
+
+    func testAppleLockdownStateRoundTripUsesPrivateFile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("apple-lockdown-state-v1.json")
+        let store = JSONAppleLockdownStateStore(
+            stateURL: url,
+            requireRootOwnership: false
+        )
+        var state = AppleLockdownState()
+        try state.beginSetup(
+            AppleLockdownSetupRequest(
+                fullUnlockDelay: 3_600,
+                enablesAdultFilter: true,
+                filterWasAlreadyEnabled: false,
+                shareAcrossDevicesVerified: false
+            )
+        )
+        try state.markSetupCredentialReady()
+
+        try store.save(state)
+
+        XCTAssertEqual(try store.load(), state)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+    }
+
+    func testAppleLockdownStateSymbolicLinkIsRejected() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("target.json")
+        try Data("{}".utf8).write(to: target)
+        let state = root.appendingPathComponent("apple-lockdown-state-v1.json")
+        try FileManager.default.createSymbolicLink(at: state, withDestinationURL: target)
+        let store = JSONAppleLockdownStateStore(
+            stateURL: state,
+            requireRootOwnership: false
+        )
+
+        XCTAssertThrowsError(try store.load()) { error in
+            guard case ServiceRuntimeError.unreadableState = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
     }
 
     func testPendingCandidateWithoutPrimaryIsPromotedAndCleared() throws {

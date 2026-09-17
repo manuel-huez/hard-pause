@@ -43,6 +43,7 @@ struct ManagedRestrictionStoreBackend: RestrictionStoreApplying {
         }
 
         applyProtectionSettings(state.policy, to: store)
+        store.webContent.blockedByFilter = Self.projectedWebContentFilter(for: state)
         guard state.blocksTargets else {
             clearBlockedTargets(in: store)
             return
@@ -66,18 +67,21 @@ struct ManagedRestrictionStoreBackend: RestrictionStoreApplying {
             ? nil
             : .specific(selection.categoryTokens)
 
-        let manualDomains = Set(state.policy.manualDomains.map(WebDomain.init(domain:)))
-        if state.policy.blocksAdultWebsites {
-            store.webContent.blockedByFilter = .auto(manualDomains)
-        } else if !manualDomains.isEmpty {
-            store.webContent.blockedByFilter = .specific(manualDomains)
-        } else {
-            store.webContent.blockedByFilter = nil
-        }
     }
 
     func clearLegacyStore() {
         ManagedSettingsStore(named: HardPauseConstants.legacySettingsStoreName).clearAllSettings()
+    }
+
+    static func projectedWebContentFilter(
+        for state: LockState?
+    ) -> WebContentSettings.FilterPolicy? {
+        guard let state, state.isActive, state.blocksTargets else { return nil }
+        let manualDomains = Set(state.policy.manualDomains.map(WebDomain.init(domain:)))
+        if state.policy.blocksAdultWebsites {
+            return .auto(manualDomains)
+        }
+        return manualDomains.isEmpty ? nil : .specific(manualDomains)
     }
 
     private func applyProtectionSettings(
@@ -97,6 +101,5 @@ struct ManagedRestrictionStoreBackend: RestrictionStoreApplying {
         store.shield.applicationCategories = nil
         store.shield.webDomains = nil
         store.shield.webDomainCategories = nil
-        store.webContent.blockedByFilter = nil
     }
 }

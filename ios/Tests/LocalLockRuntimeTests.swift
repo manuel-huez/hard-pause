@@ -672,17 +672,21 @@ final class LocalLockRuntimeTests: XCTestCase {
         }
     }
 
-    func testInitialActivationAppliesOnlyAfterCollectionCommit() throws {
+    func testInitialActivationSavesIntentThenTightensBeforeCollectionCommit() throws {
         try withRuntime { runtime, restrictions, _, directory, _ in
             let initial = try runtime.reconcile(at: noon, elapsedTime: reading(100))
             let id = try XCTUnwrap(initial.blocks.first?.id)
             var storedPhaseWhenApplied: LockPhase?
+            var intentExistedWhenApplied = false
             restrictions.onApply = { collection in
                 guard collection.block(id: id)?.state.blocksTargets == true else { return }
                 storedPhaseWhenApplied = try? JSONDecoder().decode(
                     LockCollection.self,
                     from: Data(contentsOf: directory.appendingPathComponent("lock-state-v1.json"))
                 ).block(id: id)?.state.phase
+                intentExistedWhenApplied = FileManager.default.fileExists(
+                    atPath: directory.appendingPathComponent("activation-intent-v1.json").path
+                )
             }
 
             _ = try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) { collection in
@@ -694,8 +698,262 @@ final class LocalLockRuntimeTests: XCTestCase {
                 )
             }
 
-            XCTAssertEqual(storedPhaseWhenApplied, .locked)
+            XCTAssertEqual(storedPhaseWhenApplied, .inactive)
+            XCTAssertTrue(intentExistedWhenApplied)
+            XCTAssertFalse(
+                FileManager.default.fileExists(
+                    atPath: directory.appendingPathComponent("activation-intent-v1.json").path))
         }
+    }
+
+    func testActivationPrimaryWriteFailureRecoversIntentInsteadOfClearingProtection() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = WriteFailureGate()
+        let restrictions = RecordingRestrictions()
+        let repository = LockRepository(containerURL: directory, beforeWrite: gate.check)
+        let runtime = LocalLockRuntime(
+            repository: repository, restrictions: restrictions, scheduler: RecordingScheduler(),
+            recoveryPolicies: RecoveryPolicyRepository(containerURL: directory)
+        )
+        let initial = try runtime.reconcile(at: noon, elapsedTime: reading(100))
+        let id = try XCTUnwrap(initial.blocks.first?.id)
+        gate.failNext = true
+        XCTAssertThrowsError(
+            try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+                try LockCollectionStateMachine.activate(&$0, blockID: id, at: self.noon, elapsedTime: self.reading(100))
+            })
+        XCTAssertTrue(try XCTUnwrap(restrictions.applied.last?.block(id: id)).state.blocksTargets)
+        XCTAssertFalse(try repository.load().hasActiveBlocks)
+        let recovered = try runtime.reconcile(at: noon.addingTimeInterval(1), elapsedTime: reading(101))
+        XCTAssertTrue(try XCTUnwrap(recovered.block(id: id)).state.blocksTargets)
+        XCTAssertEqual(recovered.block(id: id)?.state.activatedAt, noon)
+    }
+
+    func testActivationIntentWriteFailureDoesNotApplyNewRestrictions() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = WriteFailureGate()
+        let restrictions = RecordingRestrictions()
+        let runtime = LocalLockRuntime(
+            repository: LockRepository(containerURL: directory, beforeIntentWrite: gate.check),
+            restrictions: restrictions, scheduler: RecordingScheduler(),
+            recoveryPolicies: RecoveryPolicyRepository(containerURL: directory)
+        )
+        let initial = try runtime.reconcile(at: noon, elapsedTime: reading(100))
+        let id = try XCTUnwrap(initial.blocks.first?.id)
+        restrictions.reset()
+        gate.failNext = true
+        XCTAssertThrowsError(
+            try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+                try LockCollectionStateMachine.activate(&$0, blockID: id, at: self.noon, elapsedTime: self.reading(100))
+            })
+        XCTAssertTrue(restrictions.applied.isEmpty)
+        XCTAssertFalse(try runtime.load().hasActiveBlocks)
+    }
+
+    func testIntentCleanupFailureStillRelocksExpiredBreak() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var failCleanup = false
+        let restrictions = RecordingRestrictions()
+        let scheduler = RecordingScheduler()
+        let runtime = LocalLockRuntime(
+            repository: LockRepository(
+                containerURL: directory,
+                beforeIntentClear: {
+                    if failCleanup { throw SimulatedWriteError.failed }
+                }),
+            restrictions: restrictions, scheduler: scheduler,
+            recoveryPolicies: RecoveryPolicyRepository(containerURL: directory)
+        )
+        let first = try activateFirstBlock(using: runtime)
+        let id = try XCTUnwrap(first.blocks.first?.id)
+        _ = try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+            try LockCollectionStateMachine.requestBreak(&$0, blockID: id, at: self.noon, elapsedTime: self.reading(100))
+        }
+        _ = try runtime.reconcile(at: noon.addingTimeInterval(3_600), elapsedTime: reading(3_700))
+        failCleanup = true
+        XCTAssertThrowsError(
+            try runtime.mutate(wallClockNow: noon.addingTimeInterval(3_601), elapsedTime: reading(3_701)) {
+                let block = LockBlock(name: "Second")
+                $0.blocks.append(block)
+                try LockCollectionStateMachine.activate(
+                    &$0, blockID: block.id, at: self.noon.addingTimeInterval(3_601), elapsedTime: self.reading(3_701))
+            })
+        scheduler.intervals.removeValue(forKey: id)
+        restrictions.reset()
+        XCTAssertThrowsError(try runtime.reconcile(at: noon.addingTimeInterval(3_602), elapsedTime: reading(3_702)))
+        XCTAssertTrue(try XCTUnwrap(restrictions.applied.last?.block(id: id)).state.blocksTargets)
+        restrictions.reset()
+        XCTAssertThrowsError(try runtime.reconcile(at: noon.addingTimeInterval(4_500), elapsedTime: reading(4_600)))
+        XCTAssertTrue(try XCTUnwrap(restrictions.applied.last?.block(id: id)).state.blocksTargets)
+        XCTAssertTrue(try runtime.load().hasActiveBlocks)
+        failCleanup = false
+        let recovered = try runtime.reconcile(at: noon.addingTimeInterval(4_501), elapsedTime: reading(4_601))
+        XCTAssertTrue(try XCTUnwrap(recovered.block(id: id)).state.blocksTargets)
+    }
+
+    func testPendingActivationRecoveryNeverOpensAnotherBreakBeforeCommit() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = WriteFailureGate()
+        let restrictions = RecordingRestrictions()
+        let runtime = LocalLockRuntime(
+            repository: LockRepository(containerURL: directory, beforeWrite: gate.check),
+            restrictions: restrictions, scheduler: RecordingScheduler(),
+            recoveryPolicies: RecoveryPolicyRepository(containerURL: directory)
+        )
+        let initial = try activateFirstBlock(using: runtime)
+        let firstID = try XCTUnwrap(initial.blocks.first?.id)
+        _ = try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+            try LockCollectionStateMachine.requestBreak(
+                &$0, blockID: firstID, at: self.noon, elapsedTime: self.reading(100))
+        }
+        let second = LockBlock(name: "Second")
+        restrictions.reset()
+        gate.failNext = true
+        XCTAssertThrowsError(
+            try runtime.mutate(wallClockNow: noon.addingTimeInterval(3_600), elapsedTime: reading(3_700)) {
+                $0.blocks.append(second)
+                try LockCollectionStateMachine.activate(
+                    &$0, blockID: second.id, at: self.noon.addingTimeInterval(3_600), elapsedTime: self.reading(3_700))
+            })
+        XCTAssertTrue(restrictions.applied.allSatisfy { $0.block(id: firstID)?.state.blocksTargets == true })
+        restrictions.reset()
+        gate.failNext = true
+        XCTAssertThrowsError(try runtime.reconcile(at: noon.addingTimeInterval(3_601), elapsedTime: reading(3_701)))
+        XCTAssertFalse(restrictions.applied.isEmpty)
+        XCTAssertTrue(restrictions.applied.allSatisfy { $0.block(id: firstID)?.state.blocksTargets == true })
+        let recovered = try runtime.reconcile(at: noon.addingTimeInterval(3_602), elapsedTime: reading(3_702))
+        XCTAssertEqual(recovered.block(id: firstID)?.state.phase, .breakActive)
+        XCTAssertTrue(try XCTUnwrap(recovered.block(id: second.id)).state.blocksTargets)
+    }
+
+    func testIntentSurvivesInterruptionBeforeTighteningAndMissingPrimary() throws {
+        for removePrimary in [false, true] {
+            let directory = try makeTemporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let gate = WriteFailureGate()
+            let restrictions = RecordingRestrictions()
+            let runtime = LocalLockRuntime(
+                repository: LockRepository(containerURL: directory, afterIntentWrite: gate.check),
+                restrictions: restrictions, scheduler: RecordingScheduler(),
+                recoveryPolicies: RecoveryPolicyRepository(containerURL: directory)
+            )
+            let initial = try runtime.reconcile(at: noon, elapsedTime: reading(100))
+            let id = try XCTUnwrap(initial.blocks.first?.id)
+            restrictions.reset()
+            gate.failNext = true
+            XCTAssertThrowsError(
+                try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+                    try LockCollectionStateMachine.activate(
+                        &$0, blockID: id, at: self.noon, elapsedTime: self.reading(100))
+                })
+            XCTAssertTrue(restrictions.applied.isEmpty)
+            if removePrimary {
+                try FileManager.default.removeItem(at: directory.appendingPathComponent("lock-state-v1.json"))
+            }
+            let recovered = try runtime.reconcile(at: noon.addingTimeInterval(1), elapsedTime: reading(101))
+            XCTAssertTrue(try XCTUnwrap(recovered.block(id: id)).state.blocksTargets)
+            XCTAssertEqual(recovered.block(id: id)?.state.activatedAt, noon)
+        }
+    }
+
+    func testPendingActivationStaysBlockedWhileAnotherBlockRelocksDuringRecovery() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = WriteFailureGate()
+        let restrictions = RecordingRestrictions()
+        let runtime = LocalLockRuntime(
+            repository: LockRepository(containerURL: directory, beforeWrite: gate.check),
+            restrictions: restrictions, scheduler: RecordingScheduler(),
+            recoveryPolicies: RecoveryPolicyRepository(containerURL: directory)
+        )
+        let initial = try activateFirstBlock(using: runtime)
+        let firstID = try XCTUnwrap(initial.blocks.first?.id)
+        _ = try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+            try LockCollectionStateMachine.requestBreak(
+                &$0, blockID: firstID, at: self.noon, elapsedTime: self.reading(100))
+        }
+        _ = try runtime.reconcile(at: noon.addingTimeInterval(3_600), elapsedTime: reading(3_700))
+        let second = LockBlock(name: "Second")
+        gate.failNext = true
+        XCTAssertThrowsError(
+            try runtime.mutate(wallClockNow: noon.addingTimeInterval(3_601), elapsedTime: reading(3_701)) {
+                $0.blocks.append(second)
+                try LockCollectionStateMachine.activate(
+                    &$0, blockID: second.id, at: self.noon.addingTimeInterval(3_601), elapsedTime: self.reading(3_701))
+            })
+        restrictions.reset()
+        gate.failNext = true
+        XCTAssertThrowsError(try runtime.reconcile(at: noon.addingTimeInterval(4_500), elapsedTime: reading(4_600)))
+        XCTAssertFalse(restrictions.applied.isEmpty)
+        XCTAssertTrue(
+            restrictions.applied.allSatisfy {
+                $0.block(id: firstID)?.state.blocksTargets == true
+                    && $0.block(id: second.id)?.state.blocksTargets == true
+            })
+        let final = try runtime.reconcile(at: noon.addingTimeInterval(4_501), elapsedTime: reading(4_601))
+        XCTAssertEqual(final.activeBlocks.count, 2)
+    }
+
+    func testSecondActivationRetainsOriginalIntentBaseAcrossRepeatedWriteFailures() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = WriteFailureGate()
+        let runtime = LocalLockRuntime(
+            repository: LockRepository(containerURL: directory, beforeWrite: gate.check),
+            restrictions: RecordingRestrictions(), scheduler: RecordingScheduler(),
+            recoveryPolicies: RecoveryPolicyRepository(containerURL: directory)
+        )
+        let initial = try runtime.reconcile(at: noon, elapsedTime: reading(100))
+        let firstID = try XCTUnwrap(initial.blocks.first?.id)
+        gate.failNext = true
+        XCTAssertThrowsError(
+            try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+                try LockCollectionStateMachine.activate(
+                    &$0, blockID: firstID, at: self.noon, elapsedTime: self.reading(100))
+            })
+        let second = LockBlock(name: "Second")
+        gate.failNext = true
+        XCTAssertThrowsError(
+            try runtime.mutate(wallClockNow: noon.addingTimeInterval(1), elapsedTime: reading(101)) {
+                $0.blocks.append(second)
+                try LockCollectionStateMachine.activate(
+                    &$0, blockID: second.id, at: self.noon.addingTimeInterval(1), elapsedTime: self.reading(101))
+            })
+        let recovered = try runtime.reconcile(at: noon.addingTimeInterval(2), elapsedTime: reading(102))
+        XCTAssertEqual(Set(recovered.activeBlocks.map(\.id)), [firstID, second.id])
+    }
+
+    func testCommittedPrimaryWinsOverStaleActivationIntentAfterFullUnlock() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = WriteFailureGate()
+        let runtime = LocalLockRuntime(
+            repository: LockRepository(containerURL: directory, beforeIntentClear: gate.check),
+            restrictions: RecordingRestrictions(), scheduler: RecordingScheduler(),
+            recoveryPolicies: RecoveryPolicyRepository(containerURL: directory)
+        )
+        let initial = try runtime.reconcile(at: noon, elapsedTime: reading(100))
+        let id = try XCTUnwrap(initial.blocks.first?.id)
+        gate.failNext = true
+        XCTAssertThrowsError(
+            try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+                try LockCollectionStateMachine.activate(&$0, blockID: id, at: self.noon, elapsedTime: self.reading(100))
+            })
+        let intentURL = directory.appendingPathComponent("activation-intent-v1.json")
+        let staleIntent = try Data(contentsOf: intentURL)
+        _ = try runtime.mutate(wallClockNow: noon, elapsedTime: reading(100)) {
+            try LockCollectionStateMachine.requestEnd(&$0, blockID: id, at: self.noon, elapsedTime: self.reading(100))
+        }
+        XCTAssertFalse(
+            try runtime.reconcile(at: noon.addingTimeInterval(3_600), elapsedTime: reading(3_700)).hasActiveBlocks)
+        try staleIntent.write(to: intentURL)
+        let recovered = try runtime.reconcile(at: noon.addingTimeInterval(3_601), elapsedTime: reading(3_701))
+        XCTAssertFalse(recovered.hasActiveBlocks)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: intentURL.path))
     }
 
     func testPrimaryWriteFailureDuringMixedTransitionNeverAppliesRelaxation() throws {

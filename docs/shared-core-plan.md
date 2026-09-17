@@ -1,6 +1,35 @@
 # Shared blocking core plan
 
-Status: proposed implementation plan, 2026-09-14. This document does not change installed protection.
+Status: Apple shared core implemented; signed-device validation pending, 2026-09-17. The Apple scope below supersedes the original four-platform build sequence. Installed Mac protection is not replaced by development builds.
+
+## Plan modes and Apple protection
+
+Both apps offer **Pause** (delayed breaks) and **Hard Pause** (no breaks, no fixed end). Legacy plans retain Pause behavior. Hard Pause requires iOS deletion/date protection; Mac activation requires a completed Screen Time code setup. The Mac service stores the code in System Keychain before native entry, journals setup/release, and requires the saved wait plus all plans inactive before code removal. Native Screen Time automation and cross-device sharing remain device-validation gates.
+
+The portable adult-domain parser and reviewed supplement live in `core/` and `data/adult-domains/`. Mac retains the existing public list and local checks. iOS uses Apple's adult filter with up to 50 explicit domains. There is no desktop-to-phone domain synchronization implementation.
+
+## Apple implementation
+
+The first implementation uses a platform-neutral Swift core in [`core/`](../core/), compiled from the same sources into the Mac app, service, CLI and tests, and the iOS app and monitor extension. A standalone Swift package runs shared fixtures. This is the simpler integration for the current Mac/iOS scope; Rust and UniFFI remain a later portability step, not a prerequisite for this release.
+
+| Shared code                                                                               | Native code retained                                                                          |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Break, full-unlock and natural-end decisions; pending request cancellation                | SwiftUI presentation and Family Controls selections                                           |
+| Verified elapsed-time projection, including changed-boot handling                         | Native continuous-clock readings and saved-state mapping                                      |
+| Explicit Mac and legacy iOS lifecycle profiles                                            | Existing duration limits, opaque Apple tokens and target validation                           |
+| Transaction stage ordering: intent, tightening, state save, intent retirement, relaxation | File coordination, durable files, DeviceActivity schedules, ManagedSettings and Mac enforcers |
+
+Both existing state formats remain readable. Mac behavior and screens stay unchanged. Existing iOS activations retain their timing semantics, including resuming blocking while full unlock waits. Shared fixtures cover the differences explicitly. Native storage and recovery remain separate adapters; this is not yet the proposed portable Rust transaction machine.
+
+iOS activation now keeps the complete base state and candidate in a durable intent under the primary file's process coordination lock. Recovery re-evaluates time and preserves base restrictions until the candidate is saved. A committed intent must be retired before later relaxation. Failed retirement still permits emergency relocking. Invalid schemas, duplicate block identifiers and excess recovery blocks are rejected instead of dropping protection.
+
+New iOS blocks offer app-removal protection with an explicit device-wide explanation. Apple deletion and automatic-date restrictions stay active during breaks and pending unlocks. The app cannot set or verify the system Screen Time passcode. Setup explains the iOS 26.4+ protection described by [Opal](https://opalapp.com/help/how-can-i-make-opal-foolproof); physical-device testing is required before a protection claim.
+
+Validation: `swift test --package-path core`, both native test suites, project/capability checks, and an unsigned iOS device build. The [iOS release checks](../ios/README.md#device-release-checks) require a signed iPhone; simulator success does not prove Screen Time enforcement.
+
+## Remaining four-platform roadmap
+
+The following original design remains the reference for a future Rust port and Windows/Android adapters. It is not a claim that those ports are implemented.
 
 ## Decision
 

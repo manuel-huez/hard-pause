@@ -67,6 +67,21 @@ struct LocalLockRuntime {
                 }
             },
             prepare: { current, candidate, source in
+                // A newly activated block must not replace an old store before commit.
+                let oldSlots = Set(current.activeBlocks.compactMap(\.state.storeSlot))
+                var reservedSlots = oldSlots.union(candidate.activeBlocks.compactMap(\.state.storeSlot))
+                for index in candidate.blocks.indices {
+                    let block = candidate.blocks[index]
+                    guard block.state.isActive, !current.activeIDs.contains(block.id),
+                        let slot = block.state.storeSlot, oldSlots.contains(slot)
+                    else { continue }
+                    guard
+                        let free = (0..<LockCollection.maximumActiveBlocks).first(where: { !reservedSlots.contains($0) }
+                        )
+                    else { throw LockCollectionError.maximumActiveBlocks }
+                    candidate.blocks[index].state.storeSlot = free
+                    reservedSlots.insert(free)
+                }
                 try candidate.validateRuntimeMutation(from: current)
                 _ = candidate.failClosedBlocksWithoutReliableRelockSchedules(
                     using: scheduler,
@@ -153,6 +168,28 @@ struct LocalLockRuntime {
                     candidate.enforcementNeedsRefresh = nil
                 } else if enforcementChanged {
                     candidate.enforcementNeedsRefresh = true
+                }
+            },
+            tightenBeforeCommit: { current, candidate in
+                // The repository has saved activation intent before this effect.
+                // Retain old active rules until the candidate is durable.
+                var projection = candidate.activationSafetyUnion(with: current)
+                if let tightened = candidate.tighteningProjection(from: projection) {
+                    projection = tightened
+                }
+                restrictions.apply(projection)
+                if projection.enforcementConfiguration == candidate.enforcementConfiguration {
+                    candidate.enforcementNeedsRefresh = nil
+                }
+            },
+            tightenOnRetirementFailure: { current in
+                var due = current
+                _ = LockCollectionStateMachine.reconcile(&due, at: wallClockNow, elapsedTime: elapsedTime)
+                _ = due.failClosedBlocksWithoutReliableRelockSchedules(
+                    using: scheduler, wallClockNow: wallClockNow, elapsedTime: elapsedTime
+                )
+                if let projection = due.tighteningProjection(from: current) {
+                    restrictions.apply(projection)
                 }
             },
             afterCommit: { _, saved, _ in

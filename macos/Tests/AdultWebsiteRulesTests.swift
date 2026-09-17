@@ -45,6 +45,32 @@ final class AdultWebsiteRulesTests: XCTestCase {
         XCTAssertFalse(database.contains("example"))
     }
 
+    func testPortableSupplementMergesWithoutChangingUpstreamValidation() throws {
+        let supplement = Data(
+            """
+            # Format: hard-pause-domain-list-v1
+            # Category: adult
+            # Revision: 2026-09-17
+            # License: CC0-1.0
+            # Provenance: manual-review
+            # Entries: 2
+            supplement.example
+            xn--bcher-kva.example
+
+            """.utf8
+        )
+        let database = try AdultDomainDatabase(
+            data: fixture(["upstream.example"]),
+            supplementData: supplement,
+            minimumCount: 1
+        )
+
+        XCTAssertEqual(database.domains.count, 3)
+        XCTAssertTrue(database.contains("deep.supplement.example"))
+        XCTAssertTrue(database.contains("bücher.example"))
+        XCTAssertTrue(database.contains("upstream.example"))
+    }
+
     func testRejectsPartialMalformedAndUnsafeLists() {
         for text in [
             "# Entries: 2\nadult.example\n",

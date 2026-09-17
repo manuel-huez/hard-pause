@@ -1,20 +1,23 @@
-import FamilyControls
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     private enum AppTab: Hashable {
         case home
-        case blocks
+        case plans
         case settings
     }
 
     @ObservedObject var controller: LockController
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
+
     @State private var selectedTab: AppTab = .home
-    @State private var showsPicker = false
-    @State private var confirmsActivation = false
-    @State private var confirmsFullUnlock = false
-    @State private var confirmsDelete = false
+    @State private var editor: PlanEditorPresentation?
+    @State private var activationTargetID: UUID?
+    @State private var breakTargetID: UUID?
+    @State private var deletionTargetID: UUID?
+    @State private var unlockGuidanceID: UUID?
 
     var body: some View {
         ZStack {
@@ -22,67 +25,77 @@ struct RootView: View {
             if controller.isReady {
                 TabView(selection: $selectedTab) {
                     Tab("Home", systemImage: "house.fill", value: AppTab.home) {
-                        HomeView(controller: controller) {
-                            selectedTab = .blocks
-                        }
+                        HomeView(
+                            controller: controller,
+                            showPlans: { selectedTab = .plans },
+                            showSettings: { selectedTab = .settings },
+                            requestBreak: { breakTargetID = $0 },
+                            cancelBreak: { controller.cancelBreakRequest(blockID: $0) },
+                            showUnlockGuidance: { unlockGuidanceID = $0 }
+                        )
                     }
 
-                    Tab("Blocks", systemImage: "square.stack.3d.up.fill", value: AppTab.blocks) {
-                        BlocksView(
+                    Tab("Plans", systemImage: "shield.lefthalf.filled", value: AppTab.plans) {
+                        PlansView(
                             controller: controller,
-                            showsPicker: $showsPicker,
-                            confirmsActivation: $confirmsActivation,
-                            confirmsFullUnlock: $confirmsFullUnlock,
-                            confirmsDelete: $confirmsDelete
+                            create: { editor = PlanEditorPresentation(blockID: nil) },
+                            edit: { editor = PlanEditorPresentation(blockID: $0) },
+                            activate: { activationTargetID = $0 },
+                            delete: { deletionTargetID = $0 },
+                            requestBreak: { breakTargetID = $0 },
+                            cancelBreak: { controller.cancelBreakRequest(blockID: $0) },
+                            showUnlockGuidance: { unlockGuidanceID = $0 }
                         )
                     }
 
                     Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
-                        SettingsView(controller: controller)
+                        SettingsView(controller: controller, openSettings: openSystemSettings)
                     }
                 }
             } else {
-                ProgressView()
+                ProgressView("Loading your plans…")
                     .tint(PauseTheme.coral)
+                    .foregroundStyle(PauseTheme.muted)
             }
         }
         .tint(PauseTheme.coral)
         .foregroundStyle(PauseTheme.ink)
         .preferredColorScheme(.dark)
-        .font(PauseFont.body())
-        .sheet(isPresented: $showsPicker) {
-            NavigationStack {
-                FamilyActivityPicker(
-                    headerText: "Choose what this pause blocks",
-                    footerText: "Your choices stay on this device.",
-                    selection: $controller.draftPolicy.selection
-                )
-                .navigationTitle("Apps & websites")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showsPicker = false }
-                    }
-                }
-            }
+        .sheet(item: $editor) { presentation in
+            PlanEditorView(controller: controller, presentation: presentation)
         }
-        .alert("Enable \(controller.draftName)?", isPresented: $confirmsActivation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Enable") { controller.activate() }
+        .sheet(item: unlockGuidancePresentation) { presentation in
+            UnlockGuidanceView(controller: controller, blockID: presentation.id)
+        }
+        .alert(activationAlertTitle, isPresented: activationAlertBinding) {
+            Button("Cancel", role: .cancel) { activationTargetID = nil }
+            Button("Start plan") {
+                guard let id = activationTargetID else { return }
+                activationTargetID = nil
+                controller.activate(blockID: id)
+            }
         } message: {
             Text(activationMessage)
         }
-        .alert("Request full unlock?", isPresented: $confirmsFullUnlock) {
-            Button("Cancel", role: .cancel) {}
-            Button("Start delay") { controller.requestFullUnlock() }
+        .alert("Request a break?", isPresented: breakAlertBinding) {
+            Button("Keep blocking", role: .cancel) { breakTargetID = nil }
+            Button("Request a break") {
+                guard let id = breakTargetID else { return }
+                breakTargetID = nil
+                controller.requestBreak(blockID: id)
+            }
         } message: {
-            Text(fullUnlockMessage)
+            Text(breakMessage)
         }
-        .alert("Delete \(controller.draftName)?", isPresented: $confirmsDelete) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) { controller.deleteSelectedBlock() }
+        .alert(deletionAlertTitle, isPresented: deletionAlertBinding) {
+            Button("Cancel", role: .cancel) { deletionTargetID = nil }
+            Button("Delete", role: .destructive) {
+                guard let id = deletionTargetID else { return }
+                deletionTargetID = nil
+                controller.deleteBlock(id: id)
+            }
         } message: {
-            Text("This removes the saved inactive pause and its settings.")
+            Text("This removes the saved inactive plan and its settings. This action cannot be undone.")
         }
         .alert("Hard Pause", isPresented: errorBinding) {
             Button("OK") { controller.errorMessage = nil }
@@ -103,25 +116,82 @@ struct RootView: View {
         }
     }
 
-    private var activationMessage: String {
-        let fullUnlockDelay =
-            controller.draftPolicy.fullUnlockDelay
-            ?? controller.draftPolicy.waitDuration
-        let automaticEnd =
-            controller.draftPolicy.fixedDuration.map {
-                " This pause ends automatically after \($0.hardPauseDurationLabel), even if another request is pending."
-            } ?? " It stays active until a delayed full unlock."
-        return
-            "A timeout waits \(controller.draftPolicy.waitDuration.hardPauseDurationLabel). A full unlock waits \(fullUnlockDelay.hardPauseDurationLabel). A timeout lasts \(controller.draftPolicy.breakDuration.hardPauseDurationLabel). Rules stay fixed while this pause is active. Time while this device is off does not count.\(automaticEnd)"
+    private var activationTarget: LockBlock? {
+        activationTargetID.flatMap(controller.collection.block)
     }
 
-    private var fullUnlockMessage: String {
-        let delay =
-            controller.state.policy.fullUnlockDelay
-            ?? controller.state.policy.waitDuration
-        return controller.state.phase == .breakActive
-            ? "This closes the current timeout. Blocking returns for \(delay.hardPauseDurationLabel), then this pause ends."
-            : "Blocking continues for \(delay.hardPauseDurationLabel), then this pause ends."
+    private var activationAlertTitle: String {
+        "Start \(activationTarget?.name ?? "this plan")?"
+    }
+
+    private var activationMessage: String {
+        guard let block = activationTarget else { return "Rules and waits become fixed while this plan is active." }
+        let policy = block.draftPolicy
+        let fullUnlock = policy.fullUnlockDelay ?? policy.waitDuration
+        var parts = ["Rules stay fixed while this plan is active."]
+        if policy.protectionMode.allowsBreaks {
+            parts.append(
+                "A break requires \(policy.waitDuration.hardPauseDurationLabel). Ending the plan requires \(fullUnlock.hardPauseDurationLabel)."
+            )
+        } else {
+            parts.append(
+                "Hard Pause has no breaks or automatic end. Full unlock requires \(fullUnlock.hardPauseDurationLabel)."
+            )
+        }
+        if policy.preventsAppRemoval {
+            parts.append("iOS will prevent deletion of every app until this plan ends.")
+        }
+        if policy.requiresAutomaticDateAndTime {
+            parts.append("iOS will require automatic date and time until this plan ends.")
+        }
+        if let duration = policy.fixedDuration {
+            parts.append(
+                "The plan ends automatically after \(duration.hardPauseDurationLabel) of recorded active time.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private var breakTarget: LockBlock? {
+        breakTargetID.flatMap(controller.collection.block)
+    }
+
+    private var breakMessage: String {
+        guard let block = breakTarget else { return "Blocking continues during the waiting period." }
+        return
+            "For \(block.name), blocking continues for \(block.state.policy.waitDuration.hardPauseDurationLabel). Then access opens for \(block.state.policy.breakDuration.hardPauseDurationLabel). You can cancel the request while you wait."
+    }
+
+    private var deletionAlertTitle: String {
+        let block = deletionTargetID.flatMap(controller.collection.block)
+        return "Delete \(block?.name ?? "this plan")?"
+    }
+
+    private var activationAlertBinding: Binding<Bool> {
+        Binding(
+            get: { activationTargetID != nil },
+            set: { if !$0 { activationTargetID = nil } }
+        )
+    }
+
+    private var breakAlertBinding: Binding<Bool> {
+        Binding(
+            get: { breakTargetID != nil },
+            set: { if !$0 { breakTargetID = nil } }
+        )
+    }
+
+    private var deletionAlertBinding: Binding<Bool> {
+        Binding(
+            get: { deletionTargetID != nil },
+            set: { if !$0 { deletionTargetID = nil } }
+        )
+    }
+
+    private var unlockGuidancePresentation: Binding<UnlockGuidancePresentation?> {
+        Binding(
+            get: { unlockGuidanceID.map { UnlockGuidancePresentation(id: $0) } },
+            set: { unlockGuidanceID = $0?.id }
+        )
     }
 
     private var errorBinding: Binding<Bool> {
@@ -130,267 +200,875 @@ struct RootView: View {
             set: { if !$0 { controller.errorMessage = nil } }
         )
     }
+
+    private func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(url)
+    }
+}
+
+private struct UnlockGuidancePresentation: Identifiable {
+    let id: UUID
 }
 
 private struct HomeView: View {
     @ObservedObject var controller: LockController
-    let managePauses: () -> Void
+    let showPlans: () -> Void
+    let showSettings: () -> Void
+    let requestBreak: (UUID) -> Void
+    let cancelBreak: (UUID) -> Void
+    let showUnlockGuidance: (UUID) -> Void
 
     var body: some View {
         NavigationStack {
             ZStack {
-                PauseTheme.background.ignoresSafeArea()
+                AppBackground()
                 ScrollView {
-                    VStack(spacing: 22) {
+                    VStack(alignment: .leading, spacing: 18) {
                         if let message = controller.persistentErrorMessage {
-                            ErrorCard(message: message)
+                            WarningCard(title: "Protection needs attention", message: message)
                         }
-                        if controller.authorizationStatus != .approved {
-                            AuthorizationView(controller: controller)
+
+                        if controller.authorizationStatus != .approved && controller.collection.activeBlocks.isEmpty {
+                            ScreenTimeSetupView(
+                                controller: controller,
+                                openSettings: showSettings
+                            )
                         } else if controller.collection.activeBlocks.isEmpty {
-                            welcome
+                            idleHome
                         } else {
-                            activeOverview
+                            activeHome
                         }
                     }
-                    .frame(maxWidth: 620)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: 680, alignment: .leading)
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 34)
+                    .frame(maxWidth: .infinity)
                 }
+                .accessibilityIdentifier("home.screen")
             }
             .navigationTitle("Hard Pause")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    BrandMark()
-                }
+                ToolbarItem(placement: .principal) { BrandMark(controller: controller) }
                 ToolbarItem(placement: .topBarTrailing) {
-                    ScreenTimeStatus(controller: controller)
-                }
-            }
-        }
-    }
-
-    private var welcome: some View {
-        VStack(spacing: 20) {
-            PauseSeed(mood: .calm, size: 270)
-                .padding(.top, 4)
-            VStack(spacing: 8) {
-                Text("Ready when you are.")
-                    .font(PauseFont.display(34))
-                    .multilineTextAlignment(.center)
-                Text("Create named pauses for work, rest, or any set of apps and websites.")
-                    .foregroundStyle(PauseTheme.muted)
-                    .multilineTextAlignment(.center)
-            }
-            Button("Set up a pause", action: managePauses)
-                .buttonStyle(.glassProminent)
-                .tint(PauseTheme.coral)
-                .controlSize(.large)
-        }
-    }
-
-    private var activeOverview: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            PauseSeed(mood: .calm, size: 180)
-                .frame(maxWidth: .infinity)
-            Text("Active pauses")
-                .font(PauseFont.display(30))
-            Text("\(controller.activeBlockCount) of \(LockCollection.maximumActiveBlocks) active")
-                .foregroundStyle(PauseTheme.muted)
-            ForEach(controller.collection.activeBlocks) { block in
-                Button {
-                    controller.selectBlock(block.id)
-                    managePauses()
-                } label: {
-                    PauseCard {
-                        HStack(spacing: 14) {
-                            Image(systemName: block.state.phase.systemImage)
-                                .font(.title2)
-                                .foregroundStyle(PauseTheme.coral)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(block.name).font(.headline)
-                                Text(block.state.phase.displayName)
-                                    .font(.subheadline)
-                                    .foregroundStyle(PauseTheme.muted)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(PauseTheme.muted)
-                        }
+                    Button(action: showSettings) {
+                        Image(
+                            systemName: controller.authorizationStatus == .approved
+                                ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
                     }
+                    .foregroundStyle(controller.authorizationStatus == .approved ? PauseTheme.muted : PauseTheme.coral)
+                    .accessibilityLabel(
+                        controller.authorizationStatus == .approved
+                            ? "Screen Time access approved" : "Screen Time access needs attention")
                 }
-                .buttonStyle(.plain)
             }
-            Button("Manage pauses", action: managePauses)
-                .buttonStyle(.glass)
+        }
+    }
+
+    private var idleHome: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("No plans are active.")
+                .font(PauseFont.display(31))
+            Text("Open Plans to create one or start a saved plan.")
+                .foregroundStyle(PauseTheme.muted)
+            Button("Go to Plans", action: showPlans)
+                .buttonStyle(.glassProminent)
+                .font(PauseFont.body(17, relativeTo: .headline))
+                .tint(PauseTheme.coral)
+                .foregroundStyle(PauseTheme.background)
                 .controlSize(.large)
+            PrivacyFooter()
+                .padding(.top, 10)
+        }
+    }
+
+    private var activeHome: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(controller.activeBlockCount == 1 ? "Your pause is active." : "Your pauses are active.")
+                    .font(PauseFont.display(30))
+                Text("The controls for each active plan are below.")
+                    .foregroundStyle(PauseTheme.muted)
+            }
+
+            if controller.authorizationStatus != .approved {
+                WarningCard(
+                    title: "Screen Time access needs attention",
+                    message:
+                        "iOS may no longer enforce these plans. Open Settings and restore access. Their saved state and waiting periods remain in place."
+                )
+            }
+
+            ForEach(controller.collection.activeBlocks) { block in
+                ActivePlanCard(
+                    block: block,
+                    requestBreak: { requestBreak(block.id) },
+                    cancelBreak: { cancelBreak(block.id) },
+                    showUnlockGuidance: { showUnlockGuidance(block.id) }
+                )
+            }
+
+            Button("Manage plans", action: showPlans)
+                .buttonStyle(.glass)
+                .font(PauseFont.body(17, relativeTo: .headline))
+                .controlSize(.large)
+            PrivacyFooter()
+                .padding(.top, 10)
         }
     }
 }
 
-private struct BlocksView: View {
+private struct PlansView: View {
     @ObservedObject var controller: LockController
-    @Binding var showsPicker: Bool
-    @Binding var confirmsActivation: Bool
-    @Binding var confirmsFullUnlock: Bool
-    @Binding var confirmsDelete: Bool
+    let create: () -> Void
+    let edit: (UUID) -> Void
+    let activate: (UUID) -> Void
+    let delete: (UUID) -> Void
+    let requestBreak: (UUID) -> Void
+    let cancelBreak: (UUID) -> Void
+    let showUnlockGuidance: (UUID) -> Void
+
+    private var orderedPlans: [LockBlock] {
+        controller.collection.activeBlocks
+            + controller.blocks.filter { !$0.state.isActive }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                PauseTheme.background.ignoresSafeArea()
-                ScrollViewReader { scrollProxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Your blocks")
-                                    .font(PauseFont.display(31))
-                                Text("Select one to view or edit it.")
+                AppBackground()
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Plans")
+                                .font(PauseFont.display(31))
+                            Text("Create a plan, choose its boundaries, and start it when you are ready.")
+                                .foregroundStyle(PauseTheme.muted)
+                        }
+
+                        if orderedPlans.isEmpty {
+                            PauseCard {
+                                VStack(alignment: .leading, spacing: 14) {
+                                    Label("No saved plans", systemImage: "shield")
+                                        .font(PauseFont.display(20, relativeTo: .title3))
+                                    Text(
+                                        "Create your first plan to choose apps, websites, waiting periods, and device protection."
+                                    )
                                     .foregroundStyle(PauseTheme.muted)
-                            }
-
-                            if controller.blocks.isEmpty {
-                                PauseCard {
-                                    Text("No saved pauses. Create one when you are ready.")
-                                        .foregroundStyle(PauseTheme.muted)
-                                }
-                            } else {
-                                VStack(spacing: 10) {
-                                    ForEach(controller.blocks) { block in
-                                        BlockListRow(
-                                            block: block,
-                                            isSelected: controller.selectedBlockID == block.id
-                                        ) {
-                                            controller.selectBlock(block.id)
-                                        }
-                                    }
-                                }
-                            }
-
-                            if let block = controller.selectedBlock {
-                                Divider()
-                                    .overlay(PauseTheme.stroke)
-                                    .padding(.vertical, 4)
-                                    .id("selected-pause-detail")
-                                if block.state.isActive {
-                                    ActiveLockView(
-                                        controller: controller,
-                                        confirmsFullUnlock: $confirmsFullUnlock
-                                    )
-                                } else {
-                                    SetupView(
-                                        controller: controller,
-                                        showsPicker: $showsPicker,
-                                        confirmsActivation: $confirmsActivation,
-                                        confirmsDelete: $confirmsDelete
-                                    )
+                                    Button("New plan", action: create)
+                                        .buttonStyle(.glassProminent)
+                                        .font(PauseFont.body(17, relativeTo: .headline))
+                                        .tint(PauseTheme.coral)
+                                        .foregroundStyle(PauseTheme.background)
+                                        .controlSize(.large)
                                 }
                             }
                         }
-                        .frame(maxWidth: 620)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 36)
+
+                        ForEach(orderedPlans) { block in
+                            PlanCard(
+                                block: block,
+                                edit: { edit(block.id) },
+                                activate: { activate(block.id) },
+                                delete: { delete(block.id) },
+                                requestBreak: { requestBreak(block.id) },
+                                cancelBreak: { cancelBreak(block.id) },
+                                showUnlockGuidance: { showUnlockGuidance(block.id) }
+                            )
+                        }
                     }
-                    .onChange(of: controller.selectedBlockID) {
-                        scrollToSelectedPause(using: scrollProxy)
-                    }
-                    .onChange(of: controller.state.phase) {
-                        scrollToSelectedPause(using: scrollProxy)
-                    }
+                    .frame(maxWidth: 680, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 36)
+                    .frame(maxWidth: .infinity)
                 }
+                .accessibilityIdentifier("plans.screen")
             }
-            .navigationTitle("Blocks")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button(action: controller.createBlock) {
-                        Label("New block", systemImage: "plus")
+                    Button(action: create) { Label("New plan", systemImage: "plus") }
+                        .accessibilityIdentifier("plans.new")
+                }
+            }
+        }
+    }
+}
+
+private struct PlanCard: View {
+    let block: LockBlock
+    let edit: () -> Void
+    let activate: () -> Void
+    let delete: () -> Void
+    let requestBreak: () -> Void
+    let cancelBreak: () -> Void
+    let showUnlockGuidance: () -> Void
+    @State private var showsRules = false
+
+    var body: some View {
+        PauseCard {
+            VStack(alignment: .leading, spacing: 14) {
+                PlanStatusHeader(block: block, showUnlockGuidance: block.state.isActive ? showUnlockGuidance : nil)
+
+                if block.state.isActive {
+                    ActivePlanActions(
+                        block: block,
+                        requestBreak: requestBreak,
+                        cancelBreak: cancelBreak,
+                        showUnlockGuidance: showUnlockGuidance
+                    )
+                } else {
+                    HStack(spacing: 10) {
+                        Button("Start", action: activate)
+                            .buttonStyle(.glassProminent)
+                            .font(PauseFont.body(17, relativeTo: .headline))
+                            .tint(PauseTheme.coral)
+                            .foregroundStyle(PauseTheme.background)
+                        Button("Edit", action: edit)
+                            .buttonStyle(.glass)
+                            .font(PauseFont.body(17, relativeTo: .headline))
+                        Spacer()
+                        Menu {
+                            Button("Delete plan", role: .destructive, action: delete)
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("More actions for \(block.name)")
                     }
+                    .controlSize(.large)
+                }
+
+                Divider().overlay(PauseTheme.stroke)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { showsRules.toggle() }
+                } label: {
+                    HStack {
+                        Text("Rules and waits")
+                        Spacer()
+                        Text(ruleSummary)
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                            .lineLimit(1)
+                        Image(systemName: showsRules ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PauseTheme.muted)
+                    }
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .font(PauseFont.body(16, relativeTo: .headline))
+                .accessibilityValue(showsRules ? "Expanded" : "Collapsed")
+
+                if showsRules {
+                    FrozenRulesView(policy: block.state.isActive ? block.state.policy : block.draftPolicy)
                 }
             }
         }
     }
 
-    private func scrollToSelectedPause(using proxy: ScrollViewProxy) {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            proxy.scrollTo("selected-pause-detail", anchor: .top)
+    private var ruleSummary: String {
+        let policy = block.state.isActive ? block.state.policy : block.draftPolicy
+        let appsAndSites = policy.selectedItemCount
+        return [
+            policy.protectionMode.displayName,
+            appsAndSites > 0 ? "\(appsAndSites) selected" : nil,
+            policy.blocksAdultWebsites ? "Adult sites" : nil,
+        ].compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+private struct ActivePlanCard: View {
+    let block: LockBlock
+    let requestBreak: () -> Void
+    let cancelBreak: () -> Void
+    let showUnlockGuidance: () -> Void
+
+    var body: some View {
+        PauseCard {
+            VStack(alignment: .leading, spacing: 14) {
+                PlanStatusHeader(block: block, showUnlockGuidance: showUnlockGuidance)
+                ActivePlanActions(
+                    block: block,
+                    requestBreak: requestBreak,
+                    cancelBreak: cancelBreak,
+                    showUnlockGuidance: showUnlockGuidance
+                )
+            }
         }
+    }
+}
+
+private struct PlanStatusHeader: View {
+    let block: LockBlock
+    var showUnlockGuidance: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(block.name)
+                .font(PauseFont.display(21, relativeTo: .headline))
+                .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 8) {
+                Image(systemName: block.state.phase.systemImage)
+                phaseStatus
+                    .font(.body.weight(.semibold))
+                if let showUnlockGuidance {
+                    Button(action: showUnlockGuidance) {
+                        Image(systemName: "info.circle")
+                            .frame(width: 38, height: 38)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PauseTheme.muted)
+                    .accessibilityLabel("Looking to unlock sooner?")
+                    .accessibilityHint("Opens guidance about waiting and requesting the plan to end.")
+                }
+            }
+            .foregroundStyle(block.state.isActive ? PauseTheme.coral : PauseTheme.muted)
+            Text(block.state.phase.detailText)
+                .font(.subheadline)
+                .foregroundStyle(PauseTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if let notice = block.state.recoveryNotice {
+                Label(notice, systemImage: "arrow.clockwise.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if block.state.isActive, block.state.automaticEndAt != nil {
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text("Automatic end in \(block.state.automaticEndCountdownLabel())")
+                        .font(.caption)
+                        .foregroundStyle(PauseTheme.muted)
+                        .monospacedDigit()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var phaseStatus: some View {
+        if block.state.nextTransitionAt != nil {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                Text("\(block.state.phase.displayName) · \(block.state.countdownLabel())")
+                    .monospacedDigit()
+            }
+        } else {
+            Text(block.state.phase.displayName)
+        }
+    }
+}
+
+private struct ActivePlanActions: View {
+    let block: LockBlock
+    let requestBreak: () -> Void
+    let cancelBreak: () -> Void
+    let showUnlockGuidance: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            switch block.state.phase {
+            case .locked:
+                Button(
+                    block.state.policy.protectionMode.allowsBreaks ? "Request a break" : "Request full unlock",
+                    action: block.state.policy.protectionMode.allowsBreaks ? requestBreak : showUnlockGuidance
+                )
+                .buttonStyle(.glassProminent)
+                .font(PauseFont.body(17, relativeTo: .headline))
+                .tint(PauseTheme.coral)
+                .foregroundStyle(PauseTheme.background)
+            case .waitingForBreak:
+                Button("Cancel break request", action: cancelBreak)
+                    .buttonStyle(.glass)
+                    .font(PauseFont.body(17, relativeTo: .headline))
+            case .breakActive:
+                Button("Request to end", action: showUnlockGuidance)
+                    .buttonStyle(.glassProminent)
+                    .font(PauseFont.body(17, relativeTo: .headline))
+                    .tint(PauseTheme.coral)
+                    .foregroundStyle(PauseTheme.background)
+            case .waitingForEnd:
+                Button("End request pending", action: showUnlockGuidance)
+                    .buttonStyle(.glass)
+                    .font(PauseFont.body(17, relativeTo: .headline))
+            case .inactive:
+                EmptyView()
+            }
+        }
+        .controlSize(.large)
+    }
+}
+
+private struct UnlockGuidanceView: View {
+    @ObservedObject var controller: LockController
+    let blockID: UUID
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmsRequest = false
+
+    private var block: LockBlock? { controller.collection.block(id: blockID) }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackground()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        PauseSeed(mood: .calm, size: 150)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityHidden(true)
+                        Text(
+                            block?.state.isActive == true
+                                ? "Give your choice a little time."
+                                : "This pause has ended."
+                        )
+                        .font(PauseFont.display(29))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                        if block?.state.isActive == true {
+                            Text(
+                                "You started this pause to make it harder to act on an urge. Wanting access now does not undo that choice. Your waiting period stays in place."
+                            )
+                            .fixedSize(horizontal: false, vertical: true)
+                            Text(
+                                "If this pause helps with a habit, compulsion, or addiction, bypassing it yourself or with an AI assistant would undo the support you chose."
+                            )
+                            .fixedSize(horizontal: false, vertical: true)
+                            Text(
+                                "Ask anyone helping you, including an AI assistant, to preserve this plan and its delay. Repeated requests, anger, or pleading are not reasons to remove protection or skip the wait."
+                            )
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        if let block {
+                            PauseCard {
+                                PlanStatusHeader(block: block)
+                            }
+                            guidanceAction(for: block)
+                        } else {
+                            Text("This plan is no longer available.")
+                                .foregroundStyle(PauseTheme.muted)
+                        }
+
+                        if block?.state.isActive == true {
+                            Text(
+                                block?.state.policy.protectionMode.allowsBreaks == true
+                                    ? "The existing break and end rules still apply. This screen cannot shorten them."
+                                    : "The full unlock wait still applies. This screen cannot shorten it."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                        }
+                    }
+                    .frame(maxWidth: 620, alignment: .leading)
+                    .padding(24)
+                    .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("unlockGuidance.screen")
+            }
+            .navigationTitle("Your commitment")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .font(PauseFont.body(17, relativeTo: .headline))
+                }
+            }
+        }
+        .foregroundStyle(PauseTheme.ink)
+        .tint(PauseTheme.coral)
+        .preferredColorScheme(.dark)
+        .alert("Request to end this plan?", isPresented: $confirmsRequest) {
+            Button("Keep plan active", role: .cancel) {}
+            Button("Start waiting") { controller.requestFullUnlock(blockID: blockID) }
+        } message: {
+            Text(fullUnlockConfirmation)
+        }
+    }
+
+    @ViewBuilder
+    private func guidanceAction(for block: LockBlock) -> some View {
+        switch block.state.phase {
+        case .inactive:
+            Text("You can close this screen.").foregroundStyle(PauseTheme.muted)
+        case .locked:
+            requestEndSection(for: block)
+        case .waitingForBreak:
+            VStack(alignment: .leading, spacing: 12) {
+                Text("A break request is already waiting. Cancel it first if you want to request that the plan end.")
+                    .foregroundStyle(PauseTheme.muted)
+                Button("Cancel break request") { controller.cancelBreakRequest(blockID: block.id) }
+                    .buttonStyle(.glass)
+                    .font(PauseFont.body(17, relativeTo: .headline))
+                    .controlSize(.large)
+            }
+        case .breakActive:
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Requesting the plan to end closes this break. Blocking returns during the full-unlock wait.")
+                    .foregroundStyle(PauseTheme.muted)
+                requestEndSection(for: block)
+            }
+        case .waitingForEnd:
+            Text("A request to end this plan is already waiting. The countdown above shows the remaining wait.")
+                .foregroundStyle(PauseTheme.muted)
+        }
+    }
+
+    private func requestEndSection(for block: LockBlock) -> some View {
+        let delay = block.state.policy.fullUnlockDelay ?? block.state.policy.waitDuration
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Wait to end: \(delay.hardPauseDurationLabel)")
+                .foregroundStyle(PauseTheme.muted)
+            Button("Request to end") { confirmsRequest = true }
+                .buttonStyle(.glassProminent)
+                .font(PauseFont.body(17, relativeTo: .headline))
+                .tint(PauseTheme.coral)
+                .foregroundStyle(PauseTheme.background)
+                .controlSize(.large)
+        }
+    }
+
+    private var fullUnlockConfirmation: String {
+        guard let block else { return "Blocking continues during the waiting period." }
+        let delay = block.state.policy.fullUnlockDelay ?? block.state.policy.waitDuration
+        return block.state.phase == .breakActive
+            ? "This closes the current break. Blocking returns for \(delay.hardPauseDurationLabel), then this plan ends."
+            : "Blocking continues for \(delay.hardPauseDurationLabel), then this plan ends."
     }
 }
 
 private struct SettingsView: View {
     @ObservedObject var controller: LockController
+    let openSettings: () -> Void
 
     var body: some View {
         NavigationStack {
             ZStack {
-                PauseTheme.background.ignoresSafeArea()
+                AppBackground()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(
+                            controller.authorizationStatus == .approved
+                                ? "Screen Time access is ready on this device."
+                                : "Finish Screen Time setup before starting a plan."
+                        )
+                        .foregroundStyle(PauseTheme.muted)
+
                         PauseCard {
                             VStack(alignment: .leading, spacing: 14) {
-                                SectionTitle(icon: "hourglass", title: "Capacity")
-                                StatusRow(
-                                    label: "Active pauses",
+                                Label("Screen Time access", systemImage: "hand.raised.fill")
+                                    .font(PauseFont.display(20, relativeTo: .title3))
+                                Label(
+                                    controller.authorizationStatus == .approved ? "Approved" : "Access needed",
+                                    systemImage: controller.authorizationStatus == .approved
+                                        ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
+                                )
+                                .foregroundStyle(
+                                    controller.authorizationStatus == .approved ? PauseTheme.coral : .orange)
+                                Text(
+                                    "Apple owns this permission. Hard Pause cannot hide or replace the system permission controls."
+                                )
+                                .font(.subheadline)
+                                .foregroundStyle(PauseTheme.muted)
+                                if controller.authorizationStatus != .approved {
+                                    HStack(spacing: 10) {
+                                        Button {
+                                            Task { await controller.requestAuthorization() }
+                                        } label: {
+                                            if controller.isRequestingAuthorization {
+                                                ProgressView()
+                                            } else {
+                                                Text("Allow access")
+                                            }
+                                        }
+                                        .buttonStyle(.glassProminent)
+                                        .font(PauseFont.body(17, relativeTo: .headline))
+                                        .tint(PauseTheme.coral)
+                                        .foregroundStyle(
+                                            controller.isRequestingAuthorization
+                                                ? PauseTheme.muted : PauseTheme.background
+                                        )
+                                        .disabled(controller.isRequestingAuthorization)
+                                        Button("Open Hard Pause Settings", action: openSettings)
+                                            .buttonStyle(.glass)
+                                            .font(PauseFont.body(17, relativeTo: .headline))
+                                    }
+                                    .controlSize(.large)
+                                }
+                            }
+                        }
+
+                        PauseCard {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Label("Device protection", systemImage: "shield.lefthalf.filled")
+                                    .font(PauseFont.display(20, relativeTo: .title3))
+                                Text(
+                                    "Each plan can prevent app deletion and require automatic date and time while it is active. These settings apply to the whole device and remain fixed until that plan ends."
+                                )
+                                .foregroundStyle(PauseTheme.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                IOSStatusRow(
+                                    label: "Active deletion protection",
+                                    value:
+                                        "\(activeDeletionProtectionCount) plan\(activeDeletionProtectionCount == 1 ? "" : "s")"
+                                )
+                                IOSStatusRow(
+                                    label: "Active automatic time",
+                                    value: "\(activeAutomaticTimeCount) plan\(activeAutomaticTimeCount == 1 ? "" : "s")"
+                                )
+                            }
+                        }
+
+                        PauseCard {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Label("Optional passcode protection", systemImage: "key.fill")
+                                    .font(PauseFont.display(20, relativeTo: .title3))
+                                    .accessibilityIdentifier("settings.optionalPasscode")
+                                Text(
+                                    "Hard Pause uses native plan controls for app-deletion and automatic-date protection. A Screen Time passcode is optional."
+                                )
+                                .fixedSize(horizontal: false, vertical: true)
+                                Text(
+                                    "On iOS 26.4 or later, iOS can require the passcode before Family Controls access is changed. Anyone who knows the passcode can still revoke access."
+                                )
+                                .font(.subheadline)
+                                .foregroundStyle(PauseTheme.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                Text(
+                                    "It adds the most friction when a trusted person keeps the code. Hard Pause cannot set, read, or verify it."
+                                )
+                                .font(.subheadline)
+                                .foregroundStyle(PauseTheme.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                Text("Manage the passcode in iOS Settings > Screen Time.")
+                                    .font(.caption)
+                                    .foregroundStyle(PauseTheme.muted)
+                            }
+                        }
+
+                        PauseCard {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Label("Capacity", systemImage: "square.stack.3d.up.fill")
+                                    .font(PauseFont.display(20, relativeTo: .title3))
+                                IOSStatusRow(
+                                    label: "Active plans",
                                     value: "\(controller.activeBlockCount) of \(LockCollection.maximumActiveBlocks)"
                                 )
                                 Text(
-                                    "iOS limits Screen Time schedules. Hard Pause stops a new request if no schedule slot is available, so an existing rule is not relaxed."
+                                    "iOS limits Screen Time schedules. Hard Pause stops a new request if no schedule slot is available, so an existing plan is not relaxed."
                                 )
                                 .font(.footnote)
                                 .foregroundStyle(PauseTheme.muted)
                             }
                         }
-                        PauseCard {
-                            VStack(alignment: .leading, spacing: 14) {
-                                SectionTitle(icon: "hand.raised.fill", title: "Screen Time access")
-                                Text(controller.authorizationStatus == .approved ? "Approved" : "Access needed")
-                                    .font(.headline)
-                                Text(
-                                    "iOS owns this permission. Hard Pause cannot prevent permission changes in Settings."
-                                )
-                                .font(.subheadline)
-                                .foregroundStyle(PauseTheme.muted)
-                                if controller.authorizationStatus != .approved {
-                                    Button {
-                                        Task { await controller.requestAuthorization() }
-                                    } label: {
-                                        Text("Allow Screen Time access")
-                                    }
-                                    .buttonStyle(.glassProminent)
-                                    .tint(PauseTheme.coral)
-                                    .controlSize(.large)
-                                }
-                            }
-                        }
+
                         PauseCard {
                             VStack(alignment: .leading, spacing: 10) {
-                                SectionTitle(icon: "internaldrive.fill", title: "Privacy")
+                                Label("Private on this device", systemImage: "internaldrive.fill")
+                                    .font(PauseFont.display(20, relativeTo: .title3))
                                 Text(
-                                    "Pause names, rules, and state stay on this device. The app has no account, analytics, or server."
+                                    "Plan names, rules, and state stay on this device. Hard Pause has no account, analytics, or server."
                                 )
                                 .foregroundStyle(PauseTheme.muted)
                             }
                         }
                     }
-                    .frame(maxWidth: 620)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: 680, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 36)
+                    .frame(maxWidth: .infinity)
                 }
+                .accessibilityIdentifier("settings.screen")
             }
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Settings")
+                        .font(PauseFont.display(22, relativeTo: .headline))
+                }
+            }
+        }
+    }
+
+    private var activeDeletionProtectionCount: Int {
+        controller.collection.activeBlocks.filter { $0.state.policy.preventsAppRemoval }.count
+    }
+
+    private var activeAutomaticTimeCount: Int {
+        controller.collection.activeBlocks.filter { $0.state.policy.requiresAutomaticDateAndTime }.count
+    }
+}
+
+private struct ScreenTimeSetupView: View {
+    @ObservedObject var controller: LockController
+    let openSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            PauseSeed(mood: .resting, size: 160)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Your apps can wait.")
+                    .font(PauseFont.display(32))
+                Text(
+                    "Hard Pause uses Apple’s Screen Time controls. Your plans and activity choices stay on this device."
+                )
+                .foregroundStyle(PauseTheme.muted)
+            }
+
+            PauseCard {
+                VStack(alignment: .leading, spacing: 16) {
+                    SetupStep(
+                        number: 1,
+                        title: "Allow Screen Time access",
+                        detail: "iOS needs this permission before Hard Pause can shield selected apps and websites."
+                    )
+                    Divider().overlay(PauseTheme.stroke)
+                    SetupStep(
+                        number: 2,
+                        title: "Create a plan",
+                        detail:
+                            "Choose apps, websites, and waiting periods. A plan can also prevent app deletion and require automatic date and time while it is active."
+                    )
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Optional extra protection")
+                    .font(.footnote.weight(.semibold))
+                Text(
+                    "On iOS 26.4 or later, a Screen Time passcode can add friction before Family Controls access changes. Anyone who knows the code can still revoke access. It works best if a trusted person keeps the code."
+                )
+                .font(.footnote)
+                .foregroundStyle(PauseTheme.muted)
+                Button("Review optional passcode protection", action: openSettings)
+                    .buttonStyle(.plain)
+                    .font(PauseFont.body(13, relativeTo: .footnote))
+                    .foregroundStyle(PauseTheme.coral)
+            }
+
+            Button {
+                Task { await controller.requestAuthorization() }
+            } label: {
+                HStack {
+                    if controller.isRequestingAuthorization { ProgressView() }
+                    Text(controller.isRequestingAuthorization ? "Waiting for iOS…" : "Allow Screen Time access")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glassProminent)
+            .font(PauseFont.body(17, relativeTo: .headline))
+            .tint(PauseTheme.coral)
+            .foregroundStyle(
+                controller.isRequestingAuthorization ? PauseTheme.muted : PauseTheme.background
+            )
+            .controlSize(.large)
+            .disabled(controller.isRequestingAuthorization)
+
+            if controller.authorizationStatus == .denied {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Access was denied or revoked. Open Settings to restore it.")
+                        .font(.footnote)
+                        .foregroundStyle(PauseTheme.muted)
+                    Button("Open setup guidance", action: openSettings)
+                        .buttonStyle(.glass)
+                        .font(PauseFont.body(17, relativeTo: .headline))
+                        .controlSize(.large)
+                }
+            }
+        }
+    }
+}
+
+private struct SetupStep: View {
+    let number: Int
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 13) {
+            Text("\(number)")
+                .font(.headline)
+                .foregroundStyle(PauseTheme.background)
+                .frame(width: 30, height: 30)
+                .background(PauseTheme.coral, in: Circle())
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.headline)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(PauseTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Step \(number). \(title). \(detail)")
+    }
+}
+
+private struct FrozenRulesView: View {
+    let policy: LockPolicy
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            IOSStatusRow(label: "Mode", value: policy.protectionMode.displayName)
+            IOSStatusRow(label: "Chosen apps & sites", value: "\(policy.selectedItemCount)")
+            IOSStatusRow(label: "Adult website filter", value: policy.blocksAdultWebsites ? "On" : "Off")
+            if policy.protectionMode.allowsBreaks {
+                IOSStatusRow(label: "Wait for a break", value: policy.waitDuration.hardPauseDurationLabel)
+                IOSStatusRow(label: "Break length", value: policy.breakDuration.hardPauseDurationLabel)
+            }
+            IOSStatusRow(
+                label: "Wait to end",
+                value: (policy.fullUnlockDelay ?? policy.waitDuration).hardPauseDurationLabel
+            )
+            if policy.protectionMode.allowsBreaks {
+                IOSStatusRow(
+                    label: "Plan duration",
+                    value: policy.fixedDuration?.hardPauseDurationLabel ?? "Until I end it"
+                )
+            }
+            IOSStatusRow(label: "App deletion", value: policy.preventsAppRemoval ? "Prevented device-wide" : "Allowed")
+            IOSStatusRow(
+                label: "Automatic date & time", value: policy.requiresAutomaticDateAndTime ? "Required" : "Not required"
+            )
+        }
+    }
+}
+
+private struct WarningCard: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        PauseCard {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.headline)
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(PauseTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 }
 
 private struct BrandMark: View {
+    @ObservedObject var controller: LockController
+
     var body: some View {
         HStack(spacing: 7) {
-            PauseSeed(mood: .calm, size: 32)
-                .accessibilityHidden(true)
+            PauseSeed(
+                mood: controller.collection.activeBlocks.isEmpty ? .resting : .calm,
+                size: 32
+            )
+            .accessibilityHidden(true)
             Text("hard pause")
                 .font(PauseFont.display(18, relativeTo: .headline))
         }
@@ -399,654 +1077,74 @@ private struct BrandMark: View {
     }
 }
 
-private struct ScreenTimeStatus: View {
-    @ObservedObject var controller: LockController
-
+private struct PrivacyFooter: View {
     var body: some View {
-        Image(
-            systemName: controller.authorizationStatus == .approved
-                ? "checkmark.circle.fill"
-                : "exclamationmark.circle.fill"
-        )
-        .foregroundStyle(controller.authorizationStatus == .approved ? PauseTheme.muted : PauseTheme.coral)
-        .accessibilityLabel(
-            controller.authorizationStatus == .approved ? "Screen Time on" : "Screen Time access needed"
-        )
-    }
-}
-
-private struct BlockListRow: View {
-    let block: LockBlock
-    let isSelected: Bool
-    let select: () -> Void
-
-    var body: some View {
-        Button(action: select) {
-            HStack(spacing: 13) {
-                Image(systemName: block.state.phase.systemImage)
-                    .foregroundStyle(block.state.isActive ? PauseTheme.coral : PauseTheme.muted)
-                    .frame(width: 25)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(block.name).font(.headline)
-                    Text(block.state.phase.displayName)
-                        .font(.caption)
-                        .foregroundStyle(PauseTheme.muted)
-                }
-                Spacer()
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(PauseTheme.coral)
-                }
-            }
-            .padding(15)
-            .background(isSelected ? PauseTheme.surface : PauseTheme.surface.opacity(0.55))
-            .overlay {
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .stroke(isSelected ? PauseTheme.coral.opacity(0.7) : PauseTheme.stroke, lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct ErrorCard: View {
-    let message: String
-
-    var body: some View {
-        PauseCard {
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline)
-        }
-    }
-}
-
-extension LockPhase {
-    fileprivate var displayName: String {
-        switch self {
-        case .inactive: "Inactive"
-        case .locked: "Blocking"
-        case .waitingForBreak: "Timeout requested"
-        case .breakActive: "Timeout open"
-        case .waitingForEnd: "Full unlock requested"
-        }
-    }
-
-    fileprivate var systemImage: String {
-        switch self {
-        case .inactive: "pause.circle"
-        case .locked: "lock.fill"
-        case .waitingForBreak, .waitingForEnd: "hourglass"
-        case .breakActive: "cup.and.saucer.fill"
-        }
-    }
-}
-
-private struct AuthorizationView: View {
-    @ObservedObject var controller: LockController
-
-    var body: some View {
-        VStack(spacing: 22) {
-            PauseSeed(mood: .calm, size: 280)
-                .padding(.top, 12)
-            VStack(spacing: 10) {
-                Text("Your apps can wait.")
-                    .font(PauseFont.display(34))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(PauseTheme.ink)
-                Text(
-                    "Block chosen apps and websites with Apple’s Screen Time controls. Your settings never leave this device."
-                )
-                .font(.body)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(PauseTheme.muted)
-            }
-            PauseCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    FeatureRow(icon: "hourglass", text: "A fixed delay before a timeout or full unlock")
-                    FeatureRow(icon: "hand.raised.fill", text: "Friendly system shields on blocked apps and sites")
-                    FeatureRow(icon: "internaldrive.fill", text: "Local storage only; no account, analytics, or server")
-                }
-            }
-            Button {
-                Task { await controller.requestAuthorization() }
-            } label: {
-                HStack {
-                    if controller.isRequestingAuthorization { ProgressView() }
-                    Text(controller.isRequestingAuthorization ? "Waiting for iOS…" : "Allow Screen Time access")
-                }
-            }
-            .buttonStyle(.glassProminent)
-            .tint(PauseTheme.coral)
-            .controlSize(.large)
-            .disabled(controller.isRequestingAuthorization)
-            if controller.authorizationStatus == .denied {
-                Text("Access was denied or revoked. You can change Family Controls permission in iOS Settings.")
-                    .font(.footnote)
-                    .foregroundStyle(PauseTheme.muted)
-                    .multilineTextAlignment(.center)
-            }
-        }
-    }
-}
-
-private struct SetupView: View {
-    @ObservedObject var controller: LockController
-    @Binding var showsPicker: Bool
-    @Binding var confirmsActivation: Bool
-    @Binding var confirmsDelete: Bool
-    @State private var domainInput = ""
-    @State private var caretPosition: CGPoint?
-    @State private var mascotFrame: CGRect = .zero
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    private let waitOptions: [TimeInterval] = [3_600, 14_400, 86_400, 259_200]
-    private let breakOptions: [TimeInterval] = [900, 1_800, 3_600, 7_200]
-    private let fixedDurationOptions: [TimeInterval?] = [nil, 86_400, 259_200, 604_800]
-
-    var body: some View {
-        VStack(spacing: 18) {
-            HStack(spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Edit this pause")
-                        .font(PauseFont.display(31))
-                        .foregroundStyle(PauseTheme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("These settings become fixed when you enable the lock.")
-                        .foregroundStyle(PauseTheme.muted)
-                }
-                Spacer(minLength: 0)
-                if !dynamicTypeSize.isAccessibilitySize {
-                    PauseSeed(
-                        mood: .calm, size: 100,
-                        attention: mascotAttention(caret: caretPosition, frame: mascotFrame)
-                    )
-                    .background(
-                        GeometryReader { geometry in
-                            Color.clear.preference(key: MascotFrameKey.self, value: geometry.frame(in: .global))
-                        })
-                }
-            }
-
-            PauseCard {
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionTitle(icon: "character.cursor.ibeam", title: "Name")
-                    CaretTrackingTextField(
-                        "Pause name",
-                        text: $controller.draftName,
-                        accessibilityLabel: "Pause name",
-                        inputMode: .name,
-                        onSubmit: {},
-                        onCaretChange: { caretPosition = $0 }
-                    )
-                    .padding(12)
-                    .background(PauseTheme.background)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    Text("You can change the name only while this pause is inactive.")
-                        .font(.caption)
-                        .foregroundStyle(PauseTheme.muted)
-                }
-            }
-
-            PauseCard {
-                VStack(alignment: .leading, spacing: 16) {
-                    SectionTitle(icon: "app.badge.checkmark", title: "Apps & websites")
-                    Button {
-                        showsPicker = true
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Choose with Screen Time")
-                                    .font(.headline)
-                                Text(selectionSummary)
-                                    .font(.subheadline)
-                                    .foregroundStyle(PauseTheme.muted)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                        }
-                    }
-                    .foregroundStyle(PauseTheme.ink)
-                }
-            }
-
-            PauseCard {
-                VStack(alignment: .leading, spacing: 16) {
-                    SectionTitle(icon: "safari.fill", title: "Web protection")
-                    Toggle(isOn: $controller.draftPolicy.blocksAdultWebsites) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Automatic adult website filter")
-                            Text("Uses Apple’s web filter. Coverage and classification are controlled by iOS.")
-                                .font(.caption)
-                                .foregroundStyle(PauseTheme.muted)
-                        }
-                    }
-                    HStack {
-                        CaretTrackingTextField(
-                            "example.com", text: $domainInput, onSubmit: addDomain,
-                            onCaretChange: { caretPosition = $0 }
-                        )
-                        .padding(12)
-                        .background(PauseTheme.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        Button("Add") { addDomain() }
-                            .fontWeight(.semibold)
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    ForEach(controller.draftPolicy.manualDomains, id: \.self) { domain in
-                        HStack {
-                            Image(systemName: "globe")
-                            Text(domain)
-                            Spacer()
-                            Button {
-                                controller.removeManualDomain(domain)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                            }
-                            .accessibilityLabel("Remove \(domain)")
-                            .frame(minWidth: 44, minHeight: 44)
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(PauseTheme.ink)
-                    }
-                }
-            }
-
-            PauseCard {
-                VStack(alignment: .leading, spacing: 16) {
-                    SectionTitle(icon: "timer", title: "Timeout rules")
-                    LabeledPicker(
-                        title: "Timeout delay",
-                        detail: "Wait before a timeout opens",
-                        selection: $controller.draftPolicy.waitDuration,
-                        options: waitOptions
-                    )
-                    Divider().overlay(PauseTheme.stroke)
-                    LabeledPicker(
-                        title: "Full-unlock delay",
-                        detail: "Wait before this pause ends on request",
-                        selection: fullUnlockDelayBinding,
-                        options: waitOptions
-                    )
-                    Divider().overlay(PauseTheme.stroke)
-                    LabeledPicker(
-                        title: "Timeout length",
-                        detail: "Blocking returns automatically",
-                        selection: $controller.draftPolicy.breakDuration,
-                        options: breakOptions
-                    )
-                    Divider().overlay(PauseTheme.stroke)
-                    OptionalDurationPicker(
-                        title: "Automatic end",
-                        detail: "Optional fixed elapsed duration",
-                        selection: $controller.draftPolicy.fixedDuration,
-                        options: fixedDurationOptions
-                    )
-                    Text(
-                        "A fixed duration ends this pause at its elapsed-time deadline, even during a pending timeout or full-unlock request."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(PauseTheme.muted)
-                    Text("Time while this device is off does not count toward these delays.")
-                        .font(.caption)
-                        .foregroundStyle(PauseTheme.muted)
-                }
-            }
-
-            PauseCard {
-                VStack(alignment: .leading, spacing: 16) {
-                    SectionTitle(icon: "shield.lefthalf.filled", title: "Device protection")
-                    Toggle(isOn: $controller.draftPolicy.preventsAppRemoval) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Prevent app removal")
-                            Text(
-                                "Device-wide: iOS prevents deletion of every app until the lock fully ends, including during a timeout."
-                            )
-                            .font(.caption)
-                            .foregroundStyle(PauseTheme.muted)
-                        }
-                    }
-                    Toggle(isOn: $controller.draftPolicy.requiresAutomaticDateAndTime) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Require automatic date & time")
-                            Text(
-                                "Device-wide while active. This reduces clock changes that could affect a local delay."
-                            )
-                            .font(.caption)
-                            .foregroundStyle(PauseTheme.muted)
-                        }
-                    }
-                }
-            }
-
-            Button("Enable \(controller.draftName)") { confirmsActivation = true }
-                .buttonStyle(.glassProminent)
-                .tint(PauseTheme.coral)
-                .controlSize(.large)
-                .disabled(!controller.canActivate)
-                .opacity(controller.canActivate ? 1 : 0.45)
-
-            if let message = validationMessage {
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(PauseTheme.muted)
-                    .multilineTextAlignment(.center)
-            }
-
-            Text(
-                "iOS still owns Screen Time permission. If permission can be revoked in Settings, Hard Pause cannot stop that. A Screen Time passcode may protect changes on some iOS versions; verify this on your device."
-            )
-            .font(.footnote)
-            .foregroundStyle(PauseTheme.muted)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 8)
-
-            Button("Delete this pause", role: .destructive) { confirmsDelete = true }
-                .frame(minHeight: 44)
-        }
-        .onPreferenceChange(MascotFrameKey.self) { mascotFrame = $0 }
-    }
-
-    private var selectionSummary: String {
-        let count = controller.draftPolicy.selectedItemCount - controller.draftPolicy.manualDomains.count
-        return count == 0 ? "Nothing selected yet" : "\(count) selection\(count == 1 ? "" : "s")"
-    }
-
-    private func addDomain() {
-        if controller.addManualDomain(domainInput) { domainInput = "" }
-    }
-
-    private var validationMessage: String? {
-        guard !LockBlock.normalizedName(controller.draftName).isEmpty else {
-            return "Enter a name for this pause."
-        }
-        guard controller.activeBlockCount < LockCollection.maximumActiveBlocks else {
-            return "No more than 16 pauses can be active at the same time."
-        }
-        guard controller.draftPolicy.hasBlockingTarget else {
-            return "Choose an app or website, or turn on the adult website filter."
-        }
-        do {
-            try controller.draftPolicy.validateManagedSettingsLimits()
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
-    private var fullUnlockDelayBinding: Binding<TimeInterval> {
-        Binding(
-            get: {
-                controller.draftPolicy.fullUnlockDelay
-                    ?? controller.draftPolicy.waitDuration
-            },
-            set: { controller.draftPolicy.fullUnlockDelay = $0 }
-        )
-    }
-}
-
-private struct ActiveLockView: View {
-    @ObservedObject var controller: LockController
-    @Binding var confirmsFullUnlock: Bool
-
-    var body: some View {
-        VStack(spacing: 18) {
-            PauseSeed(mood: mood, size: 280)
-                .padding(.top, 4)
-            VStack(spacing: 7) {
-                Text(controller.selectedBlock?.name ?? "Pause")
-                    .font(.headline)
-                    .foregroundStyle(PauseTheme.coral)
-                Text(title)
-                    .font(PauseFont.display(30))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(PauseTheme.ink)
-                Text(detail)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(PauseTheme.muted)
-            }
-
-            if controller.state.nextTransitionAt != nil {
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    VStack(spacing: 10) {
-                        Text(controller.state.countdownLabel())
-                            .font(PauseFont.mono(46))
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.5)
-                            .foregroundStyle(PauseTheme.ink)
-                            .multilineTextAlignment(.center)
-                        Text(countdownLabel)
-                            .font(PauseFont.body(14, relativeTo: .subheadline))
-                            .foregroundStyle(PauseTheme.muted)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                }
-            }
-
-            if controller.state.automaticEndAt != nil {
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    VStack(spacing: 8) {
-                        Text(controller.state.automaticEndCountdownLabel())
-                            .font(PauseFont.mono(32))
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                        Text("Automatic end")
-                            .font(.subheadline)
-                            .foregroundStyle(PauseTheme.muted)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                }
-            }
-
-            if controller.authorizationStatus != .approved {
-                PauseCard {
-                    Label {
-                        Text(
-                            "Screen Time access is no longer approved. iOS may stop enforcing this lock. Open Settings to restore access."
-                        )
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(PauseTheme.coral)
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(PauseTheme.ink)
-                }
-            }
-
-            if let notice = controller.state.recoveryNotice {
-                PauseCard {
-                    Label(notice, systemImage: "arrow.clockwise.circle.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(PauseTheme.ink)
-                }
-            }
-
-            PauseCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    StatusRow(label: "Chosen apps & sites", value: "\(controller.state.policy.selectedItemCount)")
-                    StatusRow(
-                        label: "Adult website filter", value: controller.state.policy.blocksAdultWebsites ? "On" : "Off"
-                    )
-                    StatusRow(
-                        label: "Timeout delay", value: controller.state.policy.waitDuration.hardPauseDurationLabel)
-                    StatusRow(
-                        label: "Full-unlock delay",
-                        value: (controller.state.policy.fullUnlockDelay
-                            ?? controller.state.policy.waitDuration).hardPauseDurationLabel
-                    )
-                    StatusRow(label: "Timeout", value: controller.state.policy.breakDuration.hardPauseDurationLabel)
-                    StatusRow(
-                        label: "Automatic end",
-                        value: controller.state.policy.fixedDuration?.hardPauseDurationLabel ?? "After full unlock"
-                    )
-                    StatusRow(
-                        label: "App deletion",
-                        value: controller.state.policy.preventsAppRemoval ? "Prevented device-wide" : "Allowed")
-                    Text("The name and rules cannot be edited while this pause is active.")
-                        .font(.footnote)
-                        .foregroundStyle(PauseTheme.muted)
-                        .padding(.top, 2)
-                }
-            }
-
-            if controller.state.phase == .locked {
-                Button("Request a timeout") { controller.requestBreak() }
-                    .buttonStyle(.glassProminent)
-                    .tint(PauseTheme.coral)
-                    .controlSize(.large)
-            }
-            if controller.state.phase == .locked || controller.state.phase == .breakActive {
-                Button("Request full unlock") { confirmsFullUnlock = true }
-                    .buttonStyle(.glass)
-                    .controlSize(.large)
-            }
-        }
-    }
-
-    private var mood: PauseSeedMood {
-        return switch controller.state.phase {
-        case .breakActive: .resting
-        case .waitingForBreak, .waitingForEnd: .waiting
-        case .inactive, .locked: .calm
-        }
-    }
-
-    private var title: String {
-        if controller.authorizationStatus != .approved {
-            return "Screen Time access needs attention"
-        }
-        return switch controller.state.phase {
-        case .locked: "Your pause is active"
-        case .waitingForBreak: "A little more time"
-        case .breakActive: "Your break is open"
-        case .waitingForEnd: "Full unlock requested"
-        case .inactive: "Ready"
-        }
-    }
-
-    private var detail: String {
-        if controller.authorizationStatus != .approved {
-            return "iOS may no longer enforce this lock. Restore access in Settings."
-        }
-        return switch controller.state.phase {
-        case .locked: "Chosen apps and websites stay blocked."
-        case .waitingForBreak: "Blocking continues until your timeout starts."
-        case .breakActive: "Access is open for now. Blocking returns automatically."
-        case .waitingForEnd: "Blocking continues until the lock fully ends."
-        case .inactive: ""
-        }
-    }
-
-    private var countdownLabel: String {
-        switch controller.state.phase {
-        case .waitingForBreak: "Timeout starts in"
-        case .breakActive: "Blocking returns in"
-        case .waitingForEnd: "Lock ends in"
-        case .inactive, .locked: ""
-        }
-    }
-}
-
-private struct FeatureRow: View {
-    let icon: String
-    let text: String
-
-    var body: some View {
-        Label(text, systemImage: icon)
-            .font(.subheadline)
-            .foregroundStyle(PauseTheme.ink)
-    }
-}
-
-private struct SectionTitle: View {
-    let icon: String
-    let title: String
-
-    var body: some View {
-        Label(title, systemImage: icon)
-            .font(PauseFont.display(20, relativeTo: .title3))
-            .foregroundStyle(PauseTheme.ink)
-    }
-}
-
-private struct LabeledPicker: View {
-    let title: String
-    let detail: String
-    @Binding var selection: TimeInterval
-    let options: [TimeInterval]
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        let layout =
-            dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
-            : AnyLayout(HStackLayout())
-        return layout {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "lock.shield")
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                Text(detail)
+                Text("Private on this device").font(.caption.weight(.medium))
+                Text("No account. No tracking. Plans stay on this device.")
                     .font(.caption)
-                    .foregroundStyle(PauseTheme.muted)
             }
-            Spacer()
-            Picker(title, selection: $selection) {
-                ForEach(options, id: \.self) { option in
-                    Text(option.hardPauseDurationLabel).tag(option)
-                }
-            }
-            .labelsHidden()
         }
+        .foregroundStyle(PauseTheme.muted)
     }
 }
 
-private struct OptionalDurationPicker: View {
-    let title: String
-    let detail: String
-    @Binding var selection: TimeInterval?
-    let options: [TimeInterval?]
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        let layout =
-            dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
-            : AnyLayout(HStackLayout())
-        return layout {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(PauseTheme.muted)
-            }
-            Spacer()
-            Picker(title, selection: $selection) {
-                ForEach(Array(options.enumerated()), id: \.offset) { _, option in
-                    Text(option?.hardPauseDurationLabel ?? "Until full unlock")
-                        .tag(option)
-                }
-            }
-            .labelsHidden()
-        }
-    }
-}
-
-private struct StatusRow: View {
+private struct IOSStatusRow: View {
     let label: String
     let value: String
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label).foregroundStyle(PauseTheme.muted)
-            Spacer()
+            Spacer(minLength: 10)
             Text(value)
                 .fontWeight(.semibold)
                 .multilineTextAlignment(.trailing)
-                .foregroundStyle(PauseTheme.ink)
         }
         .font(.subheadline)
+    }
+}
+
+private struct AppBackground: View {
+    var body: some View {
+        LinearGradient(
+            colors: [PauseTheme.background, PauseTheme.surface.opacity(0.62), PauseTheme.background],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+}
+
+extension LockPhase {
+    fileprivate var displayName: String {
+        switch self {
+        case .inactive: "Ready to start"
+        case .locked: "Active"
+        case .waitingForBreak: "Break in"
+        case .breakActive: "Break active"
+        case .waitingForEnd: "Plan ends in"
+        }
+    }
+
+    fileprivate var systemImage: String {
+        switch self {
+        case .inactive: "circle"
+        case .locked: "shield.fill"
+        case .waitingForBreak, .waitingForEnd: "hourglass"
+        case .breakActive: "cup.and.saucer.fill"
+        }
+    }
+
+    fileprivate var detailText: String {
+        switch self {
+        case .inactive: "The plan is saved and ready."
+        case .locked: "Chosen apps and websites stay blocked."
+        case .waitingForBreak: "Blocking continues until the break starts."
+        case .breakActive: "Access is open for now. Blocking returns automatically."
+        case .waitingForEnd: "Blocking continues until the plan ends."
+        }
     }
 }

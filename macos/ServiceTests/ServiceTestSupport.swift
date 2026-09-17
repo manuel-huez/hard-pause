@@ -27,6 +27,7 @@ func serviceTestDraft(
     name: String = "Focus",
     domains: [String] = ["example.com"],
     applications: [ProtectedApplication] = [],
+    protectionMode: ProtectionMode = .softLock,
     breakDelay: TimeInterval = 60,
     fullUnlockDelay: TimeInterval = 180,
     breakDuration: TimeInterval = 60,
@@ -39,6 +40,7 @@ func serviceTestDraft(
             blockedApplications: applications,
             blocksStarterAdultSites: false
         ),
+        protectionMode: protectionMode,
         breakDelay: breakDelay,
         fullUnlockDelay: fullUnlockDelay,
         breakDuration: breakDuration,
@@ -104,6 +106,98 @@ final class FakeProtectedStateStore: ProtectedStateStoring {
             throw ServiceRuntimeError.stateWriteFailed("injected pending clear failure")
         }
         pending = nil
+    }
+}
+
+final class FakeAppleLockdownStateStore: AppleLockdownStateStoring {
+    var persisted: AppleLockdownState
+    var saveFailures = 0
+    var saved: [AppleLockdownState] = []
+    let events: TestEventLog?
+
+    init(_ state: AppleLockdownState = AppleLockdownState(), events: TestEventLog? = nil) {
+        persisted = state
+        self.events = events
+    }
+
+    func load() throws -> AppleLockdownState { persisted }
+
+    func save(_ state: AppleLockdownState) throws {
+        events?.values.append("save-apple-state:\(state.phase.rawValue)")
+        if saveFailures > 0 {
+            saveFailures -= 1
+            throw ServiceRuntimeError.stateWriteFailed("injected Apple state save failure")
+        }
+        persisted = state
+        saved.append(state)
+    }
+}
+
+final class FakeAppleLockdownVault: AppleLockdownCredentialVault {
+    var values: [UUID: String] = [:]
+    var saveFailures = 0
+    var readFailures = 0
+    var deleteFailures = 0
+    var readOverride: String?
+    let events: TestEventLog?
+
+    init(events: TestEventLog? = nil) { self.events = events }
+
+    func save(passcode: String, credentialID: UUID) throws {
+        events?.values.append("save-credential")
+        if saveFailures > 0 {
+            saveFailures -= 1
+            throw AppleLockdownError.credentialStoreFailed
+        }
+        guard values[credentialID] == nil else {
+            throw AppleLockdownError.credentialStoreFailed
+        }
+        values[credentialID] = passcode
+    }
+
+    func read(credentialID: UUID) throws -> String {
+        events?.values.append("read-credential")
+        if readFailures > 0 {
+            readFailures -= 1
+            throw AppleLockdownError.credentialUnavailable
+        }
+        if let readOverride { return readOverride }
+        guard let value = values[credentialID] else {
+            throw AppleLockdownError.credentialUnavailable
+        }
+        return value
+    }
+
+    func delete(credentialID: UUID) throws {
+        events?.values.append("delete-credential")
+        if deleteFailures > 0 {
+            deleteFailures -= 1
+            throw AppleLockdownError.credentialStoreFailed
+        }
+        values.removeValue(forKey: credentialID)
+    }
+
+    func deleteAll() throws {
+        if deleteFailures > 0 {
+            deleteFailures -= 1
+            throw AppleLockdownError.credentialStoreFailed
+        }
+        values.removeAll()
+    }
+
+    func containsAnyCredential() throws -> Bool { !values.isEmpty }
+}
+
+final class FakeAppleLockdownPasscodeGenerator: AppleLockdownPasscodeGenerating {
+    var passcodes: [String]
+
+    init(_ passcodes: [String] = ["1234"]) { self.passcodes = passcodes }
+
+    func generate() throws -> String {
+        guard !passcodes.isEmpty else {
+            throw AppleLockdownError.credentialStoreFailed
+        }
+        return passcodes.removeFirst()
     }
 }
 

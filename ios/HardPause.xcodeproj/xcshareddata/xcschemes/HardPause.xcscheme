@@ -35,6 +35,20 @@
                ReferencedContainer = "container:HardPause.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "E2963EE97B48306A5846BF6A"
+               BuildableName = "HardPauseUITests.xctest"
+               BlueprintName = "HardPauseUITests"
+               ReferencedContainer = "container:HardPause.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -62,6 +76,17 @@
                BlueprintIdentifier = "E5FED5FB8B035290AE3985A0"
                BuildableName = "HardPauseTests.xctest"
                BlueprintName = "HardPauseTests"
+               ReferencedContainer = "container:HardPause.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "E2963EE97B48306A5846BF6A"
+               BuildableName = "HardPauseUITests.xctest"
+               BlueprintName = "HardPauseUITests"
                ReferencedContainer = "container:HardPause.xcodeproj">
             </BuildableReference>
          </TestableReference>

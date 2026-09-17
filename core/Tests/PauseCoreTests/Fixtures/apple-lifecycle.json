@@ -1,0 +1,37 @@
+[
+  {
+    "profile": "macOS",
+    "commands": [
+      { "kind": "break", "at": 0, "delay": 60, "duration": 180, "phase": "waitingForBreak" },
+      { "kind": "reconcile", "at": 60, "phase": "breakActive" },
+      { "kind": "unlock", "at": 90, "delay": 180, "phase": "breakActive" },
+      { "kind": "reconcile", "at": 240, "phase": "waitingForFullUnlock" },
+      { "kind": "reconcile", "at": 270, "phase": "inactive" }
+    ]
+  },
+  {
+    "profile": "iOS",
+    "commands": [
+      { "kind": "break", "at": 0, "delay": 60, "duration": 180, "phase": "waitingForBreak" },
+      { "kind": "reconcile", "at": 60, "phase": "breakActive" },
+      { "kind": "unlock", "at": 90, "delay": 180, "phase": "waitingForFullUnlock" },
+      { "kind": "reconcile", "at": 270, "phase": "inactive" }
+    ]
+  },
+  {
+    "profile": "iOS",
+    "naturalEndAt": 120,
+    "commands": [
+      { "kind": "break", "at": 0, "delay": 60, "duration": 300, "phase": "waitingForBreak" },
+      { "kind": "reconcile", "at": 60, "phase": "breakActive" },
+      { "kind": "reconcile", "at": 120, "phase": "inactive" }
+    ]
+  },
+  {
+    "profile": "iOS",
+    "commands": [
+      { "kind": "break", "at": 0, "delay": 60, "duration": 180, "phase": "waitingForBreak" },
+      { "kind": "cancelBreak", "at": 30, "phase": "active" }
+    ]
+  }
+]

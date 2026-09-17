@@ -98,29 +98,90 @@ final class LockController: ObservableObject {
     }
 
     func createBlock() {
+        var policy = LockPolicy()
+        policy.blocksAdultWebsites = true
+        policy.preventsAppRemoval = true
+        _ = createBlock(name: nextBlockName(), policy: policy, activate: false)
+    }
+
+    @discardableResult
+    func createBlock(name: String, policy: LockPolicy, activate: Bool) -> UUID? {
+        if let message = draftValidationMessage(name: name, policy: policy, activating: activate) {
+            errorMessage = message
+            return nil
+        }
+        if activate {
+            authorizationStatus = authorizationStatusProvider()
+            guard authorizationStatus == .approved else {
+                errorMessage = "Screen Time access is no longer approved. Allow access before starting this plan."
+                return nil
+            }
+        }
+
+        let newBlock = LockBlock(name: name, draftPolicy: policy)
         do {
-            var newBlock = LockBlock(name: nextBlockName())
-            newBlock.draftPolicy.blocksAdultWebsites = true
-            collection = try runtime.mutate { collection in
+            let date = Date()
+            let elapsedTime = ElapsedTimeClock.current
+            collection = try runtime.mutate(wallClockNow: date, elapsedTime: elapsedTime) { collection in
                 collection.blocks.append(newBlock)
+                if activate {
+                    try LockCollectionStateMachine.activate(
+                        &collection,
+                        blockID: newBlock.id,
+                        at: date,
+                        elapsedTime: elapsedTime
+                    )
+                }
             }
             selectedBlockID = newBlock.id
+            return newBlock.id
         } catch {
             errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    func updateBlock(id: UUID, name: String, policy: LockPolicy) -> Bool {
+        if let message = draftValidationMessage(name: name, policy: policy, activating: false) {
+            errorMessage = message
+            return false
+        }
+        do {
+            collection = try runtime.mutate { collection in
+                try Self.updateInactiveBlock(
+                    in: &collection,
+                    blockID: id,
+                    name: name,
+                    policy: policy
+                )
+            }
+            selectedBlockID = id
+            loadSelectedDraft()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 
     func deleteSelectedBlock() {
         guard let selectedBlockID else { return }
+        deleteBlock(id: selectedBlockID)
+    }
+
+    func deleteBlock(id: UUID) {
         do {
             collection = try runtime.mutate { collection in
-                let index = try collection.index(of: selectedBlockID)
+                let index = try collection.index(of: id)
                 guard !collection.blocks[index].state.isActive else {
                     throw LockCollectionError.activeBlockCannotBeEdited
                 }
                 collection.blocks.remove(at: index)
             }
-            self.selectedBlockID = collection.activeBlocks.first?.id ?? collection.blocks.first?.id
+            if selectedBlockID == id {
+                selectedBlockID = collection.activeBlocks.first?.id ?? collection.blocks.first?.id
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -132,12 +193,20 @@ final class LockController: ObservableObject {
     }
 
     func activate() {
-        authorizationStatus = authorizationStatusProvider()
-        guard authorizationStatus == .approved else {
-            errorMessage = "Screen Time access is no longer approved. Allow access before starting this pause."
+        guard let selectedBlockID else {
+            errorMessage = LockCollectionError.blockNotFound.localizedDescription
             return
         }
-        guard let selectedBlockID else {
+        activate(blockID: selectedBlockID)
+    }
+
+    func activate(blockID: UUID) {
+        authorizationStatus = authorizationStatusProvider()
+        guard authorizationStatus == .approved else {
+            errorMessage = "Screen Time access is no longer approved. Allow access before starting this plan."
+            return
+        }
+        guard let block = collection.block(id: blockID) else {
             errorMessage = LockCollectionError.blockNotFound.localizedDescription
             return
         }
@@ -147,47 +216,80 @@ final class LockController: ObservableObject {
             collection = try runtime.mutate(wallClockNow: date, elapsedTime: elapsedTime) { candidate in
                 try Self.updateInactiveBlock(
                     in: &candidate,
-                    blockID: selectedBlockID,
-                    name: draftName,
-                    policy: draftPolicy
+                    blockID: blockID,
+                    name: block.name,
+                    policy: block.draftPolicy
                 )
                 try LockCollectionStateMachine.activate(
                     &candidate,
-                    blockID: selectedBlockID,
+                    blockID: blockID,
                     at: date,
                     elapsedTime: elapsedTime
                 )
             }
+            selectedBlockID = blockID
+            loadSelectedDraft()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     func requestBreak() {
-        mutateSelectedState { collection, blockID, date, elapsedTime in
-            try LockCollectionStateMachine.requestBreak(
-                &collection,
-                blockID: blockID,
-                at: date,
-                elapsedTime: elapsedTime
-            )
+        guard let selectedBlockID else {
+            errorMessage = LockCollectionError.blockNotFound.localizedDescription
+            return
         }
+        requestBreak(blockID: selectedBlockID)
+    }
+
+    func requestBreak(blockID: UUID) {
+        mutateSelectedState(
+            { collection, blockID, date, elapsedTime in
+                try LockCollectionStateMachine.requestBreak(
+                    &collection,
+                    blockID: blockID,
+                    at: date,
+                    elapsedTime: elapsedTime
+                )
+            }, blockID: blockID)
+    }
+
+    func cancelBreakRequest(blockID: UUID) {
+        mutateSelectedState(
+            { collection, blockID, date, elapsedTime in
+                try LockCollectionStateMachine.cancelBreak(
+                    &collection,
+                    blockID: blockID,
+                    at: date,
+                    elapsedTime: elapsedTime
+                )
+            }, blockID: blockID)
     }
 
     func requestFullUnlock() {
-        mutateSelectedState { collection, blockID, date, elapsedTime in
-            try LockCollectionStateMachine.requestEnd(
-                &collection,
-                blockID: blockID,
-                at: date,
-                elapsedTime: elapsedTime
-            )
+        guard let selectedBlockID else {
+            errorMessage = LockCollectionError.blockNotFound.localizedDescription
+            return
         }
+        requestFullUnlock(blockID: selectedBlockID)
+    }
+
+    func requestFullUnlock(blockID: UUID) {
+        mutateSelectedState(
+            { collection, blockID, date, elapsedTime in
+                try LockCollectionStateMachine.requestEnd(
+                    &collection,
+                    blockID: blockID,
+                    at: date,
+                    elapsedTime: elapsedTime
+                )
+            }, blockID: blockID)
     }
 
     func addManualDomain(_ input: String) -> Bool {
-        guard let domain = LockPolicy.normalizedDomain(input) else {
-            errorMessage = "Enter a domain such as example.com."
+        guard let domain = LockPolicy.newManualDomain(input) else {
+            errorMessage =
+                "Enter a whole domain such as example.com. Paths, ports, query text, and wildcards are not supported."
             return false
         }
         guard !draftPolicy.manualDomains.contains(domain) else { return true }
@@ -210,9 +312,10 @@ final class LockController: ObservableObject {
             UUID,
             Date,
             ElapsedTimeReading
-        ) throws -> Void
+        ) throws -> Void,
+        blockID: UUID? = nil
     ) {
-        guard let selectedBlockID else {
+        guard let targetBlockID = blockID ?? selectedBlockID else {
             errorMessage = LockCollectionError.blockNotFound.localizedDescription
             return
         }
@@ -220,11 +323,40 @@ final class LockController: ObservableObject {
             let date = Date()
             let elapsedTime = ElapsedTimeClock.current
             collection = try runtime.mutate(wallClockNow: date, elapsedTime: elapsedTime) { candidate in
-                try mutation(&candidate, selectedBlockID, date, elapsedTime)
+                try mutation(&candidate, targetBlockID, date, elapsedTime)
             }
+            selectedBlockID = targetBlockID
+            loadSelectedDraft()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func draftValidationMessage(
+        name: String,
+        policy: LockPolicy,
+        activating: Bool
+    ) -> String? {
+        guard !LockBlock.normalizedName(name).isEmpty else {
+            return "Enter a name for this plan."
+        }
+        do {
+            try policy.validateDurations()
+        } catch {
+            return error.localizedDescription
+        }
+        guard policy.hasBlockingTarget else {
+            return "Choose an app or website, or turn on the adult website filter."
+        }
+        do {
+            try policy.validateManagedSettingsLimits()
+        } catch {
+            return error.localizedDescription
+        }
+        if activating, activeBlockCount >= LockCollection.maximumActiveBlocks {
+            return LockCollectionError.maximumActiveBlocks.localizedDescription
+        }
+        return nil
     }
 
     private func saveDraftIfAllowed() {
@@ -256,6 +388,7 @@ final class LockController: ObservableObject {
         guard !collection.blocks[index].state.isActive else {
             throw LockCollectionError.activeBlockCannotBeEdited
         }
+        try policy.validateDurations()
         let normalizedName = LockBlock.normalizedName(name)
         guard !normalizedName.isEmpty else { throw LockCollectionError.invalidName }
         collection.blocks[index].name = normalizedName

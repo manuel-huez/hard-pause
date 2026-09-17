@@ -4,6 +4,57 @@ import XCTest
 @testable import HardPause
 
 final class LockRepositoryTests: XCTestCase {
+    func testUnknownSchemaIsRejectedWithoutRewritingState() throws {
+        try withRepository { repository, directory in
+            var collection = LockCollection()
+            collection.schemaVersion = 99
+            let data = try JSONEncoder().encode(collection)
+            let url = directory.appendingPathComponent("lock-state-v1.json")
+            try data.write(to: url)
+            XCTAssertThrowsError(try repository.load())
+            XCTAssertThrowsError(try repository.transaction(transform: { _ in }))
+            XCTAssertEqual(try Data(contentsOf: url), data)
+        }
+    }
+
+    func testDuplicateStoredIdentifiersAreRejectedBeforeDictionaryConstruction() throws {
+        try withRepository { repository, directory in
+            let block = LockBlock()
+            try JSONEncoder().encode(LockCollection(blocks: [block, block])).write(
+                to: directory.appendingPathComponent("lock-state-v1.json")
+            )
+            XCTAssertThrowsError(try repository.load())
+        }
+    }
+
+    func testLegacyRevisionCannotOverflowDuringMigration() throws {
+        try withRepository { repository, directory in
+            var legacy = LockState()
+            legacy.revision = Int.max
+            try JSONEncoder().encode(legacy).write(to: directory.appendingPathComponent("lock-state-v1.json"))
+            XCTAssertThrowsError(try repository.transaction(transform: { _ in }))
+        }
+    }
+
+    func testRecoveryNeverSilentlyDropsExcessBlocks() throws {
+        let snapshot = RecoverySnapshot(
+            blocks: (0...LockCollection.maximumActiveBlocks).map {
+                RecoveryBlock(id: UUID(), name: "Block \($0)", policy: LockPolicy())
+            })
+        XCTAssertThrowsError(
+            try snapshot.restore(
+                at: Date(), elapsedTime: ElapsedTimeReading(durationSinceBoot: 100, bootIdentifier: "boot-a")
+            ))
+    }
+
+    func testRecoveryRejectsDuplicateIdentifiersAndUnknownSchema() throws {
+        let block = RecoveryBlock(id: UUID(), name: "Block", policy: LockPolicy())
+        XCTAssertThrowsError(try RecoverySnapshot(blocks: [block, block]).validateStructure())
+        var snapshot = RecoverySnapshot(blocks: [block])
+        snapshot.schemaVersion = 99
+        XCTAssertThrowsError(try snapshot.validateStructure())
+    }
+
     func testCollectionPersistsWithRevisionAndStableBlockID() throws {
         try withRepository { repository, _ in
             let saved = try repository.transaction(transform: { collection in
@@ -106,6 +157,44 @@ final class LockRepositoryTests: XCTestCase {
         XCTAssertEqual(decoded.fullUnlockDelay, 14_400)
     }
 
+    func testStoredHardPauseRejectsBreakOrAutomaticEndState() throws {
+        try withRepository { repository, directory in
+            var policy = LockPolicy()
+            policy.protectionMode = .lockdown
+            var state = LockState()
+            try LockStateMachine.activate(
+                &state,
+                policy: policy,
+                at: Date(timeIntervalSince1970: 1_800_000_000),
+                elapsedTime: ElapsedTimeReading(durationSinceBoot: 100, bootIdentifier: "boot-a")
+            )
+            state.storeSlot = 0
+
+            for corruptState in [
+                hardPauseState(state, phase: .waitingForBreak),
+                hardPauseState(
+                    state,
+                    phase: .locked,
+                    breakEndsAt: Date(timeIntervalSince1970: 1_800_004_500)
+                ),
+                hardPauseState(
+                    state,
+                    phase: .locked,
+                    automaticEndAt: Date(timeIntervalSince1970: 1_800_004_500)
+                ),
+            ] {
+                let collection = LockCollection(
+                    revision: 1,
+                    blocks: [LockBlock(name: "Hard Pause", draftPolicy: policy, state: corruptState)]
+                )
+                try JSONEncoder().encode(collection).write(
+                    to: directory.appendingPathComponent("lock-state-v1.json")
+                )
+                XCTAssertThrowsError(try repository.load())
+            }
+        }
+    }
+
     func testRecoveryRepositoryMigratesSingleV1Policy() throws {
         try withRepository { _, directory in
             var policy = LockPolicy()
@@ -156,4 +245,17 @@ final class LockRepositoryTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         try body(LockRepository(containerURL: directory), directory)
     }
+}
+
+private func hardPauseState(
+    _ base: LockState,
+    phase: LockPhase,
+    breakEndsAt: Date? = nil,
+    automaticEndAt: Date? = nil
+) -> LockState {
+    var state = base
+    state.phase = phase
+    state.breakEndsAt = breakEndsAt
+    state.automaticEndAt = automaticEndAt
+    return state
 }

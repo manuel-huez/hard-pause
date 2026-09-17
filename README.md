@@ -2,17 +2,18 @@
 
 Hard Pause is a local iPhone, iPad, and Mac app for intentional breaks from selected apps and websites. It targets iOS 26 and macOS 26 with native SwiftUI and Liquid Glass. The project is in development and is not ready for trusted enforcement.
 
-| Folder          | Purpose                                                     |
-| --------------- | ----------------------------------------------------------- |
-| [web](web/)     | Static Low Light product website and shared mascot renderer |
-| [ios](ios/)     | SwiftUI app and native Screen Time extensions               |
-| [macos](macos/) | SwiftUI app, local root service, and command-line client    |
+| Folder          | Purpose                                                        |
+| --------------- | -------------------------------------------------------------- |
+| [web](web/)     | Static Low Light product website and shared mascot renderer    |
+| [ios](ios/)     | SwiftUI app and native Screen Time extensions                  |
+| [macos](macos/) | SwiftUI app, local root service, and command-line client       |
+| [core](core/)   | Shared Apple lifecycle, elapsed clock and transaction ordering |
 
 ## Product rules
 
-- Create independent named blocks with app and website rules, separate break and full-unlock delays, a break length, and an optional fixed duration.
+- Create independent named plans for apps and websites. **Pause** permits delayed breaks and an optional fixed duration. **Hard Pause** permits no breaks or automatic end; access returns only after the full-unlock wait.
 - Activation fixes the block name, rules, and timing. An active block cannot be edited or deleted, including during a break.
-- A request affects only its block. Overlapping rules remain until every block that contains them allows access.
+- A request affects its plan. Ending a Mac Hard Pause plan also starts the Screen Time code removal wait. Overlapping rules remain until every plan that contains them allows access.
 - A fixed duration ends only its block and takes priority over a pending request or break.
 - Protection and storage failures must remain visible.
 - No account, telemetry, hosted API, browsing-history uploads, remote classification, browser extension, or paid enforcement tier. Public adult-domain lists can refresh over HTTPS; checks stay on the device.
@@ -31,7 +32,10 @@ The website and both native apps share the local renderer in `web/mascot/`. Nati
 
 See [DESIGN.md](DESIGN.md) for the security boundaries and release checks. Each platform README has build instructions and current implementation details.
 
-See the [shared core plan](docs/shared-core-plan.md) for the proposed Rust engine and staged iOS, macOS, Windows, and Android integration.
+See the [shared core plan](docs/shared-core-plan.md) for the shared Apple implementation and the remaining Rust, Windows and Android roadmap.
+Mac Hard Pause setup includes an experimental native Screen Time code flow. The root service saves the code in System Keychain before entry and retains it across interrupted setup or release. Native code entry and cross-device sync remain unverified; this does not prove that iPhone permissions cannot be revoked.
+
+See [Apple validation](docs/apple-validation.md) for completed checks and the remaining physical-device gate.
 
 ## Development
 
@@ -44,6 +48,7 @@ Use Xcode 26.6 and XcodeGen. Website files need only a local static server. Do n
 | `npm run format`                                          | Format web, configuration, and Markdown files                        |
 | `xcrun swift-format format -i -r ios macos`               | Format Swift with the checked-in rules                               |
 | `scripts/check-native.sh`                                 | Project generation, capability checks, and native tests              |
+| `swift test --package-path core`                          | Shared lifecycle fixtures and transaction ordering                   |
 | GitHub Actions → Checks                                   | Website artifact and native test results                             |
 
 CI uses Xcode 26.6 on `macos-26`, read-only repository permissions, and pinned action revisions. It runs on each push and pull request. Dependabot checks development tools and actions weekly.

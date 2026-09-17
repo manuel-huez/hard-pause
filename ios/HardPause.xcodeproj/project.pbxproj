@@ -7,15 +7,23 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		05A68068ECEBCAC4A3F28C82 /* PauseCoreTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */; };
+		08FFB58B3ACF5B5FA04E6951 /* DurableFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285ABCF6E41AA44319B8430F /* DurableFile.swift */; };
 		09F511CE02D84AD37B9FEBA3 /* LocalLockRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A008C517931E1E076FDC3B /* LocalLockRuntimeTests.swift */; };
 		0BE4BEDEFF67BC13E0661B17 /* LockRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */; };
+		0C193A523AD9EC8FB97CBCDD /* PauseCoreTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */; };
 		15882B1EAC69D5394188450B /* MonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5EBDDB6622AC007FEF770DE /* MonitorExtension.swift */; };
 		1C247D7DE72B2FBCA29AF2E7 /* CaretTrackingTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25EB73AE3867B9515138D2FB /* CaretTrackingTextField.swift */; };
+		1CEF28B0B65069E5A03E9306 /* PauseCoreClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D48D4E251122EB63A61006B /* PauseCoreClock.swift */; };
+		2122FE5DF0FC454ACBD5F937 /* HardPauseUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933BAA2EF1306A5A6B1B9D26 /* HardPauseUITests.swift */; };
 		2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515D0ACE76FFE733C3585779 /* HardPauseApp.swift */; };
+		2BBF1480F99880525D265134 /* DurableFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285ABCF6E41AA44319B8430F /* DurableFile.swift */; };
 		2CF1148B33492738B17151DF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA4D5CA5AE6189C76FC02A0 /* Theme.swift */; };
+		300BBB05A065F0024975F62F /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20CEC851791C27571D4516A /* ProtectionMode.swift */; };
 		32D13D9D7C65E981C70DDF74 /* TransitionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */; };
 		35917CB15157942FA738C5AC /* HardPauseConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */; };
 		36CED3C87A874D940813BB16 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */; };
+		3D2DE7724B5796631DEBCE0E /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20CEC851791C27571D4516A /* ProtectionMode.swift */; };
 		4311D599FEA14F19E3D06821 /* HardPauseShieldAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		44492E6359DADDF5382C9208 /* HardPauseMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 840F73B7C5B3F4C84ADFEC56 /* HardPauseMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		493068EBA96467F2C3A0BB4F /* TransitionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */; };
@@ -28,6 +36,7 @@
 		6AC7096D3804023D7F5CB208 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
 		721AE788979CAF819E52C674 /* HardPauseShieldConfiguration.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
+		849669699B688F2000A3FFCE /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */; };
 		879E0F59B4F4EF178FC1A82E /* LockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 169BE56FCC1F31BF78B525F7 /* LockController.swift */; };
 		9211C7DB3783D248F9D20228 /* LockRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */; };
 		9845BA0305034D133204BB5B /* ElapsedTimeClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */; };
@@ -35,7 +44,9 @@
 		A3978E065B3B6A33ECC11550 /* RecoveryPolicyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */; };
 		A6733A799BAAD2210B781175 /* Recursive-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 17DE3530A2D72DA8C4CD96D9 /* Recursive-OFL.txt */; };
 		A6B43742FBE37C05BDE23758 /* LockState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E1A76313E0BDB9BFDDF309 /* LockState.swift */; };
+		B20753AFDD1C4F79B7275B9A /* PauseCoreLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */; };
 		B461D97F352CF31A563AD660 /* RestrictionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7CB51F47AB1556A21548EC /* RestrictionService.swift */; };
+		B57A742A108423B864247D77 /* PlanEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656B1E745EB256213A841286 /* PlanEditorView.swift */; };
 		C2D8CB6D4D56CDD7B05920BE /* LockPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32265F3554157D2DDB850E43 /* LockPolicyTests.swift */; };
 		C80ECB031082C50CD28DB3CB /* LockState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E1A76313E0BDB9BFDDF309 /* LockState.swift */; };
 		CB0C0CCCF6F76844F24457C3 /* ElapsedTimeClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */; };
@@ -49,7 +60,10 @@
 		E8D2730C4FC6D0B0F128E865 /* TransitionSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD9C8C5AECAADA4E0F2C1BE /* TransitionSchedulerTests.swift */; };
 		EDE7740226BB1ED5FBF3A71F /* LockPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */; };
 		EF73AA9EAB3E85826E1E0EEA /* mascot in Resources */ = {isa = PBXBuildFile; fileRef = 404D8B647D1426A483797A07 /* mascot */; };
+		F7BC647A89553C257867BB24 /* PauseCoreClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D48D4E251122EB63A61006B /* PauseCoreClock.swift */; };
 		F883C2DD801A5D5DF2B4BED4 /* PauseSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 615B07EC5F0D1E32181EDABE /* PauseSeed.swift */; };
+		FB7AAF525EBCAE97577CD449 /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */; };
+		FDC8A44030450D923FDFD9B4 /* PauseCoreLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +73,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 4F9E7A9F270AB551274B872F;
 			remoteInfo = HardPauseMonitor;
+		};
+		5246E6F5333BAE886434C0C3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3762ED8A1A1506DDEA98CC0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 18772DB522E4BA97F6A297EB;
+			remoteInfo = HardPause;
 		};
 		CEAA52905840C43CBD1AB0F8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -105,8 +126,10 @@
 		14AC45CCB50BCA7E5A52D3B4 /* ShieldAction.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldAction.entitlements; sourceTree = "<group>"; };
 		169BE56FCC1F31BF78B525F7 /* LockController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockController.swift; sourceTree = "<group>"; };
 		17DE3530A2D72DA8C4CD96D9 /* Recursive-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Recursive-OFL.txt"; sourceTree = "<group>"; };
+		1D48D4E251122EB63A61006B /* PauseCoreClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreClock.swift; sourceTree = "<group>"; };
 		202A992C4E1FAC8B85C957E3 /* LockStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockStateMachineTests.swift; sourceTree = "<group>"; };
 		25EB73AE3867B9515138D2FB /* CaretTrackingTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaretTrackingTextField.swift; sourceTree = "<group>"; };
+		285ABCF6E41AA44319B8430F /* DurableFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurableFile.swift; sourceTree = "<group>"; };
 		28AC9F0F91D97372B71A98E4 /* LockControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockControllerTests.swift; sourceTree = "<group>"; };
 		2CE17F29AD01F549AA33E8E9 /* Recursive.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Recursive.ttf; sourceTree = "<group>"; };
 		2DE980E3E04FF86C91ACD2DB /* ShieldConfiguration.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldConfiguration.entitlements; sourceTree = "<group>"; };
@@ -115,10 +138,13 @@
 		32C95D6B54F8FFFE9739BADB /* HardPause.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HardPause.entitlements; sourceTree = "<group>"; };
 		3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPolicyRepository.swift; sourceTree = "<group>"; };
 		404D8B647D1426A483797A07 /* mascot */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mascot; path = ../web/mascot; sourceTree = SOURCE_ROOT; };
+		49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortableDomainList.swift; sourceTree = "<group>"; };
 		515D0ACE76FFE733C3585779 /* HardPauseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseApp.swift; sourceTree = "<group>"; };
 		53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockPolicy.swift; sourceTree = "<group>"; };
 		54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitionScheduler.swift; sourceTree = "<group>"; };
+		56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreTransaction.swift; sourceTree = "<group>"; };
 		615B07EC5F0D1E32181EDABE /* PauseSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseSeed.swift; sourceTree = "<group>"; };
+		656B1E745EB256213A841286 /* PlanEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanEditorView.swift; sourceTree = "<group>"; };
 		66E09A917BA6D23FE3E35CA4 /* HardPause.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HardPause.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseConstants.swift; sourceTree = "<group>"; };
 		6DA4D5CA5AE6189C76FC02A0 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -129,14 +155,18 @@
 		8AD9C8C5AECAADA4E0F2C1BE /* TransitionSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitionSchedulerTests.swift; sourceTree = "<group>"; };
 		8D1F7AB916998334664871DB /* HardPauseTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HardPauseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLockRuntime.swift; sourceTree = "<group>"; };
+		933BAA2EF1306A5A6B1B9D26 /* HardPauseUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseUITests.swift; sourceTree = "<group>"; };
 		9D54959695EE4B7D0D254B40 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElapsedTimeClock.swift; sourceTree = "<group>"; };
+		A0B6FDAD335C6BAA3626B83A /* HardPauseUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HardPauseUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A20CEC851791C27571D4516A /* ProtectionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectionMode.swift; sourceTree = "<group>"; };
 		A5A008C517931E1E076FDC3B /* LocalLockRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLockRuntimeTests.swift; sourceTree = "<group>"; };
 		A5EBDDB6622AC007FEF770DE /* MonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorExtension.swift; sourceTree = "<group>"; };
 		B1664575DC09CCFD8AAD978B /* ShieldActionExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShieldActionExtension.swift; sourceTree = "<group>"; };
 		C8E31C62B594831083E5ED18 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CC180345D481C61E5696F730 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreLifecycle.swift; sourceTree = "<group>"; };
 		D4E1A76313E0BDB9BFDDF309 /* LockState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockState.swift; sourceTree = "<group>"; };
 		D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockRepository.swift; sourceTree = "<group>"; };
 		E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HardPauseShieldConfiguration.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -145,6 +175,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		1552421D0E649FFB6F30AD01 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				933BAA2EF1306A5A6B1B9D26 /* HardPauseUITests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
 		1795A9A2D8B93C6D4E303A41 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -153,6 +191,7 @@
 				09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */,
 				E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */,
 				8D1F7AB916998334664871DB /* HardPauseTests.xctest */,
+				A0B6FDAD335C6BAA3626B83A /* HardPauseUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -166,6 +205,19 @@
 			);
 			name = ShieldAction;
 			path = Extensions/ShieldAction;
+			sourceTree = "<group>";
+		};
+		559111ED91606875614431FE /* PauseCore */ = {
+			isa = PBXGroup;
+			children = (
+				1D48D4E251122EB63A61006B /* PauseCoreClock.swift */,
+				D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */,
+				56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */,
+				49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */,
+				A20CEC851791C27571D4516A /* ProtectionMode.swift */,
+			);
+			name = PauseCore;
+			path = ../core/Sources/PauseCore;
 			sourceTree = "<group>";
 		};
 		5D783D3DCF10B50043FF1F12 /* Tests */ = {
@@ -186,11 +238,13 @@
 			children = (
 				DAF2478B078ECFC2342C28E9 /* App */,
 				E50A3347081D86BDA7123877 /* Monitor */,
+				559111ED91606875614431FE /* PauseCore */,
 				BB64F0CE409913EE67F6E000 /* Resources */,
 				C6AFF93F17E3FA51A7152C74 /* Shared */,
 				3BE35859BCD921217BF13E64 /* ShieldAction */,
 				8FFEBF9800AEB72E2B721BD3 /* ShieldConfiguration */,
 				5D783D3DCF10B50043FF1F12 /* Tests */,
+				1552421D0E649FFB6F30AD01 /* UITests */,
 				404D8B647D1426A483797A07 /* mascot */,
 				1795A9A2D8B93C6D4E303A41 /* Products */,
 			);
@@ -219,6 +273,7 @@
 		C6AFF93F17E3FA51A7152C74 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				285ABCF6E41AA44319B8430F /* DurableFile.swift */,
 				9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */,
 				6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */,
 				8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */,
@@ -243,6 +298,7 @@
 				CC180345D481C61E5696F730 /* Info.plist */,
 				169BE56FCC1F31BF78B525F7 /* LockController.swift */,
 				615B07EC5F0D1E32181EDABE /* PauseSeed.swift */,
+				656B1E745EB256213A841286 /* PlanEditorView.swift */,
 				315F783C01EA2244855E02A1 /* RootView.swift */,
 				6DA4D5CA5AE6189C76FC02A0 /* Theme.swift */,
 			);
@@ -347,6 +403,24 @@
 			productReference = 09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		E2963EE97B48306A5846BF6A /* HardPauseUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DC023CBFF47B9BFB1CD0891F /* Build configuration list for PBXNativeTarget "HardPauseUITests" */;
+			buildPhases = (
+				8CCDAA72A7D7FD24E19DFA8C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2F8D1F42676328A67879880C /* PBXTargetDependency */,
+			);
+			name = HardPauseUITests;
+			packageProductDependencies = (
+			);
+			productName = HardPauseUITests;
+			productReference = A0B6FDAD335C6BAA3626B83A /* HardPauseUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		E5FED5FB8B035290AE3985A0 /* HardPauseTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = D8181926F5EF6336A6C2748B /* Build configuration list for PBXNativeTarget "HardPauseTests" */;
@@ -390,6 +464,11 @@
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
+					E2963EE97B48306A5846BF6A = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+						TestTargetID = 18772DB522E4BA97F6A297EB;
+					};
 					E5FED5FB8B035290AE3985A0 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
@@ -415,6 +494,7 @@
 				10B0DDB21BCB5F36EB5BE14D /* HardPauseShieldConfiguration */,
 				AA483D3EB662D959F5414C87 /* HardPauseShieldAction */,
 				E5FED5FB8B035290AE3985A0 /* HardPauseTests */,
+				E2963EE97B48306A5846BF6A /* HardPauseUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -468,6 +548,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2BBF1480F99880525D265134 /* DurableFile.swift in Sources */,
 				9845BA0305034D133204BB5B /* ElapsedTimeClock.swift in Sources */,
 				35917CB15157942FA738C5AC /* HardPauseConstants.swift in Sources */,
 				CF72361A025DAEC35E4BB233 /* LocalLockRuntime.swift in Sources */,
@@ -475,6 +556,11 @@
 				9211C7DB3783D248F9D20228 /* LockRepository.swift in Sources */,
 				C80ECB031082C50CD28DB3CB /* LockState.swift in Sources */,
 				15882B1EAC69D5394188450B /* MonitorExtension.swift in Sources */,
+				F7BC647A89553C257867BB24 /* PauseCoreClock.swift in Sources */,
+				FDC8A44030450D923FDFD9B4 /* PauseCoreLifecycle.swift in Sources */,
+				05A68068ECEBCAC4A3F28C82 /* PauseCoreTransaction.swift in Sources */,
+				849669699B688F2000A3FFCE /* PortableDomainList.swift in Sources */,
+				300BBB05A065F0024975F62F /* ProtectionMode.swift in Sources */,
 				A3978E065B3B6A33ECC11550 /* RecoveryPolicyRepository.swift in Sources */,
 				CEA721A0A1D4E16B6D4B7055 /* RestrictionService.swift in Sources */,
 				493068EBA96467F2C3A0BB4F /* TransitionScheduler.swift in Sources */,
@@ -486,6 +572,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				562D18A508E6E79331381769 /* ShieldActionExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8CCDAA72A7D7FD24E19DFA8C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2122FE5DF0FC454ACBD5F937 /* HardPauseUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -502,6 +596,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1C247D7DE72B2FBCA29AF2E7 /* CaretTrackingTextField.swift in Sources */,
+				08FFB58B3ACF5B5FA04E6951 /* DurableFile.swift in Sources */,
 				CB0C0CCCF6F76844F24457C3 /* ElapsedTimeClock.swift in Sources */,
 				2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */,
 				54BDD9EBE63C38B528E3AD35 /* HardPauseConstants.swift in Sources */,
@@ -510,7 +605,13 @@
 				EDE7740226BB1ED5FBF3A71F /* LockPolicy.swift in Sources */,
 				0BE4BEDEFF67BC13E0661B17 /* LockRepository.swift in Sources */,
 				A6B43742FBE37C05BDE23758 /* LockState.swift in Sources */,
+				1CEF28B0B65069E5A03E9306 /* PauseCoreClock.swift in Sources */,
+				B20753AFDD1C4F79B7275B9A /* PauseCoreLifecycle.swift in Sources */,
+				0C193A523AD9EC8FB97CBCDD /* PauseCoreTransaction.swift in Sources */,
 				F883C2DD801A5D5DF2B4BED4 /* PauseSeed.swift in Sources */,
+				B57A742A108423B864247D77 /* PlanEditorView.swift in Sources */,
+				FB7AAF525EBCAE97577CD449 /* PortableDomainList.swift in Sources */,
+				3D2DE7724B5796631DEBCE0E /* ProtectionMode.swift in Sources */,
 				D75116F320B1014A1492F768 /* RecoveryPolicyRepository.swift in Sources */,
 				B461D97F352CF31A563AD660 /* RestrictionService.swift in Sources */,
 				E46DBE81B297964737C6F871 /* RootView.swift in Sources */,
@@ -522,6 +623,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2F8D1F42676328A67879880C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 18772DB522E4BA97F6A297EB /* HardPause */;
+			targetProxy = 5246E6F5333BAE886434C0C3 /* PBXContainerItemProxy */;
+		};
 		69361736C191C6E1CB8B9AC7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 18772DB522E4BA97F6A297EB /* HardPause */;
@@ -737,6 +843,23 @@
 			};
 			name = Release;
 		};
+		B0844377D11794C1953B472E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = HardPause;
+			};
+			name = Release;
+		};
 		B989CC2CC5C54DA52885D765 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -792,6 +915,23 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
+		};
+		E5F236EA365035DE365519FC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = HardPause;
+			};
+			name = Debug;
 		};
 		ECB69D03FB14BFE1683015C4 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -904,6 +1044,15 @@
 			buildConfigurations = (
 				5FA0C0B934916AD3DF57A793 /* Debug */,
 				CBD5BA318DB313838A8DA13D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DC023CBFF47B9BFB1CD0891F /* Build configuration list for PBXNativeTarget "HardPauseUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E5F236EA365035DE365519FC /* Debug */,
+				B0844377D11794C1953B472E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

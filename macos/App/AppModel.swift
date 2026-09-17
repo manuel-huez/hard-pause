@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
     private var hasCheckedSetup = false
 
     private let service: any ProtectedServiceServing
+    let appleProtection: AppleProtectionModel
     private var cancellables = Set<AnyCancellable>()
     private var secondsSinceIdleRefresh = 0
     private var browserActivity: NSObjectProtocol?
@@ -73,7 +74,9 @@ final class AppModel: ObservableObject {
         automaticallyRefreshes: Bool = true,
         setupProbe: (@MainActor () async -> SetupAccessState)? = nil
     ) {
-        self.service = service ?? ProtectedServiceClient()
+        let client = service ?? ProtectedServiceClient()
+        self.service = client
+        appleProtection = AppleProtectionModel(service: client)
         self.setupProbe = setupProbe
         guard automaticallyRefreshes else { return }
         Task {
@@ -112,6 +115,7 @@ final class AppModel: ObservableObject {
     /// Returns true once the plan is saved, even if starting it fails. The editor
     /// must close in that case so a retry cannot create a duplicate plan.
     func createAndActivate(_ draft: ProtectedBlockDraft) async -> Bool {
+        guard await screenTimeReady(for: draft) else { return false }
         guard await adultFilterReady(for: draft.rules) else { return false }
         while isCheckingSetup {
             if Task.isCancelled { return false }
@@ -178,6 +182,7 @@ final class AppModel: ObservableObject {
     }
 
     func activate(_ block: ProtectedBlockSnapshot) async -> Bool {
+        guard await screenTimeReady(for: block.draft) else { return false }
         guard await adultFilterReady(for: block.draft.rules) else { return false }
         while isCheckingSetup {
             if Task.isCancelled { return false }
@@ -192,6 +197,17 @@ final class AppModel: ObservableObject {
         return await mutate {
             try await service.activate(id: block.id, expectedRevision: block.revision)
         }
+    }
+
+    private func screenTimeReady(for draft: ProtectedBlockDraft) async -> Bool {
+        guard !draft.protectionMode.allowsBreaks else { return true }
+        await appleProtection.refresh()
+        guard appleProtection.snapshot?.phase == .active else {
+            errorMessage =
+                "Set up the Screen Time code before starting a Hard Pause plan. Open Screen Time protection in Settings or in the plan editor."
+            return false
+        }
+        return true
     }
 
     private func adultFilterReady(for rules: ProtectedRules) async -> Bool {
@@ -217,7 +233,17 @@ final class AppModel: ObservableObject {
     }
 
     func requestEnd(for block: ProtectedBlockSnapshot) async -> Bool {
-        await mutate { try await service.requestEnd(id: block.id) }
+        let requested = await mutate { try await service.requestEnd(id: block.id) }
+        if requested, !block.draft.protectionMode.allowsBreaks {
+            // Start both waits together. Release still requires every plan to be inactive.
+            await appleProtection.requestEnd()
+            if let message = appleProtection.message,
+                appleProtection.snapshot?.phase == .active || appleProtection.snapshot == nil
+            {
+                errorMessage = "The plan end was requested. The Screen Time wait could not start: \(message)"
+            }
+        }
+        return requested
     }
 
     func chooseApplications() async -> [ProtectedApplication] {

@@ -174,10 +174,54 @@ struct ProtectedRules: Codable, Equatable, Sendable {
 struct ProtectedBlockDraft: Codable, Equatable, Sendable {
     let name: String
     let rules: ProtectedRules
+    let protectionMode: ProtectionMode
     let breakDelay: TimeInterval
     let fullUnlockDelay: TimeInterval
     let breakDuration: TimeInterval
     let elapsedDuration: TimeInterval?
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case rules
+        case protectionMode
+        case breakDelay
+        case fullUnlockDelay
+        case breakDuration
+        case elapsedDuration
+    }
+
+    init(
+        name: String,
+        rules: ProtectedRules,
+        protectionMode: ProtectionMode = .softLock,
+        breakDelay: TimeInterval,
+        fullUnlockDelay: TimeInterval,
+        breakDuration: TimeInterval,
+        elapsedDuration: TimeInterval?
+    ) {
+        self.name = name
+        self.rules = rules
+        self.protectionMode = protectionMode
+        self.breakDelay = breakDelay
+        self.fullUnlockDelay = fullUnlockDelay
+        self.breakDuration = breakDuration
+        self.elapsedDuration = elapsedDuration
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        rules = try container.decode(ProtectedRules.self, forKey: .rules)
+        if container.contains(.protectionMode) {
+            protectionMode = try container.decode(ProtectionMode.self, forKey: .protectionMode)
+        } else {
+            protectionMode = .softLock
+        }
+        breakDelay = try container.decode(TimeInterval.self, forKey: .breakDelay)
+        fullUnlockDelay = try container.decode(TimeInterval.self, forKey: .fullUnlockDelay)
+        breakDuration = try container.decode(TimeInterval.self, forKey: .breakDuration)
+        elapsedDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .elapsedDuration)
+    }
 
     func validatedForMutation() throws -> ProtectedBlockDraft {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -191,9 +235,13 @@ struct ProtectedBlockDraft: Codable, Equatable, Sendable {
         if let elapsedDuration {
             try Self.validateDuration(elapsedDuration, label: "fixed duration")
         }
+        guard protectionMode.allowsBreaks || elapsedDuration == nil else {
+            throw ProtectedStateError.invalid("A Hard Pause plan cannot end automatically.")
+        }
         return ProtectedBlockDraft(
             name: cleanName,
             rules: rules,
+            protectionMode: protectionMode,
             breakDelay: breakDelay,
             fullUnlockDelay: fullUnlockDelay,
             breakDuration: breakDuration,
@@ -212,6 +260,9 @@ struct ProtectedBlockDraft: Codable, Equatable, Sendable {
         try Self.validateDuration(breakDuration, label: "break duration")
         if let elapsedDuration {
             try Self.validateDuration(elapsedDuration, label: "fixed duration")
+        }
+        guard protectionMode.allowsBreaks || elapsedDuration == nil else {
+            throw ProtectedStateError.invalid("A saved Hard Pause plan cannot end automatically.")
         }
     }
 
@@ -262,9 +313,29 @@ struct ProtectedActivation: Codable, Equatable, Sendable {
 
     mutating func request(_ kind: ProtectedRequestKind, at reading: ClockReading) throws {
         guard advance(to: reading) else { throw ProtectedStateError.inactive }
-        guard pendingRequest == nil else { throw ProtectedStateError.pendingRequestExists }
-        if kind == .breakAccess, !restrictionsAreActive {
-            throw ProtectedStateError.breakAlreadyActive
+        if kind == .breakAccess, !frozenDraft.protectionMode.allowsBreaks {
+            throw ProtectedStateError.invalid("Hard Pause plans do not allow breaks.")
+        }
+        var lifecycle = coreLifecycleState
+        do {
+            switch kind {
+            case .breakAccess:
+                try PauseCoreLifecycle.requestBreak(
+                    &lifecycle,
+                    at: accumulatedElapsed,
+                    delay: frozenDraft.breakDelay,
+                    duration: frozenDraft.breakDuration
+                )
+            case .fullUnlock:
+                try PauseCoreLifecycle.requestFullUnlock(
+                    &lifecycle,
+                    at: accumulatedElapsed,
+                    delay: frozenDraft.fullUnlockDelay,
+                    profile: .macOS
+                )
+            }
+        } catch let error as PauseCoreLifecycleError {
+            throw protectedStateError(for: error)
         }
         pendingRequest = ProtectedPendingRequest(
             kind: kind,
@@ -275,8 +346,11 @@ struct ProtectedActivation: Codable, Equatable, Sendable {
 
     mutating func cancelBreakRequest(at reading: ClockReading) throws {
         guard advance(to: reading) else { throw ProtectedStateError.inactive }
-        guard pendingRequest?.kind == .breakAccess else {
-            throw ProtectedStateError.noPendingBreakRequest
+        var lifecycle = coreLifecycleState
+        do {
+            try PauseCoreLifecycle.cancelBreak(&lifecycle)
+        } catch let error as PauseCoreLifecycleError {
+            throw protectedStateError(for: error)
         }
         pendingRequest = nil
     }
@@ -284,51 +358,36 @@ struct ProtectedActivation: Codable, Equatable, Sendable {
     @discardableResult
     mutating func advance(to reading: ClockReading) -> Bool {
         accrue(to: reading)
-        if let duration = frozenDraft.elapsedDuration, accumulatedElapsed >= duration {
-            return false
-        }
-        if let request = pendingRequest {
-            let delay = request.kind == .breakAccess ? frozenDraft.breakDelay : frozenDraft.fullUnlockDelay
-            let readyAt = request.requestedAtElapsed + delay
-            if accumulatedElapsed >= readyAt {
-                if request.kind == .fullUnlock { return false }
-                pendingRequest = nil
-                breakEndsAtElapsed = readyAt + frozenDraft.breakDuration
-            }
-        }
-        if let breakEndsAtElapsed, accumulatedElapsed >= breakEndsAtElapsed {
-            self.breakEndsAtElapsed = nil
-        }
-        return true
+        var lifecycle = coreLifecycleState
+        PauseCoreLifecycle.reconcile(&lifecycle, at: accumulatedElapsed)
+        pendingRequest = lifecycle.pendingRequest == nil ? nil : pendingRequest
+        breakEndsAtElapsed = lifecycle.breakEndsAt
+        return lifecycle.isActive
     }
 
     func phase() -> ProtectedBlockPhase {
-        let naturalEndRemaining = frozenDraft.elapsedDuration.map { max(0, $0 - accumulatedElapsed) }
-        if let breakEndsAtElapsed, accumulatedElapsed < breakEndsAtElapsed {
-            let unlockRemaining: TimeInterval?
-            if let pendingRequest, pendingRequest.kind == .fullUnlock {
-                unlockRemaining = max(
-                    0,
-                    pendingRequest.requestedAtElapsed + frozenDraft.fullUnlockDelay - accumulatedElapsed
-                )
-            } else {
-                unlockRemaining = nil
-            }
+        switch PauseCoreLifecycle.phase(of: coreLifecycleState, at: accumulatedElapsed) {
+        case .inactive:
+            return .inactive
+        case .active(let naturalEndRemaining):
+            return .active(naturalEndRemaining: naturalEndRemaining)
+        case .waitingForBreak(let remaining, let naturalEndRemaining):
+            return .waitingForBreak(
+                remaining: remaining,
+                naturalEndRemaining: naturalEndRemaining
+            )
+        case .waitingForFullUnlock(let remaining, let naturalEndRemaining):
+            return .waitingForFullUnlock(
+                remaining: remaining,
+                naturalEndRemaining: naturalEndRemaining
+            )
+        case .breakActive(let remaining, let fullUnlockRemaining, let naturalEndRemaining):
             return .breakActive(
-                remaining: breakEndsAtElapsed - accumulatedElapsed,
-                fullUnlockRemaining: unlockRemaining,
+                remaining: remaining,
+                fullUnlockRemaining: fullUnlockRemaining,
                 naturalEndRemaining: naturalEndRemaining
             )
         }
-        if let pendingRequest {
-            let delay =
-                pendingRequest.kind == .breakAccess ? frozenDraft.breakDelay : frozenDraft.fullUnlockDelay
-            let remaining = max(0, pendingRequest.requestedAtElapsed + delay - accumulatedElapsed)
-            return pendingRequest.kind == .breakAccess
-                ? .waitingForBreak(remaining: remaining, naturalEndRemaining: naturalEndRemaining)
-                : .waitingForFullUnlock(remaining: remaining, naturalEndRemaining: naturalEndRemaining)
-        }
-        return .active(naturalEndRemaining: naturalEndRemaining)
     }
 
     func validateForPersistence() throws {
@@ -355,26 +414,69 @@ struct ProtectedActivation: Codable, Equatable, Sendable {
             else {
                 throw ProtectedStateError.invalid("An active block has an invalid request.")
             }
+            if !frozenDraft.protectionMode.allowsBreaks, pendingRequest.kind == .breakAccess {
+                throw ProtectedStateError.invalid("A Hard Pause plan contains a pending break request.")
+            }
         }
         if let breakEndsAtElapsed {
             guard breakEndsAtElapsed.isFinite, breakEndsAtElapsed >= 0 else {
                 throw ProtectedStateError.invalid("An active block has an invalid break.")
             }
+            guard frozenDraft.protectionMode.allowsBreaks else {
+                throw ProtectedStateError.invalid("A Hard Pause plan contains an active break.")
+            }
         }
     }
 
     private mutating func accrue(to reading: ClockReading) {
-        if let previousBoot = anchorBootIdentifier,
-            let currentBoot = reading.bootIdentifier,
-            previousBoot == currentBoot,
-            let previousContinuous = anchorContinuousTime,
-            reading.continuousTime >= previousContinuous
-        {
-            accumulatedElapsed += reading.continuousTime - previousContinuous
-        }
-        // A reboot or unknown clock adds no elapsed time. This cannot grant access early.
+        let projection = PauseCoreClock.project(
+            checkpoint: PauseCoreClockCheckpoint(
+                logicalTime: accumulatedElapsed,
+                elapsedSinceBoot: anchorContinuousTime,
+                bootIdentifier: anchorBootIdentifier
+            ),
+            reading: PauseCoreClockReading(
+                elapsedSinceBoot: reading.continuousTime,
+                bootIdentifier: reading.bootIdentifier
+            )
+        )
+        accumulatedElapsed = projection.logicalTime
         anchorBootIdentifier = reading.bootIdentifier
         anchorContinuousTime = reading.continuousTime
+    }
+
+    private var coreLifecycleState: PauseCoreLifecycleState {
+        let corePending = pendingRequest.map { request in
+            let delay =
+                request.kind == .breakAccess ? frozenDraft.breakDelay : frozenDraft.fullUnlockDelay
+            let readyAt = request.requestedAtElapsed + delay
+            return PauseCorePendingRequest(
+                kind: request.kind == .breakAccess ? .breakAccess : .fullUnlock,
+                readyAt: readyAt,
+                breakEndsAt: request.kind == .breakAccess
+                    ? readyAt + frozenDraft.breakDuration
+                    : nil
+            )
+        }
+        return PauseCoreLifecycleState(
+            isActive: true,
+            naturalEndAt: frozenDraft.elapsedDuration,
+            pendingRequest: corePending,
+            breakEndsAt: breakEndsAtElapsed
+        )
+    }
+
+    private func protectedStateError(for error: PauseCoreLifecycleError) -> ProtectedStateError {
+        switch error {
+        case .inactive:
+            return .inactive
+        case .pendingRequestExists:
+            return .pendingRequestExists
+        case .breakAlreadyActive:
+            return .breakAlreadyActive
+        case .noPendingBreakRequest:
+            return .noPendingBreakRequest
+        }
     }
 }
 

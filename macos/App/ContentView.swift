@@ -283,7 +283,7 @@ private struct BreakRequestButton: View {
 
     var body: some View {
         Group {
-            if block.phase.canRequestBreak {
+            if block.canRequestBreak {
                 Button("Request a break") { showsConfirmation = true }
                     .buttonStyle(PauseButtonStyle(primary: true))
                     .accessibilityLabel("Request a break from plan \(block.draft.name)")
@@ -297,7 +297,7 @@ private struct BreakRequestButton: View {
                             "For \(block.draft.name), blocking will continue for \(block.draft.breakDelay.longDuration). Then you can take a \(block.draft.breakDuration.longDuration) break. You can cancel the request while you wait."
                         )
                     }
-            } else if block.phase.canCancelBreak {
+            } else if block.canCancelBreak {
                 Button("Cancel break request") {
                     Task { _ = await model.cancelBreak(for: block) }
                 }
@@ -316,10 +316,12 @@ private struct HomeActiveBlockCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             BlockStatusPanel(block: block, showUnlockGuidance: showUnlockGuidance)
-            if block.phase.canRequestBreak || block.phase.canCancelBreak || block.phase.canRequestFullEnd {
+            if block.canRequestBreak || block.canCancelBreak || block.canRequestFullEnd {
                 HStack(spacing: 12) {
-                    BreakRequestButton(block: block)
-                    if block.phase.canRequestFullEnd {
+                    if block.canRequestBreak || block.canCancelBreak {
+                        BreakRequestButton(block: block)
+                    }
+                    if block.canRequestFullEnd {
                         Button("Request to end") {
                             Task { _ = await model.requestEnd(for: block) }
                         }
@@ -430,8 +432,8 @@ private struct BlockPanel: View {
         VStack(alignment: .leading, spacing: 16) {
             BlockStatusPanel(block: block, showUnlockGuidance: showUnlockGuidance)
 
-            if block.phase == .inactive || block.phase.canRequestBreak || block.phase.canCancelBreak
-                || block.phase.canRequestFullEnd
+            if block.phase == .inactive || block.canRequestBreak || block.canCancelBreak
+                || block.canRequestFullEnd
             {
                 HStack(spacing: 12) {
                     if block.phase == .inactive {
@@ -456,8 +458,10 @@ private struct BlockPanel: View {
                         .fixedSize()
                         .accessibilityLabel("More actions for plan \(block.draft.name)")
                     } else {
-                        BreakRequestButton(block: block)
-                        if block.phase.canRequestFullEnd {
+                        if block.canRequestBreak || block.canCancelBreak {
+                            BreakRequestButton(block: block)
+                        }
+                        if block.canRequestFullEnd {
                             Button("Request to end") {
                                 Task { _ = await model.requestEnd(for: block) }
                             }
@@ -613,10 +617,14 @@ private struct UnlockGuidanceView: View {
                 }
 
                 if !hasEnded {
-                    Text("The existing break and end rules still apply. This screen cannot shorten them.")
-                        .font(.caption)
-                        .foregroundStyle(PauseTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        liveBlock?.draft.protectionMode.allowsBreaks == false
+                            ? "The existing end rule still applies. This screen cannot shorten the wait."
+                            : "The existing break and end rules still apply. This screen cannot shorten them."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(PauseTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: 620, alignment: .leading)
@@ -803,6 +811,7 @@ private struct BlockEditorView: View {
     @State private var domains: [String]
     @State private var urlPatterns: [String]
     @State private var applications: [ProtectedApplication]
+    @State private var protectionMode: ProtectionMode
     @State private var breakDelay: TimeInterval
     @State private var fullUnlockDelay: TimeInterval
     @State private var breakDuration: TimeInterval
@@ -836,6 +845,7 @@ private struct BlockEditorView: View {
         _domains = State(initialValue: editableDomains)
         _urlPatterns = State(initialValue: patterns)
         _applications = State(initialValue: draft?.rules.blockedApplications ?? [])
+        _protectionMode = State(initialValue: draft?.protectionMode ?? .softLock)
         _breakDelay = State(initialValue: draft?.breakDelay ?? 3_600)
         _fullUnlockDelay = State(initialValue: draft?.fullUnlockDelay ?? 86_400)
         _breakDuration = State(initialValue: draft?.breakDuration ?? 900)
@@ -1167,41 +1177,76 @@ private struct BlockEditorView: View {
                 }
                 .mascotHoverTarget()
                 Divider()
-                VStack(spacing: 10) {
-                    HStack {
-                        Text("Duration")
-                        Spacer()
-                        Picker(
-                            "Duration",
-                            selection: Binding<TimeInterval>(
-                                get: { hasFixedDuration ? fixedDuration : 0 },
-                                set: { value in
-                                    hasFixedDuration = value != 0
-                                    if value != 0 { fixedDuration = value }
-                                }
-                            )
-                        ) {
-                            Text("Until I end it").tag(TimeInterval(0))
-                            ForEach(Array(Set(DelayValues.fixed + [fixedDuration])).sorted(), id: \.self) { value in
-                                Text(value.longDuration).tag(value)
-                            }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Plan type").font(.body.weight(.semibold))
+                    HStack(spacing: 10) {
+                        ForEach(ProtectionMode.allCases, id: \.self) { mode in
+                            protectionModeCard(mode)
                         }
-                        .labelsHidden()
-                        .fixedSize()
-                        .mascotHoverTarget()
                     }
-                    DurationPicker("Wait for a break", selection: $breakDelay, values: DelayValues.access)
-                    DurationPicker("Break length", selection: $breakDuration, values: DelayValues.breaks)
-                    DurationPicker("Wait to end the plan", selection: $fullUnlockDelay, values: DelayValues.access)
+                }
+                Divider()
+                VStack(spacing: 10) {
+                    if protectionMode.allowsBreaks {
+                        HStack {
+                            Text("Duration")
+                            Spacer()
+                            Picker(
+                                "Duration",
+                                selection: Binding<TimeInterval>(
+                                    get: { hasFixedDuration ? fixedDuration : 0 },
+                                    set: { value in
+                                        hasFixedDuration = value != 0
+                                        if value != 0 { fixedDuration = value }
+                                    }
+                                )
+                            ) {
+                                Text("Until I end it").tag(TimeInterval(0))
+                                ForEach(
+                                    Array(Set(DelayValues.fixed + [fixedDuration])).sorted(),
+                                    id: \.self
+                                ) { value in
+                                    Text(value.longDuration).tag(value)
+                                }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                            .mascotHoverTarget()
+                            .accessibilityIdentifier("plan-fixed-duration")
+                        }
+                        DurationPicker(
+                            "Wait for a break",
+                            selection: $breakDelay,
+                            values: DelayValues.access
+                        )
+                        .accessibilityIdentifier("plan-break-delay")
+                        DurationPicker(
+                            "Break length",
+                            selection: $breakDuration,
+                            values: DelayValues.breaks
+                        )
+                        .accessibilityIdentifier("plan-break-duration")
+                    }
+                    DurationPicker(
+                        "Wait to end the plan",
+                        selection: $fullUnlockDelay,
+                        values: DelayValues.access
+                    )
+                    .accessibilityIdentifier("plan-full-unlock-delay")
                 }
                 Text(
-                    hasFixedDuration
+                    protectionMode.allowsBreaks && hasFixedDuration
                         ? "Ends automatically after \(fixedDuration.longDuration) of recorded active time."
                         : "Stays active until you request to end it and the waiting period finishes."
                 )
                 .font(.caption)
                 .foregroundStyle(PauseTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !protectionMode.allowsBreaks && !isReadOnly {
+                AppleProtectionCard(model: model.appleProtection, proposedDelay: fullUnlockDelay)
+                    .settingsPanel()
             }
 
             if !applications.isEmpty {
@@ -1219,6 +1264,44 @@ private struct BlockEditorView: View {
     private var standalonePatterns: [String] {
         let covered = Set(domains.map { "*.\($0)" })
         return urlPatterns.filter { !covered.contains($0) }
+    }
+
+    private func protectionModeCard(_ mode: ProtectionMode) -> some View {
+        let isSelected = protectionMode == mode
+        return Button {
+            protectionMode = mode
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(mode.displayName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(PauseTheme.ink)
+                    Text(mode.shortDetail)
+                        .font(.caption)
+                        .foregroundStyle(PauseTheme.muted)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? PauseTheme.coral : PauseTheme.muted)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .background(
+                isSelected ? PauseTheme.coral.opacity(0.12) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? PauseTheme.coral.opacity(0.65) : PauseTheme.stroke, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .mascotHoverTarget()
+        .accessibilityLabel("\(mode.displayName). \(mode.shortDetail)")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityIdentifier(mode.accessibilityIdentifier)
     }
 
     private var reviewWebsites: [WebsiteRulePresentation] {
@@ -1481,10 +1564,11 @@ private struct BlockEditorView: View {
                 blockedURLPatterns: urlPatterns,
                 blocksAdultWebsites: blocksAdultWebsites
             ),
+            protectionMode: protectionMode,
             breakDelay: breakDelay,
             fullUnlockDelay: fullUnlockDelay,
             breakDuration: breakDuration,
-            elapsedDuration: hasFixedDuration ? fixedDuration : nil
+            elapsedDuration: protectionMode.allowsBreaks && hasFixedDuration ? fixedDuration : nil
         ).validatedForMutation()
     }
 
@@ -1698,10 +1782,18 @@ private struct FixedRulesView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 10) {
-                RuleSummaryLine(title: "Wait for a break", value: draft.breakDelay.longDuration)
+                RuleSummaryLine(title: "Plan type", value: draft.protectionMode.displayName)
+                if draft.protectionMode.allowsBreaks {
+                    RuleSummaryLine(title: "Wait for a break", value: draft.breakDelay.longDuration)
+                }
                 RuleSummaryLine(title: "Wait to end the plan", value: draft.fullUnlockDelay.longDuration)
-                RuleSummaryLine(title: "Break length", value: draft.breakDuration.longDuration)
-                RuleSummaryLine(title: "Ends automatically", value: draft.elapsedDuration?.longDuration ?? "No")
+                if draft.protectionMode.allowsBreaks {
+                    RuleSummaryLine(title: "Break length", value: draft.breakDuration.longDuration)
+                    RuleSummaryLine(
+                        title: "Ends automatically",
+                        value: draft.elapsedDuration?.longDuration ?? "No"
+                    )
+                }
             }
         }
     }
@@ -2085,6 +2177,9 @@ private struct ProtectionSettingsPane: View {
 
                 SetupChecklistView(showsService: !model.setupServiceReady)
 
+                AppleProtectionCard(model: model.appleProtection)
+                    .settingsPanel()
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Adult website database")
                         .font(PauseFont.display(18, relativeTo: .headline))
@@ -2298,6 +2393,7 @@ extension ProtectedBlockSnapshot {
         ).count
         let apps = draft.rules.blockedApplications.count
         return [
+            draft.protectionMode.displayName,
             sites > 0 ? "\(sites) site\(sites == 1 ? "" : "s")" : nil,
             apps > 0 ? "\(apps) app\(apps == 1 ? "" : "s")" : nil,
             draft.rules.blocksAdultWebsites ? "Adult websites" : nil,
@@ -2305,10 +2401,16 @@ extension ProtectedBlockSnapshot {
     }
 
     fileprivate var activationConfirmation: String {
-        var parts = [
-            "Rules stay fixed while this plan is active.",
-            "A break requires \(draft.breakDelay.longDuration). Ending the plan requires \(draft.fullUnlockDelay.longDuration).",
-        ]
+        var parts = ["Rules stay fixed while this plan is active."]
+        if draft.protectionMode.allowsBreaks {
+            parts.append(
+                "A break requires \(draft.breakDelay.longDuration). Ending the plan requires \(draft.fullUnlockDelay.longDuration)."
+            )
+        } else {
+            parts.append(
+                "Hard Pause does not allow breaks. Ending the plan requires \(draft.fullUnlockDelay.longDuration)."
+            )
+        }
         if !draft.rules.blockedApplications.isEmpty {
             parts.append("Selected apps will close, which can lose unsaved work.")
         }
@@ -2316,6 +2418,43 @@ extension ProtectedBlockSnapshot {
             parts.append("The plan ends automatically after \(duration.longDuration) of recorded active time.")
         }
         return parts.joined(separator: " ")
+    }
+
+    fileprivate var canRequestBreak: Bool {
+        draft.protectionMode.allowsBreaks && phase.canRequestBreak
+    }
+
+    fileprivate var canCancelBreak: Bool {
+        draft.protectionMode.allowsBreaks && phase.canCancelBreak
+    }
+
+    fileprivate var canRequestFullEnd: Bool {
+        if draft.protectionMode.allowsBreaks { return phase.canRequestFullEnd }
+        if case .active = phase { return true }
+        return false
+    }
+}
+
+extension ProtectionMode {
+    fileprivate var displayName: String {
+        switch self {
+        case .softLock: return "Pause"
+        case .lockdown: return "Hard Pause"
+        }
+    }
+
+    fileprivate var shortDetail: String {
+        switch self {
+        case .softLock: return "Breaks allowed"
+        case .lockdown: return "No breaks"
+        }
+    }
+
+    fileprivate var accessibilityIdentifier: String {
+        switch self {
+        case .softLock: return "plan-type-pause"
+        case .lockdown: return "plan-type-hard-pause"
+        }
     }
 }
 

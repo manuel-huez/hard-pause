@@ -51,9 +51,10 @@ struct RecoverySnapshot: Codable, Equatable {
     }
 
     func restore(at date: Date, elapsedTime: ElapsedTimeReading) throws -> LockCollection {
+        try validateStructure()
         var restoredBlocks: [LockBlock] = []
         var usedSlots: Set<Int> = []
-        for recoveryBlock in blocks.prefix(LockCollection.maximumActiveBlocks) {
+        for recoveryBlock in blocks {
             var state = LockState()
             try LockStateMachine.activate(
                 &state,
@@ -80,6 +81,13 @@ struct RecoverySnapshot: Codable, Equatable {
             )
         }
         return LockCollection(blocks: restoredBlocks)
+    }
+
+    func validateStructure() throws {
+        guard schemaVersion == 2,
+            blocks.count <= LockCollection.maximumActiveBlocks,
+            Set(blocks.map(\.id)).count == blocks.count
+        else { throw RecoveryPolicyRepositoryError.corruptedPolicy }
     }
 }
 
@@ -117,6 +125,7 @@ struct RecoveryPolicyRepository: RecoveryPolicyStoring {
                 guard FileManager.default.fileExists(atPath: url.path) else { return nil }
                 let data = try Data(contentsOf: url)
                 if let snapshot = try? JSONDecoder().decode(RecoverySnapshot.self, from: data) {
+                    try snapshot.validateStructure()
                     return snapshot
                 }
                 if let legacyPolicy = try? JSONDecoder().decode(LockPolicy.self, from: data) {
@@ -142,6 +151,7 @@ struct RecoveryPolicyRepository: RecoveryPolicyStoring {
     }
 
     func save(_ snapshot: RecoverySnapshot) throws {
+        try snapshot.validateStructure()
         guard let policyURL else { throw RecoveryPolicyRepositoryError.appGroupUnavailable }
         var result: Result<Void, Error>?
         var coordinationError: NSError?
@@ -151,14 +161,7 @@ struct RecoveryPolicyRepository: RecoveryPolicyStoring {
             error: &coordinationError
         ) { url in
             result = Result {
-                try FileManager.default.createDirectory(
-                    at: url.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                try JSONEncoder().encode(snapshot).write(
-                    to: url,
-                    options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
-                )
+                try DurableFile.write(JSONEncoder().encode(snapshot), to: url)
             }
         }
         if let coordinationError {
@@ -178,7 +181,7 @@ struct RecoveryPolicyRepository: RecoveryPolicyStoring {
             options: .forDeleting,
             error: &coordinationError
         ) { url in
-            result = Result { try FileManager.default.removeItem(at: url) }
+            result = Result { try DurableFile.remove(url) }
         }
         if let coordinationError {
             throw RecoveryPolicyRepositoryError.coordinationFailed(coordinationError)

@@ -120,6 +120,68 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "Finish setup before starting a new plan.")
     }
 
+    func testHardPausePreflightDoesNotCreateOrActivateWithoutActiveScreenTimeProtection() async {
+        for phase in [AppleLockdownPhase.inactive, .pendingSetup] {
+            let operationID = phase == .pendingSetup ? UUID() : nil
+            let service = ControlledProtectedService(
+                snapshot: makeSnapshot(),
+                appleSnapshot: makeAppleSnapshot(phase: phase, operationID: operationID)
+            )
+            let model = makeReadyModel(service: service)
+
+            let started = await model.createAndActivate(
+                makeDraft(protectionMode: .lockdown)
+            )
+
+            XCTAssertFalse(started, "phase=\(phase)")
+            XCTAssertEqual(service.appleStatusCalls, 1, "phase=\(phase)")
+            XCTAssertEqual(service.createCalls, 0, "phase=\(phase)")
+            XCTAssertEqual(service.activationCalls, 0, "phase=\(phase)")
+            XCTAssertEqual(
+                model.errorMessage,
+                "Set up the Screen Time code before starting a Hard Pause plan. Open Screen Time protection in Settings or in the plan editor."
+            )
+        }
+    }
+
+    func testHardPauseRequestEndStartsPlanAndScreenTimeWaits() async {
+        let draft = makeDraft(protectionMode: .lockdown)
+        let id = UUID()
+        let active = makeBlock(
+            id: id,
+            revision: 2,
+            draft: draft,
+            phase: .active(naturalEndRemaining: nil)
+        )
+        let waiting = makeBlock(
+            id: id,
+            revision: 3,
+            draft: draft,
+            phase: .waitingForFullUnlock(remaining: 60, naturalEndRemaining: nil)
+        )
+        let appleWaiting = makeAppleSnapshot(
+            phase: .waitingForFullUnlock,
+            remainingDelay: 86_400
+        )
+        let service = ControlledProtectedService(
+            snapshot: makeSnapshot(blocks: [active]),
+            endResponse: makeSnapshot(blocks: [waiting]),
+            appleSnapshot: makeAppleSnapshot(phase: .active),
+            appleEndResponse: appleWaiting
+        )
+        let model = AppModel(service: service, automaticallyRefreshes: false)
+        await model.refresh()
+
+        let ended = await model.requestEnd(for: active)
+
+        XCTAssertTrue(ended)
+        XCTAssertEqual(service.endCalls, 1)
+        XCTAssertEqual(service.appleEndCalls, 1)
+        XCTAssertEqual(model.blocks, [waiting])
+        XCTAssertEqual(model.appleProtection.snapshot, appleWaiting)
+        XCTAssertNil(model.errorMessage)
+    }
+
     func testCreateAndActivateKeepsSavedPlanAndShowsWarningWhenActivationFails() async {
         let draft = makeDraft()
         let created = makeBlock(draft: draft)
@@ -327,7 +389,10 @@ final class AppModelTests: XCTestCase {
         )
     }
 
-    private func makeDraft(name: String = "Test") -> ProtectedBlockDraft {
+    private func makeDraft(
+        name: String = "Test",
+        protectionMode: ProtectionMode = .softLock
+    ) -> ProtectedBlockDraft {
         ProtectedBlockDraft(
             name: name,
             rules: ProtectedRules(
@@ -335,6 +400,7 @@ final class AppModelTests: XCTestCase {
                 blockedApplications: [],
                 blocksStarterAdultSites: false
             ),
+            protectionMode: protectionMode,
             breakDelay: 60,
             fullUnlockDelay: 60,
             breakDuration: 60,
@@ -373,6 +439,22 @@ final class AppModelTests: XCTestCase {
         )
     }
 
+    private func makeAppleSnapshot(
+        phase: AppleLockdownPhase,
+        remainingDelay: TimeInterval? = nil,
+        operationID: UUID? = nil
+    ) -> AppleLockdownSnapshot {
+        AppleLockdownSnapshot(
+            phase: phase,
+            fullUnlockDelay: phase == .inactive ? nil : 86_400,
+            remainingDelay: remainingDelay,
+            enablesAdultFilter: false,
+            filterWasAlreadyEnabled: false,
+            shareAcrossDevicesVerified: nil,
+            operationID: operationID
+        )
+    }
+
     private func makeReadyModel(service: ControlledProtectedService) -> AppModel {
         AppModel(
             service: service,
@@ -400,6 +482,8 @@ private final class ControlledProtectedService: ProtectedServiceServing {
     private(set) var createCalls = 0
     private(set) var cancelBreakCalls = 0
     private(set) var endCalls = 0
+    private(set) var appleStatusCalls = 0
+    private(set) var appleEndCalls = 0
     private(set) var lastActivationID: UUID?
     private(set) var lastActivationRevision: Int?
     private(set) var lastCancelledBreakID: UUID?
@@ -407,6 +491,9 @@ private final class ControlledProtectedService: ProtectedServiceServing {
     private let createResponse: ProtectedServiceSnapshot?
     private let activationResponse: ProtectedServiceSnapshot?
     private let cancelBreakResponse: ProtectedServiceSnapshot?
+    private let endResponse: ProtectedServiceSnapshot?
+    private var appleSnapshot: AppleLockdownSnapshot?
+    private let appleEndResponse: AppleLockdownSnapshot?
     private let activationError: ControlledServiceError?
     private let failsNextListAfterActivation: Bool
     private var shouldFailNextList = false
@@ -418,6 +505,9 @@ private final class ControlledProtectedService: ProtectedServiceServing {
         createResponse: ProtectedServiceSnapshot? = nil,
         activationResponse: ProtectedServiceSnapshot? = nil,
         cancelBreakResponse: ProtectedServiceSnapshot? = nil,
+        endResponse: ProtectedServiceSnapshot? = nil,
+        appleSnapshot: AppleLockdownSnapshot? = nil,
+        appleEndResponse: AppleLockdownSnapshot? = nil,
         activationError: ControlledServiceError? = nil,
         failsNextListAfterActivation: Bool = false
     ) {
@@ -425,6 +515,9 @@ private final class ControlledProtectedService: ProtectedServiceServing {
         self.createResponse = createResponse
         self.activationResponse = activationResponse
         self.cancelBreakResponse = cancelBreakResponse
+        self.endResponse = endResponse
+        self.appleSnapshot = appleSnapshot
+        self.appleEndResponse = appleEndResponse
         self.activationError = activationError
         self.failsNextListAfterActivation = failsNextListAfterActivation
     }
@@ -499,7 +592,21 @@ private final class ControlledProtectedService: ProtectedServiceServing {
 
     func requestEnd(id: UUID) async throws -> ProtectedServiceSnapshot {
         endCalls += 1
+        if let endResponse { snapshot = endResponse }
         return snapshot
+    }
+
+    func appleLockdownStatus() async throws -> AppleLockdownSnapshot {
+        appleStatusCalls += 1
+        guard let appleSnapshot else { throw AppleLockdownError.unavailable }
+        return appleSnapshot
+    }
+
+    func requestAppleLockdownEnd() async throws -> AppleLockdownSnapshot {
+        appleEndCalls += 1
+        guard let appleEndResponse else { throw AppleLockdownError.unavailable }
+        appleSnapshot = appleEndResponse
+        return appleEndResponse
     }
 }
 

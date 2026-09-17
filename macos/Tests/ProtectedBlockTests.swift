@@ -42,6 +42,119 @@ final class ProtectedBlockTests: XCTestCase {
         XCTAssertEqual(state.blocks.first?.activation?.frozenDraft, active.draft)
     }
 
+    func testLegacyDraftWithoutProtectionModeDefaultsToSoftLock() throws {
+        let draft = makeDraft()
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any]
+        )
+        object.removeValue(forKey: "protectionMode")
+
+        let restored = try JSONDecoder().decode(
+            ProtectedBlockDraft.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        XCTAssertEqual(restored.protectionMode, .softLock)
+        XCTAssertEqual(restored.breakDelay, draft.breakDelay)
+        XCTAssertEqual(restored.elapsedDuration, draft.elapsedDuration)
+    }
+
+    func testPresentMalformedProtectionModeIsRejected() throws {
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(makeDraft())) as? [String: Any]
+        )
+        object["protectionMode"] = "strict"
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                ProtectedBlockDraft.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        )
+    }
+
+    func testProtectionModePersistsThroughRoundTrip() throws {
+        let draft = makeDraft(protectionMode: .lockdown)
+
+        let restored = try JSONDecoder().decode(
+            ProtectedBlockDraft.self,
+            from: JSONEncoder().encode(draft)
+        )
+
+        XCTAssertEqual(restored, draft)
+        XCTAssertEqual(restored.protectionMode, .lockdown)
+    }
+
+    func testLockdownRejectsFixedDurationAndBreakRequests() throws {
+        XCTAssertThrowsError(
+            try makeDraft(protectionMode: .lockdown, elapsedDuration: 3_600).validatedForMutation()
+        ) { error in
+            XCTAssertEqual(
+                error as? ProtectedStateError,
+                .invalid("A Hard Pause plan cannot end automatically.")
+            )
+        }
+
+        var state = ProtectedState()
+        let block = try state.create(makeDraft(protectionMode: .lockdown))
+        try state.activate(id: block.id, expectedRevision: block.revision, at: reading(0))
+
+        XCTAssertThrowsError(try state.request(.breakAccess, id: block.id, at: reading(0))) { error in
+            XCTAssertEqual(
+                error as? ProtectedStateError,
+                .invalid("Hard Pause plans do not allow breaks.")
+            )
+        }
+    }
+
+    func testLockdownFullUnlockUsesConfiguredDelay() throws {
+        var state = ProtectedState()
+        let block = try state.create(
+            makeDraft(protectionMode: .lockdown, fullUnlockDelay: 180)
+        )
+        try state.activate(id: block.id, expectedRevision: block.revision, at: reading(0))
+        try state.request(.fullUnlock, id: block.id, at: reading(0))
+
+        XCTAssertTrue(state.advance(to: reading(179)).isEmpty)
+        XCTAssertNotNil(state.blocks.first?.activation)
+        XCTAssertEqual(state.advance(to: reading(180)), Set([block.id]))
+        XCTAssertNil(state.blocks.first?.activation)
+    }
+
+    func testPersistenceRejectsLockdownWithPendingOrActiveBreak() throws {
+        var pendingState = ProtectedState()
+        let pendingBlock = try pendingState.create(makeDraft())
+        try pendingState.activate(
+            id: pendingBlock.id,
+            expectedRevision: pendingBlock.revision,
+            at: reading(0)
+        )
+        try pendingState.request(.breakAccess, id: pendingBlock.id, at: reading(0))
+        let pendingLockdown = try decodeState(
+            replacingProtectionModeWith: .lockdown,
+            in: pendingState
+        )
+        XCTAssertThrowsError(try pendingLockdown.validateForPersistence()) { error in
+            XCTAssertEqual(
+                error as? ProtectedStateError,
+                .invalid("A Hard Pause plan contains a pending break request.")
+            )
+        }
+
+        var breakState = pendingState
+        breakState.advance(to: reading(60))
+        let activeBreakLockdown = try decodeState(
+            replacingProtectionModeWith: .lockdown,
+            in: breakState
+        )
+        XCTAssertThrowsError(try activeBreakLockdown.validateForPersistence()) { error in
+            XCTAssertEqual(
+                error as? ProtectedStateError,
+                .invalid("A Hard Pause plan contains an active break.")
+            )
+        }
+    }
+
     func testOverlappingBlocksKeepSharedRestrictionDuringOneBlocksBreak() throws {
         let app = makeApplication("org.example.chat", name: "Chat")
         var state = ProtectedState()
@@ -130,6 +243,62 @@ final class ProtectedBlockTests: XCTestCase {
         endState.advance(to: reading(60))
         XCTAssertNotNil(endState.blocks.first?.activation)
         XCTAssertEqual(endState.advance(to: reading(180)), Set([endBlock.id]))
+    }
+
+    func testFullUnlockRequestKeepsCurrentBreakOpenOnMacOS() throws {
+        var state = ProtectedState()
+        let block = try state.create(
+            makeDraft(breakDelay: 60, fullUnlockDelay: 180, breakDuration: 300)
+        )
+        try state.activate(id: block.id, expectedRevision: block.revision, at: reading(0))
+        try state.request(.breakAccess, id: block.id, at: reading(0))
+        state.advance(to: reading(60))
+
+        try state.request(.fullUnlock, id: block.id, at: reading(90))
+
+        XCTAssertEqual(
+            state.blocks.first?.activation?.phase(),
+            .breakActive(
+                remaining: 270,
+                fullUnlockRemaining: 180,
+                naturalEndRemaining: nil
+            )
+        )
+        XCTAssertTrue(state.effectiveRestrictions().blockedDomains.isEmpty)
+        XCTAssertEqual(state.advance(to: reading(270)), Set([block.id]))
+    }
+
+    func testSharedCoreMatchesLegacyMacLifecycleTrace() throws {
+        let draft = makeDraft(
+            breakDelay: 60,
+            fullUnlockDelay: 180,
+            breakDuration: 150,
+            elapsedDuration: 600
+        )
+        var shared = ProtectedActivation(draft: draft, reading: reading(0))
+        var legacy = LegacyMacLifecycle()
+
+        try shared.request(.breakAccess, at: reading(0))
+        legacy.request(.breakAccess, at: 0)
+        for elapsed in [30.0, 60.0] {
+            XCTAssertEqual(shared.advance(to: reading(elapsed)), legacy.advance(to: elapsed, draft: draft))
+            XCTAssertEqual(shared.phase(), legacy.phase(draft: draft))
+        }
+
+        try shared.request(.fullUnlock, at: reading(90))
+        _ = legacy.advance(to: 90, draft: draft)
+        legacy.request(.fullUnlock, at: 90)
+        XCTAssertEqual(shared.phase(), legacy.phase(draft: draft))
+
+        for elapsed in [120.0, 209.0, 210.0, 269.0, 270.0] {
+            let sharedIsActive = shared.advance(to: reading(elapsed))
+            let legacyIsActive = legacy.advance(to: elapsed, draft: draft)
+            XCTAssertEqual(sharedIsActive, legacyIsActive, "elapsed=\(elapsed)")
+            XCTAssertEqual(shared.accumulatedElapsed, legacy.accumulatedElapsed)
+            if sharedIsActive {
+                XCTAssertEqual(shared.phase(), legacy.phase(draft: draft), "elapsed=\(elapsed)")
+            }
+        }
     }
 
     func testPendingRequestCannotBeReplaced() throws {
@@ -569,6 +738,7 @@ final class ProtectedBlockTests: XCTestCase {
         domains: [String] = ["example.com"],
         urlPatterns: [String] = [],
         applications: [ProtectedApplication] = [],
+        protectionMode: ProtectionMode = .softLock,
         breakDelay: TimeInterval = 60,
         fullUnlockDelay: TimeInterval = 180,
         breakDuration: TimeInterval = 60,
@@ -582,10 +752,36 @@ final class ProtectedBlockTests: XCTestCase {
                 blocksStarterAdultSites: false,
                 blockedURLPatterns: urlPatterns
             ),
+            protectionMode: protectionMode,
             breakDelay: breakDelay,
             fullUnlockDelay: fullUnlockDelay,
             breakDuration: breakDuration,
             elapsedDuration: elapsedDuration
+        )
+    }
+
+    private func decodeState(
+        replacingProtectionModeWith mode: ProtectionMode,
+        in state: ProtectedState
+    ) throws -> ProtectedState {
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(state)) as? [String: Any]
+        )
+        var blocks = try XCTUnwrap(object["blocks"] as? [[String: Any]])
+        var block = try XCTUnwrap(blocks.first)
+        var draft = try XCTUnwrap(block["draft"] as? [String: Any])
+        draft["protectionMode"] = mode.rawValue
+        block["draft"] = draft
+        var activation = try XCTUnwrap(block["activation"] as? [String: Any])
+        var frozenDraft = try XCTUnwrap(activation["frozenDraft"] as? [String: Any])
+        frozenDraft["protectionMode"] = mode.rawValue
+        activation["frozenDraft"] = frozenDraft
+        block["activation"] = activation
+        blocks[0] = block
+        object["blocks"] = blocks
+        return try JSONDecoder().decode(
+            ProtectedState.self,
+            from: JSONSerialization.data(withJSONObject: object)
         )
     }
 }
@@ -594,5 +790,63 @@ extension ProtectedBlockPhase {
     fileprivate var isBreakActive: Bool {
         if case .breakActive = self { return true }
         return false
+    }
+}
+
+private struct LegacyMacLifecycle {
+    var accumulatedElapsed: TimeInterval = 0
+    var pendingRequest: (kind: ProtectedRequestKind, requestedAt: TimeInterval)?
+    var breakEndsAtElapsed: TimeInterval?
+
+    mutating func request(_ kind: ProtectedRequestKind, at elapsed: TimeInterval) {
+        pendingRequest = (kind, elapsed)
+    }
+
+    mutating func advance(to elapsed: TimeInterval, draft: ProtectedBlockDraft) -> Bool {
+        accumulatedElapsed = elapsed
+        if let duration = draft.elapsedDuration, accumulatedElapsed >= duration {
+            return false
+        }
+        if let request = pendingRequest {
+            let delay = request.kind == .breakAccess ? draft.breakDelay : draft.fullUnlockDelay
+            let readyAt = request.requestedAt + delay
+            if accumulatedElapsed >= readyAt {
+                if request.kind == .fullUnlock { return false }
+                pendingRequest = nil
+                breakEndsAtElapsed = readyAt + draft.breakDuration
+            }
+        }
+        if let breakEndsAtElapsed, accumulatedElapsed >= breakEndsAtElapsed {
+            self.breakEndsAtElapsed = nil
+        }
+        return true
+    }
+
+    func phase(draft: ProtectedBlockDraft) -> ProtectedBlockPhase {
+        let naturalEndRemaining = draft.elapsedDuration.map { max(0, $0 - accumulatedElapsed) }
+        if let breakEndsAtElapsed, accumulatedElapsed < breakEndsAtElapsed {
+            let fullUnlockRemaining = pendingRequest.flatMap { request in
+                request.kind == .fullUnlock
+                    ? max(0, request.requestedAt + draft.fullUnlockDelay - accumulatedElapsed)
+                    : nil
+            }
+            return .breakActive(
+                remaining: breakEndsAtElapsed - accumulatedElapsed,
+                fullUnlockRemaining: fullUnlockRemaining,
+                naturalEndRemaining: naturalEndRemaining
+            )
+        }
+        if let pendingRequest {
+            let delay =
+                pendingRequest.kind == .breakAccess ? draft.breakDelay : draft.fullUnlockDelay
+            let remaining = max(0, pendingRequest.requestedAt + delay - accumulatedElapsed)
+            return pendingRequest.kind == .breakAccess
+                ? .waitingForBreak(remaining: remaining, naturalEndRemaining: naturalEndRemaining)
+                : .waitingForFullUnlock(
+                    remaining: remaining,
+                    naturalEndRemaining: naturalEndRemaining
+                )
+        }
+        return .active(naturalEndRemaining: naturalEndRemaining)
     }
 }

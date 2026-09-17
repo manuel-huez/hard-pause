@@ -1,0 +1,135 @@
+import Foundation
+
+enum AppleLockdownPhase: String, Codable, Equatable, Sendable {
+    case inactive
+    case pendingSetup
+    case active
+    case waitingForFullUnlock
+    case readyForRelease
+    case releaseInProgress
+
+    var hasConfirmedSystemPasscode: Bool {
+        switch self {
+        case .active, .waitingForFullUnlock, .readyForRelease, .releaseInProgress:
+            return true
+        case .inactive, .pendingSetup:
+            return false
+        }
+    }
+}
+
+struct AppleLockdownSetupRequest: Codable, Equatable, Sendable {
+    let fullUnlockDelay: TimeInterval
+    let enablesAdultFilter: Bool
+    let filterWasAlreadyEnabled: Bool
+    let shareAcrossDevicesVerified: Bool?
+
+    func validate() throws {
+        guard fullUnlockDelay.isFinite,
+            fullUnlockDelay >= ProtectedBlockLimits.minimumDelay,
+            fullUnlockDelay <= ProtectedBlockLimits.maximumDelay
+        else {
+            throw AppleLockdownError.invalidRequest(
+                "The Screen Time protection full unlock delay is invalid."
+            )
+        }
+    }
+}
+
+struct AppleLockdownOperationRequest: Codable, Equatable, Sendable {
+    let operationID: UUID
+}
+
+struct AppleLockdownSnapshot: Codable, Equatable, Sendable {
+    let phase: AppleLockdownPhase
+    let fullUnlockDelay: TimeInterval?
+    let remainingDelay: TimeInterval?
+    let enablesAdultFilter: Bool
+    let filterWasAlreadyEnabled: Bool
+    let shareAcrossDevicesVerified: Bool?
+    let operationID: UUID?
+}
+
+struct AppleLockdownCredentialOperation: Codable, Equatable, Sendable,
+    CustomStringConvertible, CustomDebugStringConvertible
+{
+    let operationID: UUID
+    let passcode: String
+    let snapshot: AppleLockdownSnapshot
+
+    var description: String {
+        "AppleLockdownCredentialOperation(operationID: \(operationID), passcode: <redacted>)"
+    }
+
+    var debugDescription: String { description }
+}
+
+struct AppleLockdownServiceReply: Codable, Equatable, Sendable {
+    let snapshot: AppleLockdownSnapshot?
+    let credential: AppleLockdownCredentialOperation?
+    let error: ProtectedServiceErrorPayload?
+
+    static func success(_ snapshot: AppleLockdownSnapshot) -> AppleLockdownServiceReply {
+        AppleLockdownServiceReply(snapshot: snapshot, credential: nil, error: nil)
+    }
+
+    static func success(
+        _ credential: AppleLockdownCredentialOperation
+    ) -> AppleLockdownServiceReply {
+        AppleLockdownServiceReply(
+            snapshot: credential.snapshot,
+            credential: credential,
+            error: nil
+        )
+    }
+
+    static func failure(code: String, message: String) -> AppleLockdownServiceReply {
+        AppleLockdownServiceReply(
+            snapshot: nil,
+            credential: nil,
+            error: ProtectedServiceErrorPayload(code: code, message: message)
+        )
+    }
+}
+
+enum AppleLockdownError: LocalizedError, Equatable {
+    case invalidRequest(String)
+    case unavailable
+    case setupAlreadyPending
+    case setupNotPending
+    case setupCancellationUnavailable
+    case operationMismatch
+    case protectionNotActive
+    case releaseAlreadyRequested
+    case releaseNotReady
+    case normalProtectionActiveOrUnhealthy
+    case releaseInProgress
+    case credentialUnavailable
+    case credentialStoreFailed
+    case stateUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidRequest(let message): return message
+        case .unavailable: return "Screen Time protection is not configured."
+        case .setupAlreadyPending: return "Screen Time protection setup is already in progress."
+        case .setupNotPending: return "Screen Time protection setup is not pending."
+        case .setupCancellationUnavailable:
+            return "Screen Time protection setup cannot be cancelled after a credential is created."
+        case .operationMismatch: return "The Screen Time protection operation is no longer current."
+        case .protectionNotActive: return "Screen Time protection is not active."
+        case .releaseAlreadyRequested: return "Screen Time protection release is already in progress."
+        case .releaseNotReady: return "The Screen Time protection full unlock delay has not finished."
+        case .normalProtectionActiveOrUnhealthy:
+            return "All other protection must be inactive and healthy before Screen Time protection can end."
+        case .releaseInProgress:
+            return "Screen Time protection release must finish before protection can change."
+        case .credentialUnavailable:
+            return "The Screen Time protection credential is unavailable. Protection was not changed."
+        case .credentialStoreFailed:
+            return "The Screen Time protection credential could not be saved safely."
+        case .stateUnavailable:
+            return "The Screen Time protection state is unavailable."
+        }
+    }
+}

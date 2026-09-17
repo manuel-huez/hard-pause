@@ -2,12 +2,18 @@ import Foundation
 
 enum ProtectedServiceContract {
     static let machServiceName = "org.hardpause.service"
-    static let serviceVersion = "4"
+    static let serviceVersion = "5"
+    static let safeUpdateSourceVersions: Set<String> = ["4"]
     static let maximumPayloadBytes = 1_048_576
     static let supportDirectory = "/Library/Application Support/HardPause"
     static let enrollmentPath = "\(supportDirectory)/enrollment-v1.json"
     static let statePath = "\(supportDirectory)/state-v2.json"
+    static let appleLockdownStatePath = "\(supportDirectory)/apple-lockdown-state-v1.json"
     static let backupDirectory = "\(supportDirectory)/backups"
+
+    static func supportsSafeUpdate(from installedVersion: String) -> Bool {
+        installedVersion == serviceVersion || safeUpdateSourceVersions.contains(installedVersion)
+    }
 }
 
 @objc protocol ProtectedServiceXPC {
@@ -21,6 +27,20 @@ enum ProtectedServiceContract {
     func requestEnd(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func prepareUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func cancelUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func appleLockdownStatus(withReply reply: @escaping (NSData) -> Void)
+    func beginAppleLockdownSetup(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func resumeAppleLockdownSetup(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func completeAppleLockdownSetup(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func confirmAppleLockdownSetupNotApplied(
+        _ request: NSData,
+        withReply reply: @escaping (NSData) -> Void
+    )
+    func requestAppleLockdownEnd(withReply reply: @escaping (NSData) -> Void)
+    func beginAppleLockdownRelease(withReply reply: @escaping (NSData) -> Void)
+    func completeAppleLockdownRelease(
+        _ request: NSData,
+        withReply reply: @escaping (NSData) -> Void
+    )
 }
 
 struct ProtectedCreateRequest: Codable, Equatable, Sendable {

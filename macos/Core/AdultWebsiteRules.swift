@@ -3,59 +3,41 @@ import Foundation
 
 /// A domain list is data, never an instruction or a URL to fetch.
 struct AdultDomainDatabase: Sendable {
-    static let maximumBytes = 32 * 1024 * 1024
+    static let maximumBytes = PortableDomainList.maximumBytes
     let domains: Set<String>
     let skippedEntries: Int
 
-    init(data: Data, minimumCount: Int = 1_000) throws {
-        guard data.count <= Self.maximumBytes, let text = String(data: data, encoding: .utf8) else {
+    init(data: Data, supplementData: Data? = nil, minimumCount: Int = 1_000) throws {
+        let upstream: PortableDomainList
+        do {
+            upstream = try PortableDomainList(
+                data: data,
+                format: .blockListProject(minimumCount: minimumCount)
+            )
+        } catch {
             throw AdultDatabaseError.invalidData
         }
-        var domains = Set<String>()
-        var entries = 0
-        var skipped = 0
-        var declaredCount: Int?
-        for line in text.split(whereSeparator: \.isNewline) {
-            let value = line.trimmingCharacters(in: .whitespaces).lowercased()
-            if value.hasPrefix("# entries:") {
-                declaredCount = Int(
-                    value.dropFirst(10).replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespaces))
+        var mergedDomains = upstream.domains
+        if let supplementData {
+            do {
+                let supplement = try PortableDomainList(
+                    data: supplementData,
+                    format: .hardPauseSupplement(category: "adult")
+                )
+                mergedDomains.formUnion(supplement.domains)
+            } catch {
+                throw AdultDatabaseError.invalidData
             }
-            if value.isEmpty || value.hasPrefix("#") { continue }
-            entries += 1
-            guard entries <= 1_500_000 else { throw AdultDatabaseError.invalidData }
-            guard Self.validDomain(value) else {
-                skipped += 1
-                continue
-            }
-            domains.insert(value)
         }
-        // The upstream list contains a few unsupported host names. Allow at most
-        // 0.1%, but reject error pages, partial downloads, and unexpected formats.
-        guard domains.count >= minimumCount, skipped <= entries / 1_000,
-            declaredCount == entries
-        else { throw AdultDatabaseError.invalidData }
-        self.domains = domains
-        skippedEntries = skipped
+        domains = mergedDomains
+        skippedEntries = upstream.skippedEntries
     }
 
     func contains(_ host: String) -> Bool {
-        var candidate = DomainRule.browserHost(host).trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        while candidate.contains(".") {
-            if domains.contains(candidate) { return true }
-            candidate.removeSubrange(...candidate.firstIndex(of: ".")!)
-        }
-        return false
-    }
-
-    private static func validDomain(_ value: String) -> Bool {
-        guard value.utf8.count <= 253, value.contains(".") else { return false }
-        let labels = value.split(separator: ".", omittingEmptySubsequences: false)
-        guard let last = labels.last, last.contains(where: { $0.isLetter }) else { return false }
-        return labels.allSatisfy { label in
-            !label.isEmpty && label.utf8.count <= 63 && label.first != "-" && label.last != "-"
-                && label.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }
-        }
+        PortableDomainList.contains(
+            canonicalASCIIHost: DomainRule.browserHost(host),
+            in: domains
+        )
     }
 }
 
