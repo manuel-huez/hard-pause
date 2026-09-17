@@ -32,7 +32,7 @@ The website and both native apps share the local renderer in `web/mascot/`. Nati
 
 See [DESIGN.md](DESIGN.md) for the security boundaries and release checks. Each platform README has build instructions and current implementation details.
 
-See the [shared core plan](docs/shared-core-plan.md) for the shared Apple implementation and the remaining Rust, Windows and Android roadmap.
+See the [shared core](core/README.md) for the Apple implementation and its platform boundaries.
 Mac Hard Pause setup includes an experimental native Screen Time code flow. The root service saves the code in System Keychain before entry and retains it across interrupted setup or release. Native code entry and cross-device sync remain unverified; this does not prove that iPhone permissions cannot be revoked.
 
 See [Apple validation](docs/apple-validation.md) for completed checks and the remaining physical-device gate.

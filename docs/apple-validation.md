@@ -36,4 +36,4 @@ Signed-device Screen Time enforcement, background transitions, deletion preventi
 
 App-removal protection does not require a passcode. Opal documents [native session removal protection](https://opalapp.com/help/what-is-app-uninstall-protection) separately from an optional iOS 26.4+ Screen Time passcode and an older [Shortcuts-based Settings redirect](https://opalapp.com/help/how-to-lock-opals-screen-time-access). Hard Pause uses native deletion/date controls; its passcode guidance is optional and does not claim to verify the OS setting.
 
-Rust, Windows and Android remain outside this Apple implementation. See the [revised plan](shared-core-plan.md).
+Rust, Windows and Android remain outside this Apple implementation. See the [shared core](../core/README.md) for the current scope.

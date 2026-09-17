@@ -16,4 +16,4 @@ Run the shared fixtures with:
 swift test --package-path core
 ```
 
-This is the Apple implementation phase. A future Windows or Android port still needs the planned Rust core and bindings; this Swift package does not claim cross-platform binary reuse.
+This package serves the Apple apps. Windows and Android need separate portability work; this Swift package does not provide cross-platform binary reuse.
