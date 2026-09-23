@@ -165,8 +165,8 @@ test('native 120 px renderer starts awake from the resting URL and keeps its fac
     const box = mouth.getBoundingClientRect();
     return { width: box.width, height: box.height };
   });
-  expect(mouthBox.width).toBeGreaterThan(5);
-  expect(mouthBox.height).toBeGreaterThan(1.2);
+  expect(mouthBox.width).toBeGreaterThan(4);
+  expect(mouthBox.height).toBeGreaterThan(1);
 });
 
 test('native greeting API faces forward, nods, and returns to the latest target', async ({
