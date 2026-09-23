@@ -22,9 +22,28 @@ enum ProtectedServiceClientError: LocalizedError {
     }
 }
 
+private final class OneShotReplyBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Error>?
+
+    init(_ continuation: CheckedContinuation<Value, Error>) {
+        self.continuation = continuation
+    }
+
+    func finish(_ result: Result<Value, Error>) {
+        lock.lock()
+        let current = continuation
+        continuation = nil
+        lock.unlock()
+        current?.resume(with: result)
+    }
+}
+
 @MainActor
 protocol ProtectedServiceServing {
     func list() async throws -> ProtectedServiceSnapshot
+    func updateInstallationStatus() async throws -> ProtectedServiceUpdateInstallationStatus
+    func requestManagedUpdate(bundlePath: String) async throws -> UUID
     func create(_ draft: ProtectedBlockDraft) async throws -> ProtectedServiceSnapshot
     func update(
         id: UUID,
@@ -53,6 +72,14 @@ protocol ProtectedServiceServing {
 }
 
 extension ProtectedServiceServing {
+    func updateInstallationStatus() async throws -> ProtectedServiceUpdateInstallationStatus {
+        throw ProtectedServiceClientError.unavailable("Automatic protection updates are unavailable.")
+    }
+
+    func requestManagedUpdate(bundlePath: String) async throws -> UUID {
+        throw ProtectedServiceClientError.unavailable("Automatic protection updates are unavailable.")
+    }
+
     func appleLockdownStatus() async throws -> AppleLockdownSnapshot {
         throw ProtectedServiceClientError.unavailable(
             "Screen Time protection is unavailable in this service client."
@@ -122,6 +149,132 @@ final class ProtectedServiceClient: ProtectedServiceServing {
 
     func list() async throws -> ProtectedServiceSnapshot {
         try await perform { service, reply in service.list(withReply: reply) }
+    }
+
+    func listStandby() async throws -> ProtectedServiceSnapshot {
+        let standby = NSXPCConnection(
+            machServiceName: ProtectedServiceContract.standbyMachServiceName,
+            options: .privileged
+        )
+        standby.remoteObjectInterface = NSXPCInterface(with: ProtectedStandbyXPC.self)
+        standby.activate()
+        defer { standby.invalidate() }
+        return try await withCheckedThrowingContinuation { continuation in
+            let box = OneShotReplyBox(continuation)
+            guard
+                let service = standby.remoteObjectProxyWithErrorHandler({ error in
+                    box.finish(.failure(error))
+                }) as? ProtectedStandbyXPC
+            else {
+                box.finish(.failure(ProtectedServiceClientError.invalidReply))
+                return
+            }
+            service.list { data in
+                do {
+                    let reply = try ProtectedServiceCodec.decode(
+                        ProtectedServiceReply.self, from: data
+                    )
+                    if let snapshot = reply.snapshot {
+                        box.finish(.success(snapshot))
+                    } else if let error = reply.error {
+                        box.finish(.failure(ProtectedServiceClientError.service(error.message)))
+                    } else {
+                        box.finish(.failure(ProtectedServiceClientError.invalidReply))
+                    }
+                } catch {
+                    box.finish(.failure(error))
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(5))
+                box.finish(.failure(ProtectedServiceClientError.timedOut))
+            }
+        }
+    }
+
+    func requestManagedUpdate(bundlePath: String) async throws -> UUID {
+        let payload = try ProtectedServiceCodec.encode(
+            ProtectedServiceUpdateRequest(bundlePath: bundlePath)
+        )
+        let connection = NSXPCConnection(
+            machServiceName: ProtectedServiceContract.updateMachServiceName,
+            options: .privileged
+        )
+        connection.remoteObjectInterface = NSXPCInterface(with: ProtectedServiceUpdateXPC.self)
+        connection.activate()
+        defer { connection.invalidate() }
+        return try await withCheckedThrowingContinuation { continuation in
+            let box = OneShotReplyBox(continuation)
+            guard
+                let service = connection.remoteObjectProxyWithErrorHandler({ error in
+                    box.finish(.failure(error))
+                }) as? ProtectedServiceUpdateXPC
+            else {
+                box.finish(.failure(ProtectedServiceClientError.invalidReply))
+                return
+            }
+            service.requestUpdate(payload) { data in
+                do {
+                    let reply = try ProtectedServiceCodec.decode(
+                        ProtectedServiceUpdateReply.self, from: data
+                    )
+                    if let ticket = reply.ticket {
+                        box.finish(.success(ticket))
+                    } else if let error = reply.error {
+                        box.finish(.failure(ProtectedServiceClientError.service(error.message)))
+                    } else {
+                        box.finish(.failure(ProtectedServiceClientError.invalidReply))
+                    }
+                } catch {
+                    box.finish(.failure(error))
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(45))
+                box.finish(.failure(ProtectedServiceClientError.timedOut))
+            }
+        }
+    }
+
+    func updateInstallationStatus() async throws -> ProtectedServiceUpdateInstallationStatus {
+        let connection = NSXPCConnection(
+            machServiceName: ProtectedServiceContract.updateMachServiceName,
+            options: .privileged
+        )
+        connection.remoteObjectInterface = NSXPCInterface(with: ProtectedServiceUpdateXPC.self)
+        connection.activate()
+        defer { connection.invalidate() }
+        return try await withCheckedThrowingContinuation { continuation in
+            let box = OneShotReplyBox(continuation)
+            guard
+                let service = connection.remoteObjectProxyWithErrorHandler({ error in
+                    box.finish(.failure(error))
+                }) as? ProtectedServiceUpdateXPC
+            else {
+                box.finish(.failure(ProtectedServiceClientError.invalidReply))
+                return
+            }
+            service.installationStatus { data in
+                do {
+                    let reply = try ProtectedServiceCodec.decode(
+                        ProtectedServiceUpdateInstallationReply.self, from: data
+                    )
+                    if let status = reply.status {
+                        box.finish(.success(status))
+                    } else if let error = reply.error {
+                        box.finish(.failure(ProtectedServiceClientError.service(error.message)))
+                    } else {
+                        box.finish(.failure(ProtectedServiceClientError.invalidReply))
+                    }
+                } catch {
+                    box.finish(.failure(error))
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(5))
+                box.finish(.failure(ProtectedServiceClientError.timedOut))
+            }
+        }
     }
 
     func create(_ draft: ProtectedBlockDraft) async throws -> ProtectedServiceSnapshot {

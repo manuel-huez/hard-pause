@@ -2,6 +2,26 @@ import Foundation
 import XCTest
 
 final class AppleProtectionEngineTests: XCTestCase {
+    func testLiveFreezeStopsAppleCheckpointAndRequestsUntilFinalization() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try configuredEngine(store: store, vault: vault, clock: clock)
+        _ = try engine.requestEnd()
+        _ = try engine.freezeForLiveUpdate()
+        let savedCount = store.saved.count
+        clock.reading = serviceTestReading(65)
+
+        XCTAssertEqual(try engine.status().phase, .waitingForFullUnlock)
+        XCTAssertEqual(store.saved.count, savedCount)
+        XCTAssertThrowsError(try engine.requestEnd()) {
+            XCTAssertEqual($0 as? ProtectedStateError, .updateInProgress)
+        }
+        try engine.checkpointForLiveUpdateFinalization()
+        XCTAssertGreaterThan(store.saved.count, savedCount)
+        engine.unfreezeAfterLiveUpdate()
+    }
+
     func testSetupPersistsIntentAndReadsCredentialBackBeforeReturning() throws {
         let events = TestEventLog()
         let store = FakeAppleLockdownStateStore(events: events)

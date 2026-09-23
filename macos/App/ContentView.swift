@@ -2064,7 +2064,9 @@ private struct MandatorySetupView: View {
                 SetupActionCard(
                     eyebrow: "Step 1 of 3",
                     title: model.needsServiceUpdate ? "Update protection" : "Install protection",
-                    detail: "Hard Pause needs one macOS administrator approval to protect this Mac.",
+                    detail: model.serviceCanUpdateWithoutApproval
+                        ? "Hard Pause can update protection with the approval you gave during setup."
+                        : "Hard Pause needs one macOS administrator approval to protect this Mac.",
                     systemImage: "lock.shield",
                     actionTitle: model.needsServiceUpdate ? "Update protection" : "Install protection",
                     isBusy: model.isInstallingService,
@@ -2245,9 +2247,13 @@ private struct SetupChecklistView: View {
                 }
             }
             if !model.setupServiceReady {
-                Text("One macOS administrator approval is required.")
-                    .foregroundStyle(PauseTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    model.serviceCanUpdateWithoutApproval
+                        ? "Protection can update with your existing approval."
+                        : "One macOS administrator approval is required."
+                )
+                .foregroundStyle(PauseTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
                 if model.isInstallingService {
                     ProgressView("Installing protection…")
                 } else {

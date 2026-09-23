@@ -93,10 +93,12 @@ final class FilePFTokenStore: PFTokenStoring {
 
 final class PFEnforcer: PFRuleEnforcing {
     static let anchor = "com.apple/hard-pause"
+    static let standbyAnchor = "com.apple/hard-pause-standby"
 
     private let runner: CommandRunning
     private let tokenStore: PFTokenStoring
     private let executable: String
+    private let anchor: String
     private let bootIdentifier: @Sendable () -> String?
     private var lastAppliedAddresses: Set<String>?
 
@@ -104,11 +106,13 @@ final class PFEnforcer: PFRuleEnforcing {
         runner: CommandRunning = ProcessCommandRunner(),
         tokenStore: PFTokenStoring = FilePFTokenStore(),
         executable: String = "/sbin/pfctl",
+        anchor: String = PFEnforcer.anchor,
         bootIdentifier: @escaping @Sendable () -> String? = { SystemClock.read().bootIdentifier }
     ) {
         self.runner = runner
         self.tokenStore = tokenStore
         self.executable = executable
+        self.anchor = anchor
         self.bootIdentifier = bootIdentifier
     }
 
@@ -119,7 +123,7 @@ final class PFEnforcer: PFRuleEnforcing {
         }
 
         if addresses.isEmpty {
-            try requireSuccess(["-a", Self.anchor, "-F", "rules"], operation: "clear owned PF rules")
+            try requireSuccess(["-a", anchor, "-F", "rules"], operation: "clear owned PF rules")
             guard let currentBootIdentifier = bootIdentifier() else {
                 return [
                     ProtectionIssue(
@@ -200,7 +204,7 @@ final class PFEnforcer: PFRuleEnforcing {
         let rules = addresses.map { "block drop quick to \($0)" }.joined(separator: "\n") + "\n"
         do {
             _ = try requireSuccess(
-                ["-a", Self.anchor, "-f", "-"],
+                ["-a", anchor, "-f", "-"],
                 standardInput: Data(rules.utf8),
                 operation: "load owned PF rules"
             )
@@ -216,7 +220,7 @@ final class PFEnforcer: PFRuleEnforcing {
             if let acquiredToken {
                 _ = try? runner.run(
                     executable: executable,
-                    arguments: ["-a", Self.anchor, "-F", "rules"],
+                    arguments: ["-a", anchor, "-F", "rules"],
                     standardInput: nil
                 )
                 _ = try? runner.run(

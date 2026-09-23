@@ -3,6 +3,7 @@ import Foundation
 
 protocol AppleLockdownStateStoring: AnyObject {
     func load() throws -> AppleLockdownState
+    func loadReadOnly(requireCurrentFormat: Bool) throws -> AppleLockdownState
     func save(_ state: AppleLockdownState) throws
 }
 
@@ -64,6 +65,37 @@ final class JSONAppleLockdownStateStore: AppleLockdownStateStoring {
                 "the Apple Lockdown state is invalid"
             )
         }
+    }
+
+    func loadReadOnly(requireCurrentFormat: Bool) throws -> AppleLockdownState {
+        guard fileManager.fileExists(atPath: stateURL.path) else {
+            guard try !authenticator.keys.hasCommittedState() else {
+                throw ServiceRuntimeError.unreadableState("the Apple Lockdown state is missing")
+            }
+            return AppleLockdownState()
+        }
+        try validateProtectedFile()
+        let data = try Data(contentsOf: stateURL, options: .mappedIfSafe)
+        let opened = try authenticator.open(data, purpose: "apple-lockdown")
+        guard opened.payload.count <= Self.maximumBytes else {
+            throw ServiceRuntimeError.unreadableState("the Apple Lockdown state is too large")
+        }
+        let state = try JSONDecoder().decode(AppleLockdownState.self, from: opened.payload)
+        try state.validateForPersistence()
+        if opened.isLegacy {
+            guard !requireCurrentFormat, !state.preventsMaintenance else {
+                throw ServiceRuntimeError.unreadableState(
+                    "the Apple Lockdown state is not ready for a read-only handoff"
+                )
+            }
+        } else if requireCurrentFormat {
+            guard try authenticator.keys.hasCommittedState() else {
+                throw ServiceRuntimeError.unreadableState(
+                    "the Apple Lockdown state lacks its commitment marker"
+                )
+            }
+        }
+        return state
     }
 
     func save(_ state: AppleLockdownState) throws {

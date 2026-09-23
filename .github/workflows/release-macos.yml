@@ -97,9 +97,9 @@ jobs:
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" == "$SPARKLE_EDDSA_PUBLIC_KEY" ]] || { echo 'Archive has a different Sparkle public key' >&2; exit 1; }
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "${RELEASE_TAG#v}" ]] || { echo 'Tag and app version differ' >&2; exit 1; }
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" =~ ^[1-9][0-9]*$ ]] || { echo 'App build number is invalid' >&2; exit 1; }
-          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$app/Contents/Info.plist")" == false ]] || { echo 'Silent updates must stay disabled' >&2; exit 1; }
-          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAllowsAutomaticUpdates' "$app/Contents/Info.plist")" == false ]] || { echo 'Automatic installation must stay disabled' >&2; exit 1; }
-          for code in "$app" "$app/Contents/Resources/hard-pause-service" "$app/Contents/Resources/hard-pause"; do
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$app/Contents/Info.plist")" == true ]] || { echo 'Automatic updates must be enabled' >&2; exit 1; }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAllowsAutomaticUpdates' "$app/Contents/Info.plist")" == true ]] || { echo 'Automatic installation must be allowed' >&2; exit 1; }
+          for code in "$app" "$app/Contents/Resources/hard-pause-service" "$app/Contents/Resources/hard-pause" "$app/Contents/Resources/HardPauseBrowserWorker.app"; do
             codesign --verify --deep --strict --verbose=2 "$code"
             codesign -dv --verbose=4 "$code" 2>&1 | grep -Fq "Authority=$APPLE_DEVELOPER_ID_IDENTITY" || { echo 'Code lacks the expected Developer ID signature' >&2; exit 1; }
           done

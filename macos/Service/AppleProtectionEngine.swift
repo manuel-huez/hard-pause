@@ -12,18 +12,21 @@ final class AppleLockdownEngine: @unchecked Sendable {
     )
     private var timer: DispatchSourceTimer?
     private var state: AppleLockdownState
+    private var frozenForLiveUpdate: Bool
 
     init(
         stateStore: AppleLockdownStateStoring,
         credentialVault: AppleLockdownCredentialVault,
         passcodeGenerator: AppleLockdownPasscodeGenerating = SecureAppleLockdownPasscodeGenerator(),
-        clock: ServiceClock = SystemServiceClock()
+        clock: ServiceClock = SystemServiceClock(),
+        preloadedState: AppleLockdownState? = nil
     ) throws {
         self.stateStore = stateStore
         self.credentialVault = credentialVault
         self.passcodeGenerator = passcodeGenerator
         self.clock = clock
-        state = try stateStore.load()
+        state = try preloadedState ?? stateStore.load()
+        frozenForLiveUpdate = preloadedState != nil
     }
 
     deinit { timer?.cancel() }
@@ -49,7 +52,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
 
     func status() throws -> AppleLockdownSnapshot {
         try withLock {
-            try reconcileLocked(at: clock.read())
+            if !frozenForLiveUpdate { try reconcileLocked(at: clock.read()) }
             if state.phase == .inactive, try credentialVault.containsAnyCredential() {
                 throw AppleLockdownError.stateUnavailable
             }
@@ -61,6 +64,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
         _ request: AppleLockdownSetupRequest
     ) throws -> AppleLockdownCredentialOperation {
         try withLock {
+            try requireNotFrozen()
             guard try !credentialVault.containsAnyCredential() else {
                 throw AppleLockdownError.stateUnavailable
             }
@@ -79,6 +83,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
         _ request: AppleLockdownOperationRequest
     ) throws -> AppleLockdownCredentialOperation {
         try withLock {
+            try requireNotFrozen()
             guard state.operationID == request.operationID else {
                 throw AppleLockdownError.operationMismatch
             }
@@ -101,6 +106,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
         _ request: AppleLockdownOperationRequest
     ) throws -> AppleLockdownSnapshot {
         try withLock {
+            try requireNotFrozen()
             var candidate = state
             try candidate.completeSetup(operationID: request.operationID)
             guard let credentialID = state.credentialID else {
@@ -121,6 +127,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
 
     func requestEnd() throws -> AppleLockdownSnapshot {
         try withLock {
+            try requireNotFrozen()
             var candidate = state
             try candidate.requestEnd(at: clock.read())
             try stateStore.save(candidate)
@@ -133,6 +140,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
         normalProtectionIsInactiveAndHealthy: Bool
     ) throws -> AppleLockdownCredentialOperation {
         try withLock {
+            try requireNotFrozen()
             guard normalProtectionIsInactiveAndHealthy else {
                 throw AppleLockdownError.normalProtectionActiveOrUnhealthy
             }
@@ -159,6 +167,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
         _ request: AppleLockdownOperationRequest
     ) throws -> AppleLockdownSnapshot {
         try withLock {
+            try requireNotFrozen()
             var candidate = state
             try candidate.beginReleaseCompletion(operationID: request.operationID)
             try stateStore.save(candidate)
@@ -187,6 +196,48 @@ final class AppleLockdownEngine: @unchecked Sendable {
                 || state.phase == .completingRelease
             return (allowsLockdown, blocksAnyActivation)
         }
+    }
+
+    func freezeForLiveUpdate() throws -> String {
+        try withLock {
+            if !frozenForLiveUpdate {
+                switch state.phase {
+                case .inactive, .active, .waitingForFullUnlock: break
+                default: throw AppleLockdownError.releaseInProgress
+                }
+                try reconcileLocked(at: clock.read())
+                frozenForLiveUpdate = true
+            }
+            return try ServiceStateDigest.hash(state)
+        }
+    }
+
+    func checkpointForLiveUpdateFinalization() throws {
+        try withLock {
+            guard frozenForLiveUpdate else { throw AppleLockdownError.unavailable }
+            try reconcileLocked(at: clock.read())
+        }
+    }
+
+    func commitInactiveMigration() throws {
+        try withLock {
+            guard frozenForLiveUpdate, !state.preventsMaintenance else {
+                throw AppleLockdownError.releaseInProgress
+            }
+            try stateStore.save(state)
+        }
+    }
+
+    func unfreezeAfterLiveUpdate() {
+        withLock { frozenForLiveUpdate = false }
+    }
+
+    func stateDigest() throws -> String {
+        try withLock { try ServiceStateDigest.hash(state) }
+    }
+
+    private func requireNotFrozen() throws {
+        guard !frozenForLiveUpdate else { throw ProtectedStateError.updateInProgress }
     }
 
     private func prepareSetupCredentialLocked() throws -> AppleLockdownCredentialOperation {
@@ -248,7 +299,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
 
     private func checkpoint() {
         withLock {
-            try? reconcileLocked(at: clock.read())
+            if !frozenForLiveUpdate { try? reconcileLocked(at: clock.read()) }
         }
     }
 

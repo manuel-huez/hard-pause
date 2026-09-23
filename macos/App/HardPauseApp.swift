@@ -66,8 +66,8 @@ private struct HardPauseMenu: View {
         Text("Version \(appVersion)")
         Button("Check for Updates…") { updater.checkForUpdates() }
             .disabled(!updater.canCheckForUpdates)
-        if !model.activeBlocks.isEmpty {
-            Text("App and service updates wait until all plans are inactive")
+        if !model.activeBlocks.isEmpty && !model.browserWorkerReadyForHandoff {
+            Text("Updates wait until browser protection is ready")
         } else if !model.setupServiceReady {
             Text("App updates wait until the protection service is ready")
         }
@@ -75,7 +75,11 @@ private struct HardPauseMenu: View {
             Text("App updates are unavailable in this build")
         }
         if model.needsServiceUpdate {
-            Text("Use Update protection in the app for the service")
+            Text(
+                model.serviceCanUpdateWithoutApproval
+                    ? "Protection will update automatically"
+                    : "Use Update protection in the app for the service"
+            )
         }
     }
 
@@ -152,11 +156,6 @@ final class HardPauseLifecycle: NSObject, NSApplicationDelegate {
         {
             return .terminateNow
         }
-        if model?.keepsBrowserProtectionRunning == true || updater?.shouldHoldTermination == true {
-            updater?.terminationWasCanceled()
-            sender.hide(nil)
-            return .terminateCancel
-        }
         if let updater, updater.installationIsStarting {
             Task { @MainActor in
                 let mayTerminate = await updater.mayFinishInstallation()
@@ -167,6 +166,10 @@ final class HardPauseLifecycle: NSObject, NSApplicationDelegate {
                 sender.reply(toApplicationShouldTerminate: mayTerminate)
             }
             return .terminateLater
+        }
+        if model?.keepsBrowserProtectionRunning == true || updater?.shouldHoldTermination == true {
+            sender.hide(nil)
+            return .terminateCancel
         }
         return .terminateNow
     }

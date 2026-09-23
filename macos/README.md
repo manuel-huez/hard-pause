@@ -5,12 +5,12 @@ The SwiftUI app handles setup and browser controls. A local root service owns
 saved plans, waiting periods, and system enforcement.
 
 **In development:** this guide describes the source build, not the version installed
-on your Mac. See the [validation record](../docs/apple-validation.md) for tested
-behavior and remaining checks.
+on your Mac. Real service, reboot, and Screen Time checks remain separate from
+source tests.
 
 The [early Mac download](https://github.com/manuel-huez/hard-pause/releases/latest)
 is signed for development, not notarized by Apple. A new Mac may require manual
-approval to open it. An installed protection service cannot be replaced while a
+approval to open it. The installed version 2 service cannot be replaced while a
 plan is active; see [updates](#updates).
 
 ## Requirements and build
@@ -41,6 +41,13 @@ Public distribution needs Developer ID signing and Apple notarization. The
 installer rejects unsigned apps. Use certificate signing for local builds to keep
 permissions stable across updates.
 
+For a local test update, run `scripts/build-macos-local-update.sh BUILD_NUMBER`
+from the repository root. Use a number above the installed app build, then open
+the signed app printed by the script. This uses the same development identity
+and does not need a GitHub release or notarization. A service with handoff
+support can install the newer local build without another administrator prompt.
+The installed v2 service still needs its first migration after all blocks end.
+
 ## Local installation
 
 On first launch, complete the setup in the app:
@@ -62,11 +69,11 @@ sudo '/path/to/HardPause.app/Contents/Resources/install-macos-service.sh'
 Installation authorizes the current non-root user and the signed app and CLI.
 Other users or binaries cannot control the service.
 
-**Update protection** preserves saved plans and enrollment. Every plan must be
-inactive, protection must report no issues, and replacement clients must match
-the existing signing requirements. The installed service must support the update
-gate, which prevents plan changes during an update and survives restarts. Older
-services refuse this update path.
+**Update protection** preserves saved plans and enrollment. The replacement
+clients must match the enrolled signing requirements. A service with handoff
+support can update during a later active block while the separate browser
+worker and old service keep enforcement on. The installed v2 service cannot do
+this; its first migration requires inactive protection.
 
 For an older service or a changed signing requirement, the installer's `--reenroll`
 path preserves saved plans only after live and offline checks confirm inactive
@@ -104,7 +111,7 @@ is required.
 Run `scripts/check-native.sh` from the repository root for native checks, or
 `swift test --package-path core` for shared lifecycle and storage tests. These
 checks do not install protection. Real service, reboot, browser, and Screen Time
-checks remain separate; see the [validation record](../docs/apple-validation.md).
+checks remain separate.
 
 The shared artwork is in `web/mascot/`. After changing its static first frame,
 run `swift scripts/render-icons.swift` to refresh both app icon sets.

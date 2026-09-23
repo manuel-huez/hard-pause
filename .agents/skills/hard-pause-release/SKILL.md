@@ -1,55 +1,28 @@
 ---
 name: hard-pause-release
-description: Prepare, publish, and verify signed Hard Pause macOS GitHub Releases and Sparkle updates. Use for release work, not routine local builds or website deployment.
+description: Prepare, publish, and verify signed Hard Pause macOS GitHub Releases and Sparkle updates. Use for releases, not routine builds or website deployment.
 ---
 
-# Hard Pause release
+# Hard Pause macOS release
 
-Read the [release guide](../../../docs/macos-release.md) and
-[release workflow](../../../.github/workflows/release-macos.yml) for current
-credentials, artifact names, and commands. Read [AGENTS.md](../../../AGENTS.md)
-before any installed-app or service work. Keep procedures in those files rather
-than duplicating them here.
+Read [AGENTS.md](../../../AGENTS.md) before installed-app or service work. A release can be published while a block is active; do not change the installed service or interrupt enforcement. Use an inactive test installation for update checks. Treat source tests, a published release, and the running app and service as separate results.
 
-## Preserve active protection
+## Choose the signing path
 
-Never stop or unload the installed service, rewrite protected state, shorten waits,
-or interrupt browser enforcement during an active block, break, or pending unlock.
-A missing GUI or unreadable service state does not prove that blocks are inactive.
-Installed service v2 has no live handoff; do not claim active service updates are
-supported. Publishing a release does not require installing it on this Mac.
+- **Development signed:** The user accepted Apple Development signing while Developer ID and notarization credentials are unavailable. Use `scripts/release-macos-development.sh`. The first launch on another Mac may need manual approval; state that the download is not notarized.
+- **Developer ID:** Use [.github/workflows/release-macos.yml](../../../.github/workflows/release-macos.yml) only after the `macos-release` environment has a Developer ID Application certificate, App Store Connect notarization API key, and Sparkle EdDSA key. The workflow requires notarization, stapling, Gatekeeper acceptance, and signature checks. Never print or commit credentials.
 
-Use an inactive test installation for install and update checks. If the current Mac
-has active blocks, use read-only version and health checks and report local update
-validation as pending. Do not bypass an update gate to finish a release.
+The Sparkle public key is `hqO11mB5r81uup2mbAJ1oYRwbVbEFxczONdXHFZVD8U=`. Its private key is in the local Keychain under account `hard-pause`; the development script reads it through Sparkle's pinned signing tool. The Developer ID workflow expects the `APPLE_DEVELOPER_ID_P12_BASE64`, `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_DEVELOPER_ID_IDENTITY`, `APPLE_NOTARY_API_KEY`, `APPLE_NOTARY_KEY_ID`, `APPLE_NOTARY_ISSUER_ID`, `SPARKLE_EDDSA_PRIVATE_KEY`, and `SPARKLE_EDDSA_PUBLIC_KEY` environment secrets. Protect `v*` tags and require reviewers for the release environment.
 
 ## Prepare and publish
 
-- Confirm the requested version and target commit. Publish when the user has
-  authorized a release, including authorization given earlier in the task.
-- Match the version tag to the app version and increase the build number. Require
-  successful repository Checks for that exact commit before pushing the release tag.
-- For a development release explicitly accepted by the user, use
-  `scripts/release-macos-development.sh` and the local Apple Development identity.
-  Verify its Sparkle signature and state clearly that it is not notarized.
-- For a Developer ID release, confirm the protected environment and credentials
-  without printing secrets. Use the workflow and require Developer ID signatures,
-  accepted notarization, a stapled ticket, Gatekeeper acceptance, and a Sparkle
-  signature. Missing credentials block this release path.
-- Stage both the ZIP and appcast in a draft, inspect them, and publish them in
-  one normal GitHub Release. If a run fails, inspect its draft and assets before
-  retrying; do not overwrite a published release blindly.
+1. Match the `vMAJOR.MINOR.PATCH` tag to `MARKETING_VERSION` in `macos/project.yml`; increase `CURRENT_PROJECT_VERSION` for each Mac release. Increase `ProtectedServiceContract.serviceVersion` when its wire protocol changes. The service update checks the higher app build and changes to the signed service binary. Commit the source and generated project. Require repository Checks and the disposable native handoff check to pass for that exact commit before tagging.
+2. For the development path, run `scripts/release-macos-development.sh prepare <tag>`. Approve Keychain access if macOS asks. Inspect the ZIP and appcast under `build/release-development/<tag>/`.
+3. Push the tag for the checked commit. Run `scripts/release-macos-development.sh stage <tag>` to create a draft with both assets. Inspect that draft and publish it as a normal release. The app feed uses `/releases/latest/download/appcast.xml`, which excludes drafts and prereleases.
+4. For Developer ID, run the release workflow on that tag. Inspect any existing draft before retrying a failed run; never overwrite a published release blindly.
 
-## Verify and report
+## Verify
 
-Check the release workflow result and download the published assets. Confirm that
-the appcast's URL, byte length, signature, version, and build match the archive;
-verify the downloaded app's signature and, for Developer ID releases, its
-notarization ticket. Fetch the configured
-latest feed and confirm it serves the intended release, not a draft or prerelease.
+Check the published ZIP's byte length, version, build, code signature, and Sparkle EdDSA signature against the appcast. Fetch `https://github.com/manuel-huez/hard-pause/releases/latest/download/appcast.xml` and confirm it serves the intended release. For Developer ID, confirm the stapled ticket and Gatekeeper acceptance. Check app, service, CLI, and browser worker signatures.
 
-On an inactive test installation, check install, launch, and update behavior. Read
-the running app and service versions separately; an app update does not prove a
-service update. Report the release URL, commit, versions, CI results, feed result,
-and any untested runtime checks. Distinguish published, installed, and running
-versions. Never describe source-only checks as live enforcement validation.
+On an inactive test installation, check install, launch, app update, service update, reboot, and rollback. Read the running app and service versions separately. If only source tests ran, report native handoff and installed behavior as unverified. An installed v2 service cannot hand off an active block; wait for the normal full unlock before its first migration.

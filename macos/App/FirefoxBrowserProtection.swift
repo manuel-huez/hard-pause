@@ -92,6 +92,49 @@ final class FirefoxBrowserProtection {
             : "Cannot open the local pause page in Firefox."
     }
 
+    /// Only the foreground Firefox tab is available through Accessibility. Other tabs keep handoff closed.
+    func migratePausePage(from oldPage: URL, to newPage: URL) async -> Bool {
+        guard AXIsProcessTrusted(),
+            let firefox = NSWorkspace.shared.frontmostApplication,
+            firefox.bundleIdentifier == Self.firefoxBundleIdentifier
+        else { return false }
+        let pid = firefox.processIdentifier
+        let application = AXUIElementCreateApplication(pid)
+        guard let window = Self.element(Self.attribute(application, kAXFocusedWindowAttribute)),
+            Self.belongsToProcess(window, pid: pid),
+            let target = Self.scan(window: window, pid: pid),
+            Self.url(from: Self.attribute(target.document, kAXURLAttribute)) == oldPage,
+            !Self.isBeingEdited(target.address, application: application),
+            let currentFirefox = NSWorkspace.shared.frontmostApplication,
+            currentFirefox.bundleIdentifier == Self.firefoxBundleIdentifier,
+            currentFirefox.processIdentifier == pid,
+            let currentWindow = Self.element(Self.attribute(application, kAXFocusedWindowAttribute)),
+            CFEqual(currentWindow, window),
+            let current = Self.scan(window: currentWindow, pid: pid),
+            CFEqual(current.document, target.document),
+            CFEqual(current.address, target.address),
+            Self.url(from: Self.attribute(current.document, kAXURLAttribute)) == oldPage,
+            !Self.isBeingEdited(current.address, application: application),
+            Self.focusAndSet(current.address, value: newPage.absoluteString)
+        else { return false }
+        guard Self.submit(current.address, pid: pid) else { return false }
+        // Sending a navigation event does not prove that the old tab loaded the new page.
+        // Keep checking the original document so a tab switch cannot confirm a different tab.
+        for _ in 0..<20 {
+            guard let active = NSWorkspace.shared.frontmostApplication,
+                active.bundleIdentifier == Self.firefoxBundleIdentifier,
+                active.processIdentifier == pid,
+                let focusedWindow = Self.element(Self.attribute(application, kAXFocusedWindowAttribute)),
+                CFEqual(focusedWindow, window)
+            else { return false }
+            if Self.url(from: Self.attribute(target.document, kAXURLAttribute)) == newPage {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return false
+    }
+
     private struct Target {
         let document: AXUIElement
         let address: AXUIElement

@@ -3,6 +3,33 @@ import Foundation
 import XCTest
 
 final class ProtectedStateStoreTests: XCTestCase {
+    func testLegacyOfflineReadDoesNotMigrateStateOrKeychain() throws {
+        let paths = try temporaryPaths()
+        let keys = FakeStateAuthenticationKeys()
+        let store = JSONProtectedStateStore(
+            stateURL: paths.state,
+            pendingStateURL: paths.pending,
+            backupDirectory: paths.backups,
+            requireRootOwnership: false,
+            authenticationKeys: keys
+        )
+        var state = ProtectedState()
+        _ = try state.create(serviceTestDraft())
+        let original = try JSONEncoder().encode(state)
+        try original.write(to: paths.state)
+
+        XCTAssertEqual(try store.loadReadOnly(requireCurrentFormat: false), state)
+        XCTAssertEqual(try Data(contentsOf: paths.state), original)
+        XCTAssertNil(keys.key)
+        XCTAssertNil(keys.anchor)
+        XCTAssertFalse(keys.committed)
+        XCTAssertThrowsError(try store.loadReadOnly(requireCurrentFormat: true))
+
+        try Data("pending".utf8).write(to: paths.pending)
+        XCTAssertThrowsError(try store.loadReadOnly(requireCurrentFormat: false))
+        XCTAssertEqual(try Data(contentsOf: paths.state), original)
+    }
+
     func testOfflineCheckRejectsActivationAfterLivePrecheck() throws {
         var state = ProtectedState()
         let block = try state.create(serviceTestDraft(name: "Focus"))
@@ -34,6 +61,32 @@ final class ProtectedStateStoreTests: XCTestCase {
                 return XCTFail("Unexpected error: \(error)")
             }
             XCTAssertTrue(message.contains("Focus"))
+        }
+    }
+
+    func testOfflineCheckRejectsIncompleteServiceUpdate() throws {
+        var inactiveUpdate = ProtectedState()
+        try inactiveUpdate.prepareUpdate(token: UUID())
+        var liveUpdate = ProtectedState()
+        try liveUpdate.beginLiveUpdate(
+            ProtectedLiveUpdateGate(
+                token: UUID(),
+                generation: UUID(),
+                successorDigest: String(repeating: "a", count: 64)
+            ))
+        for state in [inactiveUpdate, liveUpdate] {
+            XCTAssertThrowsError(
+                try OfflineServiceMaintenance.requireSafeNormalUninstall(
+                    stateStore: FakeProtectedStateStore(state),
+                    appleLockdownStore: FakeAppleLockdownStateStore(),
+                    appleLockdownVault: FakeAppleLockdownVault()
+                )
+            ) { error in
+                guard case ServiceRuntimeError.invalidInstall(let message) = error else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+                XCTAssertTrue(message.contains("service update is in progress"))
+            }
         }
     }
 
@@ -152,6 +205,27 @@ final class ProtectedStateStoreTests: XCTestCase {
                 return XCTFail("Unexpected error: \(error)")
             }
         }
+    }
+
+    func testStrictAppleReadOnlyLoadRequiresCommitMarkerWithoutMutation() throws {
+        let paths = try temporaryPaths()
+        let url = paths.root.appendingPathComponent("apple-lockdown-state-v1.json")
+        let keys = FakeStateAuthenticationKeys()
+        let store = JSONAppleLockdownStateStore(
+            stateURL: url,
+            requireRootOwnership: false,
+            authenticationKeys: keys
+        )
+        let state = AppleLockdownState()
+        try store.save(state)
+        let original = try Data(contentsOf: url)
+
+        XCTAssertEqual(try store.loadReadOnly(requireCurrentFormat: true), state)
+        keys.committed = false
+        XCTAssertEqual(try store.loadReadOnly(requireCurrentFormat: false), state)
+        XCTAssertThrowsError(try store.loadReadOnly(requireCurrentFormat: true))
+        XCTAssertEqual(try Data(contentsOf: url), original)
+        XCTAssertFalse(keys.committed)
     }
 
     func testAppleLockdownStateSymbolicLinkIsRejected() throws {
@@ -289,6 +363,65 @@ final class ProtectedStateStoreTests: XCTestCase {
             }
             XCTAssertTrue(message.contains("pending protected state is missing"))
         }
+    }
+
+    func testReadOnlyLoadRejectsMissingAnchoredPendingStateWithoutMutation() throws {
+        let paths = try temporaryPaths()
+        let keys = FakeStateAuthenticationKeys()
+        let store = JSONProtectedStateStore(
+            stateURL: paths.state,
+            pendingStateURL: paths.pending,
+            backupDirectory: paths.backups,
+            requireRootOwnership: false,
+            authenticationKeys: keys
+        )
+        var state = ProtectedState()
+        _ = try state.create(serviceTestDraft())
+        try store.save(state)
+        var candidate = state
+        _ = try candidate.create(serviceTestDraft(name: "Additional"))
+        try store.savePendingCandidate(candidate)
+        try FileManager.default.removeItem(at: paths.pending)
+        let primary = try Data(contentsOf: paths.state)
+        let anchor = keys.anchor
+
+        for strict in [false, true] {
+            XCTAssertThrowsError(try store.loadReadOnly(requireCurrentFormat: strict)) { error in
+                guard case ServiceRuntimeError.unreadableState(let message) = error else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+                XCTAssertTrue(message.contains("pending protected state is missing"))
+            }
+        }
+        XCTAssertEqual(try Data(contentsOf: paths.state), primary)
+        XCTAssertEqual(keys.anchor, anchor)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.pending.path))
+    }
+
+    func testStrictReadOnlyLoadRequiresCurrentAnchorWithoutMutation() throws {
+        let paths = try temporaryPaths()
+        let keys = FakeStateAuthenticationKeys()
+        let store = JSONProtectedStateStore(
+            stateURL: paths.state,
+            pendingStateURL: paths.pending,
+            backupDirectory: paths.backups,
+            requireRootOwnership: false,
+            authenticationKeys: keys
+        )
+        var state = ProtectedState()
+        _ = try state.create(serviceTestDraft())
+        try store.save(state)
+        let primary = try Data(contentsOf: paths.state)
+        let anchor = keys.anchor
+
+        XCTAssertEqual(try store.loadReadOnly(requireCurrentFormat: true), state)
+        keys.anchor = nil
+        XCTAssertEqual(try store.loadReadOnly(requireCurrentFormat: false), state)
+        XCTAssertThrowsError(try store.loadReadOnly(requireCurrentFormat: true))
+        XCTAssertEqual(try Data(contentsOf: paths.state), primary)
+        XCTAssertNil(keys.anchor)
+        keys.anchor = anchor
+        XCTAssertEqual(try store.loadReadOnly(requireCurrentFormat: true), state)
     }
 
     func testChangedStatePayloadAndMissingStateAreRejectedAfterCommit() throws {

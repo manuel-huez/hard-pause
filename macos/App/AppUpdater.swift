@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import Sparkle
 
@@ -6,17 +5,13 @@ import Sparkle
 final class AppUpdater: NSObject, SPUUpdaterDelegate {
     private weak var model: AppModel?
     private var controller: SPUStandardUpdaterController?
-    private var snapshotSubscription: AnyCancellable?
-    private var recoveringGate = false
     private(set) var installationIsStarting = false
-    private static let updateGateKey = "HardPauseAppUpdateGateToken"
 
     var isConfigured: Bool { controller != nil }
 
     var canCheckForUpdates: Bool {
         controller?.updater.canCheckForUpdates == true && Self.canUpdate(model)
-            && !installationIsStarting && !recoveringGate
-            && UserDefaults.standard.string(forKey: Self.updateGateKey) == nil
+            && !installationIsStarting
     }
 
     func checkForUpdates() {
@@ -25,6 +20,7 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
             guard
                 let latest = try? await ProtectedServiceClient().list(),
                 Self.isSafeToUpdate(latest),
+                await hasBrowserCoverage(for: latest),
                 canCheckForUpdates
             else { return }
             controller?.checkForUpdates(nil)
@@ -37,7 +33,6 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
 
     func terminationWasCanceled() {
         installationIsStarting = false
-        Task { await recoverPendingGate() }
     }
 
     func mayFinishInstallation() async -> Bool {
@@ -46,38 +41,14 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
             Self.canUpdate(model),
             let latest = try? await ProtectedServiceClient().list(),
             Self.isSafeToUpdate(latest),
-            !recoveringGate,
-            UserDefaults.standard.string(forKey: Self.updateGateKey) == nil
+            await hasBrowserCoverage(for: latest)
         else { return false }
-        let token = UUID()
-        let defaults = UserDefaults.standard
-        defaults.set(token.uuidString, forKey: Self.updateGateKey)
-        guard defaults.synchronize() else {
-            defaults.removeObject(forKey: Self.updateGateKey)
-            return false
-        }
-        do {
-            let gated = try await ProtectedServiceClient().prepareUpdate(id: token)
-            guard Self.isSafeToUpdate(gated), Self.canUpdate(model) else {
-                installationIsStarting = false
-                await recoverPendingGate()
-                return false
-            }
-            return true
-        } catch {
-            installationIsStarting = false
-            await recoverPendingGate()
-            return false
-        }
+        return true
     }
 
     func start(model: AppModel) {
         guard self.model == nil else { return }
         self.model = model
-        snapshotSubscription = model.$snapshot.sink { [weak self] _ in
-            Task { @MainActor in await self?.recoverPendingGate() }
-        }
-        Task { await recoverPendingGate() }
         guard Self.hasReleaseConfiguration else { return }
         controller = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -87,15 +58,13 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
-        guard Self.canUpdate(model), !recoveringGate,
-            UserDefaults.standard.string(forKey: Self.updateGateKey) == nil
-        else {
+        guard Self.canUpdate(model) else {
             throw NSError(
                 domain: "org.hardpause.app.updates",
                 code: 1,
                 userInfo: [
                     NSLocalizedDescriptionKey:
-                        "Updates wait until all Hard Pause plans are inactive and protection is available."
+                        "Updates wait for healthy protection and browser worker readiness."
                 ]
             )
         }
@@ -107,7 +76,6 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
         installationIsStarting = false
-        Task { await recoverPendingGate() }
     }
 
     func updater(
@@ -117,35 +85,29 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
     ) {
         guard error != nil else { return }
         installationIsStarting = false
-        Task { await recoverPendingGate() }
-    }
-
-    private func recoverPendingGate() async {
-        guard !installationIsStarting, !recoveringGate,
-            let value = UserDefaults.standard.string(forKey: Self.updateGateKey),
-            let token = UUID(uuidString: value)
-        else { return }
-        recoveringGate = true
-        defer { recoveringGate = false }
-        guard (try? await ProtectedServiceClient().cancelUpdate(id: token)) != nil else { return }
-        if UserDefaults.standard.string(forKey: Self.updateGateKey) == value {
-            UserDefaults.standard.removeObject(forKey: Self.updateGateKey)
-        }
     }
 
     private static func canUpdate(_ model: AppModel?) -> Bool {
         guard
             let model,
             model.setupServiceReady,
+            !model.isBusy,
+            !model.hasPendingMutation,
+            !model.isInstallingService,
             let snapshot = model.snapshot
         else { return false }
         return snapshot.blocks.allSatisfy { $0.phase == .inactive }
+            || model.browserWorkerReadyForHandoff
     }
 
     private static func isSafeToUpdate(_ snapshot: ProtectedServiceSnapshot) -> Bool {
         snapshot.protection.isEnforcing && snapshot.protection.issues.isEmpty
             && snapshot.protection.serviceVersion == ProtectedServiceContract.serviceVersion
-            && snapshot.blocks.allSatisfy { $0.phase == .inactive }
+    }
+
+    private func hasBrowserCoverage(for snapshot: ProtectedServiceSnapshot) async -> Bool {
+        if snapshot.blocks.allSatisfy({ $0.phase == .inactive }) { return true }
+        return await model?.probeBrowserWorkerReadiness() == true
     }
 
     private static var hasReleaseConfiguration: Bool {

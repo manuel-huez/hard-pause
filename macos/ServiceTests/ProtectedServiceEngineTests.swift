@@ -62,6 +62,183 @@ final class ProtectedServiceEngineTests: XCTestCase {
         XCTAssertNil(store.persisted.updateGateToken)
     }
 
+    func testLiveFreezeKeepsBreakRulesAndStopsStateWritesUntilCancellation() throws {
+        let prepared = try breakState(includeSecondBlock: false)
+        let store = FakeProtectedStateStore(prepared.state)
+        let enforcer = FakeProtectionEnforcer()
+        let clock = FakeServiceClock(serviceTestReading(60))
+        let engine = try ProtectedServiceEngine(stateStore: store, enforcer: enforcer, clock: clock)
+        let gate = ProtectedLiveUpdateGate(
+            token: UUID(),
+            generation: UUID(),
+            successorDigest: String(repeating: "a", count: 64)
+        )
+
+        try engine.beginLiveUpdate(gate)
+        let frozenSaveCount = store.mainSaveCount
+        XCTAssertEqual(enforcer.applications.last?.blockedDomains, ["a.example"])
+        XCTAssertEqual(engine.list().effectiveRestrictions.blockedDomains, ["a.example"])
+        clock.reading = serviceTestReading(130)
+        engine.tickForTesting()
+        XCTAssertEqual(store.mainSaveCount, frozenSaveCount)
+        XCTAssertEqual(enforcer.applicationScans.last?.blockedDomains, ["a.example"])
+
+        _ = try engine.endLiveUpdate(token: gate.token, finalized: false)
+        XCTAssertNil(store.persisted.liveUpdateGate)
+        XCTAssertEqual(store.persisted.lastLiveUpdateCompletion?.phase, .cancelled)
+        XCTAssertEqual(store.persisted.effectiveRestrictions().blockedDomains, ["a.example"])
+    }
+
+    func testFailedFreezeApplyKeepsDurableGateUntilCancellation() throws {
+        let prepared = try activeState()
+        let store = FakeProtectedStateStore(prepared.state)
+        let enforcer = FakeProtectionEnforcer()
+        let engine = try ProtectedServiceEngine(
+            stateStore: store,
+            enforcer: enforcer,
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+        let gate = ProtectedLiveUpdateGate(
+            token: UUID(),
+            generation: UUID(),
+            successorDigest: String(repeating: "a", count: 64)
+        )
+        enforcer.applyFailures = 1
+
+        XCTAssertThrowsError(try engine.beginLiveUpdate(gate))
+        XCTAssertEqual(store.persisted.liveUpdateGate, gate)
+        XCTAssertThrowsError(try engine.requestEnd(ProtectedBlockRequest(id: prepared.id))) {
+            XCTAssertEqual($0 as? ProtectedStateError, .updateInProgress)
+        }
+        let restored = try engine.endLiveUpdate(token: gate.token, finalized: false)
+        XCTAssertNil(store.persisted.liveUpdateGate)
+        XCTAssertTrue(restored.protection.isEnforcing)
+    }
+
+    func testStandbyCannotRetireBeforeMatchingDurableCompletion() throws {
+        let prepared = try activeState()
+        var state = prepared.state
+        let gate = ProtectedLiveUpdateGate(
+            token: UUID(),
+            generation: UUID(),
+            successorDigest: String(repeating: "b", count: 64)
+        )
+        try state.beginLiveUpdate(gate)
+        let store = FakeProtectedStateStore(state)
+        let enforcer = FakeProtectionEnforcer()
+        let standby = try ProtectedStandbyEngine(
+            stateStore: store,
+            state: state,
+            appleStateDigest: String(repeating: "c", count: 64),
+            token: gate.token,
+            runningDigest: gate.successorDigest,
+            enforcer: enforcer,
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+
+        XCTAssertTrue(try standby.readiness(token: gate.token).isEnforcing)
+        XCTAssertEqual(store.mainSaveCount, 0)
+        XCTAssertThrowsError(try standby.retire(token: gate.token))
+        try state.endLiveUpdate(token: gate.token, finalized: true)
+        store.persisted = state
+        let retired = try standby.retire(token: gate.token)
+        XCTAssertEqual(retired.phase, .finalized)
+        XCTAssertFalse(retired.isEnforcing)
+        XCTAssertFalse(standby.list().protection.isEnforcing)
+        XCTAssertEqual(enforcer.applications.last?.blockedDomains, [])
+    }
+
+    func testStandbyRetirementFailureIsReportedAndCanBeRetried() throws {
+        let prepared = try activeState()
+        var state = prepared.state
+        let gate = ProtectedLiveUpdateGate(
+            token: UUID(),
+            generation: UUID(),
+            successorDigest: String(repeating: "b", count: 64)
+        )
+        try state.beginLiveUpdate(gate)
+        let store = FakeProtectedStateStore(state)
+        let enforcer = FakeProtectionEnforcer()
+        let standby = try ProtectedStandbyEngine(
+            stateStore: store,
+            state: state,
+            appleStateDigest: String(repeating: "c", count: 64),
+            token: gate.token,
+            runningDigest: gate.successorDigest,
+            enforcer: enforcer,
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+        try state.endLiveUpdate(token: gate.token, finalized: false)
+        store.persisted = state
+        enforcer.applyFailures = 1
+
+        XCTAssertThrowsError(try standby.retire(token: gate.token))
+        XCTAssertFalse(try standby.readiness(token: gate.token).isEnforcing)
+        XCTAssertEqual(standby.list().protection.issues.first?.code, "standby_retirement_failed")
+        XCTAssertEqual(try standby.retire(token: gate.token).phase, .cancelled)
+        XCTAssertFalse(standby.list().protection.isEnforcing)
+    }
+
+    func testInspectLiveUpdateDistinguishesOldAndNewPrimary() throws {
+        let store = FakeProtectedStateStore()
+        let engine = try ProtectedServiceEngine(
+            stateStore: store,
+            enforcer: FakeProtectionEnforcer(),
+            clock: FakeServiceClock(serviceTestReading(0))
+        )
+        let gate = ProtectedLiveUpdateGate(
+            token: UUID(),
+            generation: UUID(),
+            successorDigest: String(repeating: "a", count: 64)
+        )
+        try engine.beginLiveUpdate(gate)
+        let apple = try AppleLockdownEngine(
+            stateStore: FakeAppleLockdownStateStore(),
+            credentialVault: FakeAppleLockdownVault()
+        )
+        let request = try ProtectedServiceCodec.encode(ProtectedLiveUpdateRequest(token: gate.token))
+
+        for (digest, phase) in [
+            (String(repeating: "b", count: 64), ProtectedLiveUpdatePhase.frozen),
+            (gate.successorDigest, .standbyReady),
+        ] {
+            let endpoint = ProtectedServiceEndpoint(
+                engine: engine,
+                appleLockdown: apple,
+                coordinator: ProtectedServiceCoordinator(),
+                runningDigest: digest
+            )
+            var response: NSData?
+            endpoint.inspectLiveUpdate(request) { response = $0 }
+            let reply = try ProtectedServiceCodec.decode(
+                ProtectedLiveUpdateReply.self,
+                from: XCTUnwrap(response)
+            )
+            XCTAssertNil(reply.error)
+            XCTAssertEqual(reply.status?.phase, phase)
+            XCTAssertEqual(reply.status?.generation, gate.generation)
+            XCTAssertTrue(reply.status?.isEnforcing == true)
+        }
+    }
+
+    func testInactiveMigrationIsReadOnlyUntilTokenIsCommitted() throws {
+        let store = FakeProtectedStateStore()
+        let engine = try ProtectedServiceEngine(
+            stateStore: store,
+            enforcer: FakeProtectionEnforcer(),
+            preloadedState: store.persisted
+        )
+        let token = UUID()
+        XCTAssertEqual(store.mainSaveCount, 0)
+        XCTAssertThrowsError(try engine.create(ProtectedCreateRequest(draft: serviceTestDraft()))) {
+            XCTAssertEqual($0 as? ProtectedStateError, .updateInProgress)
+        }
+        XCTAssertEqual(store.mainSaveCount, 0)
+        _ = try engine.finalizeInactiveMigration(token: token)
+        XCTAssertEqual(store.persisted.lastInactiveMigrationToken, token)
+        _ = try engine.create(ProtectedCreateRequest(draft: serviceTestDraft()))
+    }
+
     func testPrepareUpdateRejectsUnhealthyService() throws {
         let store = FakeProtectedStateStore()
         let enforcer = FakeProtectionEnforcer()

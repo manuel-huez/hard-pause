@@ -5,6 +5,7 @@ import Security
 
 protocol ProtectedStateStoring: AnyObject {
     func load() throws -> ProtectedState
+    func loadReadOnly(requireCurrentFormat: Bool) throws -> ProtectedState
     func save(_ state: ProtectedState) throws
     func savePendingCandidate(_ state: ProtectedState) throws
     func clearPendingCandidate() throws
@@ -16,7 +17,7 @@ enum OfflineServiceMaintenance {
         appleLockdownStore: AppleLockdownStateStoring,
         appleLockdownVault: AppleLockdownCredentialVault
     ) throws {
-        let state = try stateStore.load()
+        let state = try stateStore.loadReadOnly(requireCurrentFormat: false)
         let activeNames = state.blocks.compactMap { block in
             block.activation == nil ? nil : block.draft.name
         }.sorted()
@@ -25,7 +26,10 @@ enum OfflineServiceMaintenance {
                 "protection is active for: \(activeNames.joined(separator: ", "))"
             )
         }
-        let appleLockdownState = try appleLockdownStore.load()
+        guard state.updateGateToken == nil, state.liveUpdateGate == nil else {
+            throw ServiceRuntimeError.invalidInstall("a service update is in progress")
+        }
+        let appleLockdownState = try appleLockdownStore.loadReadOnly(requireCurrentFormat: false)
         guard !appleLockdownState.preventsMaintenance else {
             throw ServiceRuntimeError.invalidInstall(
                 "Screen Time protection setup, protection, or release is still active"
@@ -127,6 +131,28 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         } catch {
             throw ServiceRuntimeError.unreadableState(error.localizedDescription)
         }
+    }
+
+    func loadReadOnly(requireCurrentFormat: Bool) throws -> ProtectedState {
+        guard !fileManager.fileExists(atPath: pendingStateURL.path) else {
+            throw ServiceRuntimeError.unreadableState(
+                "a pending protected transition must be recovered by the current service"
+            )
+        }
+        guard try authenticator.keys.readAnchor()?.pendingDigest == nil else {
+            throw ServiceRuntimeError.unreadableState("the pending protected state is missing")
+        }
+        guard fileManager.fileExists(atPath: stateURL.path) else {
+            guard !requireCurrentFormat else {
+                throw ServiceRuntimeError.unreadableState("the protected state is missing")
+            }
+            return try emptyStateIfNeverCommitted()
+        }
+        return try readState(
+            at: stateURL,
+            readOnly: true,
+            requireCurrentFormat: requireCurrentFormat
+        )
     }
 
     func save(_ state: ProtectedState) throws {
@@ -237,7 +263,11 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         }
     }
 
-    private func readState(at url: URL) throws -> ProtectedState {
+    private func readState(
+        at url: URL,
+        readOnly: Bool = false,
+        requireCurrentFormat: Bool = false
+    ) throws -> ProtectedState {
         try validateProtectedFile(at: url, maximumBytes: Self.maximumAuthenticatedBytes)
         let data = try Data(contentsOf: url, options: .mappedIfSafe)
         let opened = try authenticator.open(data, purpose: "primary")
@@ -248,6 +278,16 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         try state.validateForPersistence()
         let digest = try stateDigest(state)
         let anchor = try authenticator.keys.readAnchor()
+        if requireCurrentFormat {
+            guard !opened.isLegacy,
+                anchor?.currentDigest == digest,
+                anchor?.pendingDigest == nil
+            else {
+                throw ServiceRuntimeError.unreadableState(
+                    "the protected state is not ready for a read-only handoff"
+                )
+            }
+        }
         if let anchor {
             guard digest == anchor.currentDigest || digest == anchor.pendingDigest else {
                 throw ServiceRuntimeError.unreadableState(
@@ -261,7 +301,9 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                     "active legacy state needs the installed service; protection was not reset"
                 )
             }
-            try writeAtomically(try authenticator.seal(opened.payload, purpose: "primary"), to: url)
+            if !readOnly {
+                try writeAtomically(try authenticator.seal(opened.payload, purpose: "primary"), to: url)
+            }
         }
         if anchor == nil {
             guard state.blocks.allSatisfy({ $0.activation == nil }) else {
@@ -269,11 +311,13 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                     "active state has no Keychain anchor"
                 )
             }
-            try authenticator.keys.saveAnchor(
-                StateCommitAnchor(currentDigest: digest, pendingDigest: nil)
-            )
+            if !readOnly {
+                try authenticator.keys.saveAnchor(
+                    StateCommitAnchor(currentDigest: digest, pendingDigest: nil)
+                )
+            }
         }
-        try authenticator.keys.markCommittedState()
+        if !readOnly { try authenticator.keys.markCommittedState() }
         return state
     }
 

@@ -625,23 +625,55 @@ struct ProtectedBlockRecord: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+struct ProtectedLiveUpdateGate: Codable, Equatable, Sendable {
+    let token: UUID
+    let generation: UUID
+    let successorDigest: String
+
+    func validate() throws {
+        guard successorDigest.utf8.count == 64,
+            successorDigest.utf8.allSatisfy({
+                (48...57).contains($0) || (97...102).contains($0)
+            })
+        else {
+            throw ProtectedStateError.invalid("The update successor digest is invalid.")
+        }
+    }
+}
+
+struct ProtectedLiveUpdateCompletion: Codable, Equatable, Sendable {
+    let token: UUID
+    let generation: UUID
+    let successorDigest: String
+    let phase: ProtectedLiveUpdatePhase
+}
+
 struct ProtectedState: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 2
 
     let schemaVersion: Int
     private(set) var blocks: [ProtectedBlockRecord]
     private(set) var updateGateToken: UUID?
+    private(set) var liveUpdateGate: ProtectedLiveUpdateGate?
+    private(set) var lastLiveUpdateCompletion: ProtectedLiveUpdateCompletion?
+    private(set) var lastInactiveMigrationToken: UUID?
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
         case blocks
         case updateGateToken
+        case liveUpdateGate
+        case lastLiveUpdateCompletion
+        case lastInactiveMigrationToken
     }
 
     init(blocks: [ProtectedBlockRecord] = []) {
         schemaVersion = Self.currentSchemaVersion
         self.blocks = blocks
         updateGateToken = nil
+        liveUpdateGate = nil
+        lastLiveUpdateCompletion = nil
+        lastInactiveMigrationToken = nil
     }
 
     init(from decoder: Decoder) throws {
@@ -649,6 +681,13 @@ struct ProtectedState: Codable, Equatable, Sendable {
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         blocks = try container.decode([ProtectedBlockRecord].self, forKey: .blocks)
         updateGateToken = try container.decodeIfPresent(UUID.self, forKey: .updateGateToken)
+        liveUpdateGate = try container.decodeIfPresent(ProtectedLiveUpdateGate.self, forKey: .liveUpdateGate)
+        lastLiveUpdateCompletion = try container.decodeIfPresent(
+            ProtectedLiveUpdateCompletion.self, forKey: .lastLiveUpdateCompletion
+        )
+        lastInactiveMigrationToken = try container.decodeIfPresent(
+            UUID.self, forKey: .lastInactiveMigrationToken
+        )
     }
 
     func encode(to encoder: Encoder) throws {
@@ -656,9 +695,15 @@ struct ProtectedState: Codable, Equatable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(blocks, forKey: .blocks)
         try container.encodeIfPresent(updateGateToken, forKey: .updateGateToken)
+        try container.encodeIfPresent(liveUpdateGate, forKey: .liveUpdateGate)
+        try container.encodeIfPresent(lastLiveUpdateCompletion, forKey: .lastLiveUpdateCompletion)
+        try container.encodeIfPresent(lastInactiveMigrationToken, forKey: .lastInactiveMigrationToken)
     }
 
     mutating func prepareUpdate(token: UUID) throws {
+        guard liveUpdateGate == nil else {
+            throw ProtectedStateError.updateInProgress
+        }
         if let updateGateToken {
             guard updateGateToken == token else { throw ProtectedStateError.updateInProgress }
             return
@@ -670,6 +715,29 @@ struct ProtectedState: Codable, Equatable, Sendable {
         guard let updateGateToken else { return }
         guard updateGateToken == token else { throw ProtectedStateError.updateNotOwned }
         self.updateGateToken = nil
+    }
+
+    mutating func beginLiveUpdate(_ gate: ProtectedLiveUpdateGate) throws {
+        guard updateGateToken == nil, liveUpdateGate == nil else {
+            throw ProtectedStateError.updateInProgress
+        }
+        liveUpdateGate = gate
+    }
+
+    mutating func endLiveUpdate(token: UUID, finalized: Bool) throws {
+        guard let liveUpdateGate else { throw ProtectedStateError.updateUnavailable }
+        guard liveUpdateGate.token == token else { throw ProtectedStateError.updateNotOwned }
+        lastLiveUpdateCompletion = ProtectedLiveUpdateCompletion(
+            token: liveUpdateGate.token,
+            generation: liveUpdateGate.generation,
+            successorDigest: liveUpdateGate.successorDigest,
+            phase: finalized ? .finalized : .cancelled
+        )
+        self.liveUpdateGate = nil
+    }
+
+    mutating func completeInactiveMigration(token: UUID) {
+        lastInactiveMigrationToken = token
     }
 
     mutating func create(_ draft: ProtectedBlockDraft) throws -> ProtectedBlockRecord {
@@ -730,12 +798,22 @@ struct ProtectedState: Codable, Equatable, Sendable {
     }
 
     func effectiveRestrictions() -> EffectiveRestrictions {
+        restrictions(includingBreaks: false)
+    }
+
+    func conservativeUpdateRestrictions() -> EffectiveRestrictions {
+        restrictions(includingBreaks: true)
+    }
+
+    private func restrictions(includingBreaks: Bool) -> EffectiveRestrictions {
         var domains = Set<String>()
         var urlPatterns = Set<String>()
         var applications: [String: ProtectedApplication] = [:]
         var contributingBlocks = Set<UUID>()
         for block in blocks {
-            guard let activation = block.activation, activation.restrictionsAreActive else { continue }
+            guard let activation = block.activation,
+                includingBreaks || activation.restrictionsAreActive
+            else { continue }
             contributingBlocks.insert(block.id)
             domains.formUnion(activation.frozenDraft.rules.allBlockedDomains)
             urlPatterns.formUnion(activation.frozenDraft.rules.blockedURLPatterns)
@@ -757,14 +835,23 @@ struct ProtectedState: Codable, Equatable, Sendable {
         ProtectedServiceSnapshot(
             generatedAt: date,
             blocks: blocks.map {
-                ProtectedBlockSnapshot(
+                let phase: ProtectedBlockPhase
+                if let activation = $0.activation {
+                    phase =
+                        liveUpdateGate == nil
+                        ? activation.phase() : .active(naturalEndRemaining: nil)
+                } else {
+                    phase = .inactive
+                }
+                return ProtectedBlockSnapshot(
                     id: $0.id,
                     revision: $0.revision,
                     draft: $0.draft,
-                    phase: $0.activation?.phase() ?? .inactive
+                    phase: phase
                 )
             },
-            effectiveRestrictions: effectiveRestrictions(),
+            effectiveRestrictions: liveUpdateGate == nil
+                ? effectiveRestrictions() : conservativeUpdateRestrictions(),
             protection: protection
         )
     }
@@ -772,6 +859,25 @@ struct ProtectedState: Codable, Equatable, Sendable {
     func validateForPersistence() throws {
         guard schemaVersion == Self.currentSchemaVersion else {
             throw ProtectedStateError.invalid("The protected state format is not supported.")
+        }
+        let gateCount = [updateGateToken != nil, liveUpdateGate != nil]
+            .filter { $0 }.count
+        if gateCount > 1 {
+            throw ProtectedStateError.invalid("Multiple update gates cannot be active.")
+        }
+        try liveUpdateGate?.validate()
+        if let lastLiveUpdateCompletion {
+            guard
+                lastLiveUpdateCompletion.phase == .finalized
+                    || lastLiveUpdateCompletion.phase == .cancelled
+            else {
+                throw ProtectedStateError.invalid("The update completion phase is invalid.")
+            }
+            try ProtectedLiveUpdateGate(
+                token: UUID(),
+                generation: lastLiveUpdateCompletion.generation,
+                successorDigest: lastLiveUpdateCompletion.successorDigest
+            ).validate()
         }
         guard blocks.count <= ProtectedBlockLimits.maximumBlocks,
             Set(blocks.map(\.id)).count == blocks.count

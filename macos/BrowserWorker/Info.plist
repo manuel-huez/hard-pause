@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hard Pause</string>
+	<string>Hard Pause Browser Worker</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -20,21 +20,9 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.productivity</string>
+	<key>LSUIElement</key>
+	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.</string>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
-	<key>SUAllowsAutomaticUpdates</key>
-	<true/>
-	<key>SUAutomaticallyUpdate</key>
-	<true/>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUFeedURL</key>
-	<string>https://github.com/manuel-huez/hard-pause/releases/latest/download/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>$(SPARKLE_EDDSA_PUBLIC_KEY)</string>
+	<string>Hard Pause Browser Worker checks browser tabs and redirects blocked pages.</string>
 </dict>
 </plist>

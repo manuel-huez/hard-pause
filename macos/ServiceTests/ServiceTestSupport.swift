@@ -78,6 +78,13 @@ final class FakeProtectedStateStore: ProtectedStateStoring {
 
     func load() throws -> ProtectedState { pending ?? persisted }
 
+    func loadReadOnly(requireCurrentFormat: Bool) throws -> ProtectedState {
+        guard pending == nil else {
+            throw ServiceRuntimeError.unreadableState("pending test state")
+        }
+        return persisted
+    }
+
     func save(_ state: ProtectedState) throws {
         mainSaveCount += 1
         events?.values.append("save-main")
@@ -121,6 +128,8 @@ final class FakeAppleLockdownStateStore: AppleLockdownStateStoring {
     }
 
     func load() throws -> AppleLockdownState { persisted }
+
+    func loadReadOnly(requireCurrentFormat: Bool) throws -> AppleLockdownState { persisted }
 
     func save(_ state: AppleLockdownState) throws {
         events?.values.append("save-apple-state:\(state.phase.rawValue)")

@@ -4,19 +4,25 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
     private let engine: ProtectedServiceEngine
     private let appleLockdown: AppleLockdownEngine
     private let coordinator: ProtectedServiceCoordinator
+    private let runningDigest: String
+    private let inactiveMigrationToken: UUID?
 
     init(
         engine: ProtectedServiceEngine,
         appleLockdown: AppleLockdownEngine,
-        coordinator: ProtectedServiceCoordinator
+        coordinator: ProtectedServiceCoordinator,
+        runningDigest: String = "",
+        inactiveMigrationToken: UUID? = nil
     ) {
         self.engine = engine
         self.appleLockdown = appleLockdown
         self.coordinator = coordinator
+        self.runningDigest = runningDigest
+        self.inactiveMigrationToken = inactiveMigrationToken
     }
 
     func list(withReply reply: @escaping (NSData) -> Void) {
-        reply(encoded(.success(engine.list())))
+        reply(encoded(.success(coordinator.perform { engine.list() })))
     }
 
     func create(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
@@ -85,9 +91,111 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         }
     }
 
+    func finalizeInactiveMigration(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        handle(request, as: ProtectedLiveUpdateRequest.self, reply: reply) { request in
+            guard inactiveMigrationToken == request.token else {
+                throw ProtectedStateError.updateNotOwned
+            }
+            try appleLockdown.commitInactiveMigration()
+            let snapshot = try engine.finalizeInactiveMigration(token: request.token)
+            appleLockdown.unfreezeAfterLiveUpdate()
+            return snapshot
+        }
+    }
+
+    func beginLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        handleLive(request, as: ProtectedLiveUpdateBeginRequest.self, reply: reply) { request in
+            guard ProtectedServiceContract.liveServiceHandoffEnabled else {
+                throw ProtectedStateError.updateUnavailable
+            }
+            let successorDigest = try ServiceCodeIdentity.candidateDigest(at: request.successorPath)
+            guard successorDigest != runningDigest else { throw ProtectedStateError.updateUnavailable }
+            let appleDigest = try appleLockdown.freezeForLiveUpdate()
+            do {
+                if let existing = engine.liveUpdateGate() {
+                    guard existing.token == request.token,
+                        existing.successorDigest == successorDigest
+                    else { throw ProtectedStateError.updateInProgress }
+                } else {
+                    try engine.beginLiveUpdate(
+                        ProtectedLiveUpdateGate(
+                            token: request.token,
+                            generation: UUID(),
+                            successorDigest: successorDigest
+                        )
+                    )
+                }
+                return try engine.liveUpdateStatus(appleStateDigest: appleDigest)
+            } catch {
+                if engine.liveUpdateGate() == nil { appleLockdown.unfreezeAfterLiveUpdate() }
+                throw error
+            }
+        }
+    }
+
+    func inspectLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        handleLive(request, as: ProtectedLiveUpdateRequest.self, reply: reply) { request in
+            guard let gate = engine.liveUpdateGate(), gate.token == request.token else {
+                throw ProtectedStateError.updateNotOwned
+            }
+            return try engine.liveUpdateStatus(
+                appleStateDigest: appleLockdown.stateDigest(),
+                phase: runningDigest == gate.successorDigest ? .standbyReady : .frozen
+            )
+        }
+    }
+
+    func cancelLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        handleLive(request, as: ProtectedLiveUpdateRequest.self, reply: reply) { request in
+            guard let gate = engine.liveUpdateGate(), gate.token == request.token else {
+                throw ProtectedStateError.updateNotOwned
+            }
+            guard runningDigest != gate.successorDigest else {
+                throw ProtectedStateError.updateUnavailable
+            }
+            try appleLockdown.checkpointForLiveUpdateFinalization()
+            let appleDigest = try appleLockdown.stateDigest()
+            let snapshot = try engine.endLiveUpdate(token: request.token, finalized: false)
+            appleLockdown.unfreezeAfterLiveUpdate()
+            return ProtectedLiveUpdateStatus(
+                phase: .cancelled,
+                generation: gate.generation,
+                stateDigest: try engine.currentStateDigest(),
+                appleStateDigest: appleDigest,
+                successorDigest: gate.successorDigest,
+                isEnforcing: snapshot.protection.isEnforcing,
+                issues: snapshot.protection.issues
+            )
+        }
+    }
+
+    func finalizeLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        handleLive(request, as: ProtectedLiveUpdateRequest.self, reply: reply) { request in
+            guard let gate = engine.liveUpdateGate(), gate.token == request.token else {
+                throw ProtectedStateError.updateNotOwned
+            }
+            guard runningDigest == gate.successorDigest else {
+                throw ProtectedStateError.updateUnavailable
+            }
+            try appleLockdown.checkpointForLiveUpdateFinalization()
+            let appleDigest = try appleLockdown.stateDigest()
+            let snapshot = try engine.endLiveUpdate(token: request.token, finalized: true)
+            appleLockdown.unfreezeAfterLiveUpdate()
+            return ProtectedLiveUpdateStatus(
+                phase: .finalized,
+                generation: gate.generation,
+                stateDigest: try engine.currentStateDigest(),
+                appleStateDigest: appleDigest,
+                successorDigest: gate.successorDigest,
+                isEnforcing: snapshot.protection.isEnforcing,
+                issues: snapshot.protection.issues
+            )
+        }
+    }
+
     func appleLockdownStatus(withReply reply: @escaping (NSData) -> Void) {
         do {
-            reply(encoded(.success(try appleLockdown.status())))
+            reply(encoded(.success(try coordinator.perform { try appleLockdown.status() })))
         } catch {
             reply(encoded(appleFailure(for: error)))
         }
@@ -131,7 +239,7 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
 
     func requestAppleLockdownEnd(withReply reply: @escaping (NSData) -> Void) {
         do {
-            reply(encoded(.success(try appleLockdown.requestEnd())))
+            reply(encoded(.success(try coordinator.perform { try appleLockdown.requestEnd() })))
         } catch {
             reply(encoded(appleFailure(for: error)))
         }
@@ -170,7 +278,7 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
     ) {
         do {
             let request = try ProtectedServiceCodec.decode(type, from: payload)
-            reply(encoded(.success(try operation(request))))
+            reply(encoded(.success(try coordinator.perform { try operation(request) })))
         } catch {
             reply(encoded(failure(for: error)))
         }
@@ -184,9 +292,29 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
     ) {
         do {
             let request = try ProtectedServiceCodec.decode(type, from: payload)
-            reply(encoded(try operation(request)))
+            reply(encoded(try coordinator.perform { try operation(request) }))
         } catch {
             reply(encoded(appleFailure(for: error)))
+        }
+    }
+
+    private func handleLive<Request: Decodable>(
+        _ payload: NSData,
+        as type: Request.Type,
+        reply: @escaping (NSData) -> Void,
+        operation: (Request) throws -> ProtectedLiveUpdateStatus
+    ) {
+        do {
+            let request = try ProtectedServiceCodec.decode(type, from: payload)
+            reply(encoded(.success(try coordinator.perform { try operation(request) })))
+        } catch {
+            let failure = failure(for: error)
+            reply(
+                encoded(
+                    ProtectedLiveUpdateReply(
+                        status: nil,
+                        error: failure.error
+                    )))
         }
     }
 
@@ -206,6 +334,10 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
             message: "The Screen Time protection response is too large."
         )
         return (try? ProtectedServiceCodec.encode(fallback)) ?? NSData()
+    }
+
+    private func encoded(_ value: ProtectedLiveUpdateReply) -> NSData {
+        (try? ProtectedServiceCodec.encode(value)) ?? NSData()
     }
 
     private func failure(for error: Error) -> ProtectedServiceReply {
@@ -276,7 +408,7 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
 }
 
 final class ProtectedServiceCoordinator: @unchecked Sendable {
-    private let lock = NSLock()
+    private let lock = NSRecursiveLock()
 
     func perform<T>(_ operation: () throws -> T) rethrows -> T {
         lock.lock()
@@ -290,16 +422,22 @@ final class ProtectedServiceListenerDelegate: NSObject, NSXPCListenerDelegate {
     private let appleLockdown: AppleLockdownEngine
     private let coordinator: ProtectedServiceCoordinator
     private let authorizer: ClientAuthorizer
+    private let runningDigest: String
+    private let inactiveMigrationToken: UUID?
 
     init(
         engine: ProtectedServiceEngine,
         appleLockdown: AppleLockdownEngine,
-        authorizer: ClientAuthorizer
+        authorizer: ClientAuthorizer,
+        runningDigest: String = "",
+        inactiveMigrationToken: UUID? = nil
     ) {
         self.engine = engine
         self.appleLockdown = appleLockdown
         coordinator = ProtectedServiceCoordinator()
         self.authorizer = authorizer
+        self.runningDigest = runningDigest
+        self.inactiveMigrationToken = inactiveMigrationToken
     }
 
     func listener(
@@ -311,8 +449,128 @@ final class ProtectedServiceListenerDelegate: NSObject, NSXPCListenerDelegate {
         newConnection.exportedObject = ProtectedServiceEndpoint(
             engine: engine,
             appleLockdown: appleLockdown,
-            coordinator: coordinator
+            coordinator: coordinator,
+            runningDigest: runningDigest,
+            inactiveMigrationToken: inactiveMigrationToken
         )
+        newConnection.activate()
+        return true
+    }
+}
+
+final class ProtectedStandbyEndpoint: NSObject, ProtectedStandbyXPC {
+    private let engine: ProtectedStandbyEngine
+
+    init(engine: ProtectedStandbyEngine) { self.engine = engine }
+
+    func list(withReply reply: @escaping (NSData) -> Void) {
+        reply(
+            (try? ProtectedServiceCodec.encode(
+                ProtectedServiceReply.success(engine.list())
+            )) ?? NSData())
+    }
+
+    func readiness(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        respond(request, reply: reply) { try engine.readiness(token: $0.token) }
+    }
+
+    func retire(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        respond(request, reply: reply) { try engine.retire(token: $0.token) }
+    }
+
+    private func respond(
+        _ request: NSData,
+        reply: @escaping (NSData) -> Void,
+        operation: (ProtectedLiveUpdateRequest) throws -> ProtectedLiveUpdateStatus
+    ) {
+        let response: ProtectedLiveUpdateReply
+        do {
+            let decoded = try ProtectedServiceCodec.decode(ProtectedLiveUpdateRequest.self, from: request)
+            response = .success(try operation(decoded))
+        } catch {
+            response = .failure(
+                code: "standby_unavailable",
+                message: error.localizedDescription.utf8ServicePrefix(maxBytes: 512)
+            )
+        }
+        reply((try? ProtectedServiceCodec.encode(response)) ?? NSData())
+    }
+}
+
+final class ProtectedStandbyListenerDelegate: NSObject, NSXPCListenerDelegate {
+    private let engine: ProtectedStandbyEngine
+    private let authorizer: ClientAuthorizer
+
+    init(engine: ProtectedStandbyEngine, authorizer: ClientAuthorizer) {
+        self.engine = engine
+        self.authorizer = authorizer
+    }
+
+    func listener(
+        _ listener: NSXPCListener,
+        shouldAcceptNewConnection newConnection: NSXPCConnection
+    ) -> Bool {
+        guard authorizer.configure(newConnection) else { return false }
+        newConnection.exportedInterface = NSXPCInterface(with: ProtectedStandbyXPC.self)
+        newConnection.exportedObject = ProtectedStandbyEndpoint(engine: engine)
+        newConnection.activate()
+        return true
+    }
+}
+
+final class ProtectedServiceUpdateEndpoint: NSObject, ProtectedServiceUpdateXPC {
+    private let trigger: PrivilegedServiceUpdateTrigger
+
+    init(trigger: PrivilegedServiceUpdateTrigger) { self.trigger = trigger }
+
+    func installationStatus(withReply reply: @escaping (NSData) -> Void) {
+        let response: ProtectedServiceUpdateInstallationReply
+        do {
+            response = ProtectedServiceUpdateInstallationReply(
+                status: try trigger.installationStatus(), error: nil
+            )
+        } catch {
+            response = ProtectedServiceUpdateInstallationReply(
+                status: nil,
+                error: ProtectedServiceErrorPayload(
+                    code: "update_unavailable", message: error.localizedDescription
+                )
+            )
+        }
+        reply((try? ProtectedServiceCodec.encode(response)) ?? NSData())
+    }
+
+    func requestUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        do {
+            let decoded = try ProtectedServiceCodec.decode(ProtectedServiceUpdateRequest.self, from: request)
+            trigger.request(decoded) { result in
+                reply((try? ProtectedServiceCodec.encode(result)) ?? NSData())
+            }
+        } catch {
+            reply(
+                (try? ProtectedServiceCodec.encode(
+                    ProtectedServiceUpdateReply.failure(error.localizedDescription)
+                )) ?? NSData())
+        }
+    }
+}
+
+final class ProtectedServiceUpdateListenerDelegate: NSObject, NSXPCListenerDelegate {
+    private let trigger: PrivilegedServiceUpdateTrigger
+    private let authorizer: ClientAuthorizer
+
+    init(trigger: PrivilegedServiceUpdateTrigger, authorizer: ClientAuthorizer) {
+        self.trigger = trigger
+        self.authorizer = authorizer
+    }
+
+    func listener(
+        _ listener: NSXPCListener,
+        shouldAcceptNewConnection newConnection: NSXPCConnection
+    ) -> Bool {
+        guard authorizer.configureUpdate(newConnection) else { return false }
+        newConnection.exportedInterface = NSXPCInterface(with: ProtectedServiceUpdateXPC.self)
+        newConnection.exportedObject = ProtectedServiceUpdateEndpoint(trigger: trigger)
         newConnection.activate()
         return true
     }

@@ -2,8 +2,12 @@ import Foundation
 
 enum ProtectedServiceContract {
     static let machServiceName = "org.hardpause.service"
-    static let serviceVersion = "7"
-    static let safeUpdateSourceVersions: Set<String> = ["4", "5", "6"]
+    static let serviceVersion = "8"
+    // Enable only after a native launchd/PF/hosts handoff and rollback proof.
+    static let liveServiceHandoffEnabled = false
+    static let safeUpdateSourceVersions: Set<String> = ["4", "5", "6", "7"]
+    static let standbyMachServiceName = "org.hardpause.service.standby"
+    static let updateMachServiceName = "org.hardpause.service.updates"
     static let maximumPayloadBytes = 1_048_576
     static let supportDirectory = "/Library/Application Support/HardPause"
     static let enrollmentPath = "\(supportDirectory)/enrollment-v1.json"
@@ -13,6 +17,36 @@ enum ProtectedServiceContract {
 
     static func supportsSafeUpdate(from installedVersion: String) -> Bool {
         installedVersion == serviceVersion || safeUpdateSourceVersions.contains(installedVersion)
+    }
+}
+
+@objc protocol ProtectedServiceUpdateXPC {
+    func installationStatus(withReply reply: @escaping (NSData) -> Void)
+    func requestUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+}
+
+struct ProtectedServiceUpdateInstallationStatus: Codable, Equatable, Sendable {
+    let installedAppBuild: UInt64
+    let serviceVersion: String
+}
+
+struct ProtectedServiceUpdateInstallationReply: Codable, Equatable, Sendable {
+    let status: ProtectedServiceUpdateInstallationStatus?
+    let error: ProtectedServiceErrorPayload?
+}
+
+struct ProtectedServiceUpdateRequest: Codable, Equatable, Sendable {
+    let bundlePath: String
+}
+
+struct ProtectedServiceUpdateReply: Codable, Equatable, Sendable {
+    let ticket: UUID?
+    let error: ProtectedServiceErrorPayload?
+
+    static func accepted(_ ticket: UUID) -> Self { Self(ticket: ticket, error: nil) }
+
+    static func failure(_ message: String, ticket: UUID? = nil) -> Self {
+        Self(ticket: ticket, error: ProtectedServiceErrorPayload(code: "update_unavailable", message: message))
     }
 }
 
@@ -27,6 +61,11 @@ enum ProtectedServiceContract {
     func requestEnd(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func prepareUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func cancelUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func finalizeInactiveMigration(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func beginLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func inspectLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func cancelLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func finalizeLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func appleLockdownStatus(withReply reply: @escaping (NSData) -> Void)
     func beginAppleLockdownSetup(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func resumeAppleLockdownSetup(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
@@ -41,6 +80,51 @@ enum ProtectedServiceContract {
         _ request: NSData,
         withReply reply: @escaping (NSData) -> Void
     )
+}
+
+@objc protocol ProtectedStandbyXPC {
+    func list(withReply reply: @escaping (NSData) -> Void)
+    func readiness(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func retire(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+}
+
+struct ProtectedLiveUpdateBeginRequest: Codable, Equatable, Sendable {
+    let token: UUID
+    let successorPath: String
+}
+
+struct ProtectedLiveUpdateRequest: Codable, Equatable, Sendable {
+    let token: UUID
+}
+
+enum ProtectedLiveUpdatePhase: String, Codable, Sendable {
+    case frozen
+    case standbyReady = "standby_ready"
+    case cancelled
+    case finalized
+}
+
+struct ProtectedLiveUpdateStatus: Codable, Equatable, Sendable {
+    let phase: ProtectedLiveUpdatePhase
+    let generation: UUID
+    let stateDigest: String
+    let appleStateDigest: String
+    let successorDigest: String
+    let isEnforcing: Bool
+    let issues: [ProtectionIssue]
+}
+
+struct ProtectedLiveUpdateReply: Codable, Equatable, Sendable {
+    let status: ProtectedLiveUpdateStatus?
+    let error: ProtectedServiceErrorPayload?
+
+    static func success(_ status: ProtectedLiveUpdateStatus) -> Self {
+        Self(status: status, error: nil)
+    }
+
+    static func failure(code: String, message: String) -> Self {
+        Self(status: nil, error: ProtectedServiceErrorPayload(code: code, message: message))
+    }
 }
 
 struct ProtectedCreateRequest: Codable, Equatable, Sendable {

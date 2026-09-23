@@ -14,10 +14,17 @@ ENTITLED_TARGETS = {
         "HardPauseShieldConfiguration": "Extensions/ShieldConfiguration/ShieldConfiguration.entitlements",
         "HardPauseShieldAction": "Extensions/ShieldAction/ShieldAction.entitlements",
     },
-    "macos": {"HardPause": "App/HardPause.entitlements"},
+    "macos": {
+        "HardPause": "App/HardPause.entitlements",
+        "HardPauseBrowserWorker": "App/HardPause.entitlements",
+    },
 }
 MACOS_PRODUCTS = {
     "HardPause": ("com.apple.product-type.application", "HardPause.app"),
+    "HardPauseBrowserWorker": (
+        "com.apple.product-type.application",
+        "HardPauseBrowserWorker.app",
+    ),
     "HardPauseService": ("com.apple.product-type.tool", "hard-pause-service"),
     "HardPauseCLI": ("com.apple.product-type.tool", "hard-pause"),
     "HardPauseTests": ("com.apple.product-type.bundle.unit-test", "HardPauseTests.xctest"),
@@ -33,6 +40,7 @@ MACOS_BUNDLED_SERVICE_FILES = {
     "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/org.hardpause.service.plist",
     "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hard-pause-service",
     "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hard-pause",
+    "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/HardPauseBrowserWorker.app",
 }
 
 

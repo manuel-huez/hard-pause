@@ -42,7 +42,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check Swift formatting
-        run: xcrun swift-format lint --strict --recursive core/Sources core/Tests ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
+        run: xcrun swift-format lint --strict --recursive core/Sources core/Tests ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/BrowserWorker macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
       - name: Test shared Apple core
         run: swift test --package-path core
       - name: Generate native projects

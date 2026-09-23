@@ -16,6 +16,8 @@
     <dict>
         <key>org.hardpause.service</key>
         <true/>
+        <key>org.hardpause.service.updates</key>
+        <true/>
     </dict>
     <key>KeepAlive</key>
     <true/>

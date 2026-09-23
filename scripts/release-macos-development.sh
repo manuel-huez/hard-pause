@@ -87,9 +87,9 @@ if [[ "$mode" == prepare ]]; then
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" =~ ^[1-9][0-9]*$ ]] || fail 'Invalid app build number'
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$plist")" == "$public_key" ]] || fail 'App contains the wrong Sparkle key'
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" == "https://github.com/$repo/releases/latest/download/appcast.xml" ]] || fail 'App contains the wrong update feed URL'
-    [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$plist")" == false ]] || fail 'Silent updates must stay disabled'
-    [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAllowsAutomaticUpdates' "$plist")" == false ]] || fail 'Automatic installation must stay disabled'
-    for code in "$app" "$app/Contents/Resources/hard-pause-service" "$app/Contents/Resources/hard-pause"; do
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$plist")" == true ]] || fail 'Automatic updates must be enabled'
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAllowsAutomaticUpdates' "$plist")" == true ]] || fail 'Automatic installation must be allowed'
+    for code in "$app" "$app/Contents/Resources/hard-pause-service" "$app/Contents/Resources/hard-pause" "$app/Contents/Resources/HardPauseBrowserWorker.app"; do
         /usr/bin/codesign --verify --deep --strict "$code"
         details="$(/usr/bin/codesign -dv --verbose=4 "$code" 2>&1)"
         [[ "$details" == *"Authority=$identity"* ]] || fail "Unexpected signing identity: $code"
@@ -114,7 +114,7 @@ if [[ -z "$remote_commit" ]]; then remote_commit="$(git ls-remote origin "refs/t
 if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then fail 'Release already exists; inspect it before retrying'; fi
 gh release create "$tag" --repo "$repo" --draft --verify-tag \
     --title "Hard Pause ${tag#v} (development signed)" \
-    --notes 'Development-signed macOS build. Apple has not notarized it. macOS may require manual approval on first open. Automatic background updates are disabled; use Check for Updates.'
+    --notes 'Development-signed macOS build. Apple has not notarized it. macOS may require manual approval on first open. Hard Pause checks for app updates automatically when protection is ready; Check for Updates is also in the menu.'
 gh release upload "$tag" --repo "$repo" "$archive" "$feed"
 [[ "$(gh release view "$tag" --repo "$repo" --json isDraft --jq '.isDraft')" == true ]] || fail 'Release is not a draft'
 echo "Staged draft release: https://github.com/$repo/releases/tag/$tag"

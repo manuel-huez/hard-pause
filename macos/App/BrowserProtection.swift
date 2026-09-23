@@ -3,7 +3,7 @@ import ApplicationServices
 import Carbon
 import Foundation
 
-/// Polling stays in the user's app session. No browser URLs are persisted or logged.
+/// Shared browser checks for the app and its user-session worker. URLs are never persisted or logged.
 @MainActor
 final class BrowserProtection: ObservableObject {
     @Published private(set) var statuses: [String: String] = [:]
@@ -14,6 +14,37 @@ final class BrowserProtection: ObservableObject {
     private let adultDatabase = AdultWebsiteDatabase()
     private let adultRatings = AdultRatingStore()
     private(set) var adultDatabaseStatus = "Loading local adult website list…"
+    var isPausePageReady: Bool { pageServer.pageURL != nil }
+    var pausePageURL: URL? { pageServer.pageURL }
+    private var browsersWithLocalPauseTabs = Set<String>()
+    private var possibleFirefoxPauseTabs = 0
+    private var isMigratingLocalPauseTabs = false
+    var mayHaveLocalPauseTabs: Bool {
+        !browsersWithLocalPauseTabs.isEmpty || possibleFirefoxPauseTabs > 0
+    }
+
+    /// Move pages served by this process before it exits. A browser we cannot inspect keeps handoff closed.
+    func migrateLocalPauseTabs(to newPage: URL) async -> Bool {
+        guard !isMigratingLocalPauseTabs else { return false }
+        isMigratingLocalPauseTabs = true
+        defer { isMigratingLocalPauseTabs = false }
+        guard let oldPage = pageServer.pageURL, oldPage != newPage else { return !mayHaveLocalPauseTabs }
+        for _ in 0..<200 {
+            if !isChecking { break }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        guard !isChecking else { return false }
+        for identifier in browsersWithLocalPauseTabs {
+            if await worker.migratePausePage(identifier, from: oldPage, to: newPage) {
+                browsersWithLocalPauseTabs.remove(identifier)
+            }
+        }
+        while possibleFirefoxPauseTabs > 0 {
+            guard await firefox.migratePausePage(from: oldPage, to: newPage) else { break }
+            possibleFirefoxPauseTabs -= 1
+        }
+        return !mayHaveLocalPauseTabs
+    }
 
     func hasAdultDatabase() async -> Bool { await adultDatabase.current() != nil }
 
@@ -93,10 +124,10 @@ final class BrowserProtection: ObservableObject {
 
     func check(
         snapshot: ProtectedServiceSnapshot?,
-        currentSnapshot: @escaping @MainActor @Sendable () -> ProtectedServiceSnapshot?
+        currentSnapshot: @escaping @MainActor @Sendable () async -> ProtectedServiceSnapshot?
     ) async {
         adultRatings.pruneIfNeeded()
-        guard !isChecking else { return }
+        guard !isChecking, !isMigratingLocalPauseTabs else { return }
         isChecking = true
         defer { isChecking = false }
         await refreshAdultDatabase(force: false)
@@ -119,9 +150,14 @@ final class BrowserProtection: ObservableObject {
                 continue
             }
             if browser.id == "org.mozilla.firefox" {
-                let currentRules = currentSnapshot().map(BrowserURLMatcher.rules) ?? []
+                let currentRules = await currentSnapshot().map(BrowserURLMatcher.rules) ?? []
                 statuses[browser.id] = firefox.check(rules: currentRules, page: page, adultDomains: database) {
                     self.adultRatings.contains($0)
+                }
+                if statuses[browser.id] == "Redirected blocked page."
+                    || statuses[browser.id] == "Cannot open the local pause page in Firefox."
+                {
+                    possibleFirefoxPauseTabs += 1
                 }
                 continue
             }
@@ -140,13 +176,14 @@ final class BrowserProtection: ObservableObject {
                 browser.id, rules: rules, page: page, adultDomains: database,
                 cachedRating: { self.adultRatings.contains($0) },
                 authorize: { url, ratedAdult in
-                    guard let latest = currentSnapshot() else { return false }
+                    guard let latest = await currentSnapshot() else { return false }
                     let active = BrowserURLMatcher.rules(from: latest)
                     if ratedAdult && active.contains(where: \.blocksAdultWebsites) { self.adultRatings.record(url) }
                     return BrowserURLMatcher.matches(
                         url, rules: active, adultDomains: database, hasAdultRating: ratedAdult)
                 }
             )
+            if outcome.mayHaveRedirected { browsersWithLocalPauseTabs.insert(browser.id) }
             if !outcome.success {
                 statuses[browser.id] = "Cannot check tabs. Check Automation permission."
             } else if database == nil && rules.contains(where: \.blocksAdultWebsites) {
@@ -191,18 +228,59 @@ private actor BrowserAutomationWorker {
     struct CheckOutcome {
         let success: Bool
         let rtaUnavailable: Bool
+        let mayHaveRedirected: Bool
+    }
+
+    func migratePausePage(_ identifier: String, from oldPage: URL, to newPage: URL) -> Bool {
+        guard ["com.google.Chrome", "com.apple.Safari"].contains(identifier),
+            !NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty
+        else { return false }
+        let source = """
+            with timeout of 10 seconds
+                tell application id "\(identifier)"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            try
+                                if URL of t is \(Self.literal(oldPage.absoluteString)) then
+                                    set URL of t to \(Self.literal(newPage.absoluteString))
+                                end if
+                            on error
+                                return -1
+                            end try
+                        end repeat
+                    end repeat
+                    set remaining to 0
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            try
+                                if URL of t is \(Self.literal(oldPage.absoluteString)) then
+                                    set remaining to remaining + 1
+                                end if
+                            on error
+                                return -1
+                            end try
+                        end repeat
+                    end repeat
+                    return remaining
+                end tell
+            end timeout
+            """
+        var error: NSDictionary?
+        let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
+        return error == nil && result?.int32Value == 0
     }
 
     func check(
         _ identifier: String, rules: [ProtectedRules], page: URL, adultDomains: AdultDomainDatabase?,
         cachedRating: @escaping @MainActor @Sendable (URL) -> Bool,
-        authorize: @escaping @MainActor @Sendable (URL, Bool) -> Bool
+        authorize: @escaping @MainActor @Sendable (URL, Bool) async -> Bool
     ) async -> CheckOutcome {
         var rtaUnavailable = false
+        var mayHaveRedirected = false
         // Only fixed, allowlisted application IDs enter the scripts. Tab URLs and the
         // destination are escaped as data, and the tab URL is checked again before a redirect.
         guard BrowserProtection.browsers.contains(where: { $0.id == identifier }) else {
-            return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable)
+            return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
         }
         let source = """
             with timeout of 2 seconds
@@ -223,11 +301,15 @@ private actor BrowserAutomationWorker {
             """
         var error: NSDictionary?
         guard let script = NSAppleScript(source: source) else {
-            return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable)
+            return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
         }
         let result = script.executeAndReturnError(&error)
-        guard error == nil else { return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable) }
-        if result.numberOfItems == 0 { return CheckOutcome(success: true, rtaUnavailable: rtaUnavailable) }
+        guard error == nil else {
+            return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
+        }
+        if result.numberOfItems == 0 {
+            return CheckOutcome(success: true, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
+        }
         for index in 1...result.numberOfItems {
             guard let item = result.atIndex(index), item.numberOfItems == 3,
                 let raw = item.atIndex(3)?.stringValue,
@@ -286,10 +368,16 @@ private actor BrowserAutomationWorker {
                 end timeout
                 """
             error = nil
+            mayHaveRedirected = true
             NSAppleScript(source: redirect)?.executeAndReturnError(&error)
-            if error != nil { return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable) }
+            if error != nil {
+                return CheckOutcome(
+                    success: false, rtaUnavailable: rtaUnavailable,
+                    mayHaveRedirected: mayHaveRedirected)
+            }
         }
-        return CheckOutcome(success: true, rtaUnavailable: rtaUnavailable)
+        return CheckOutcome(
+            success: true, rtaUnavailable: rtaUnavailable, mayHaveRedirected: mayHaveRedirected)
     }
 
     private static func literal(_ string: String) -> String {

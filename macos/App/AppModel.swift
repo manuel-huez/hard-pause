@@ -23,6 +23,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var isInstallingService = false
     @Published private(set) var startsAtLogin = false
     private let browserProtection = BrowserProtection()
+    private var browserWorker = BrowserWorkerClient()
+    @Published private(set) var browserWorkerReadiness: BrowserWorkerReadiness?
+    var browserWorkerReadyForHandoff: Bool {
+        browserWorkerReadiness?.isFresh() == true
+            && browserWorkerReadiness?.readyForHandoff == true
+            && !browserProtection.mayHaveLocalPauseTabs
+    }
+    private var lastBrowserWorkerProbe = Date.distantPast
+    private var browserWorkerProbeGeneration = 0
+    private var lastServiceUpdateRequest = Date.distantPast
+    private var isRequestingServiceUpdate = false
     @Published private(set) var adultDatabaseStatus = "Loading local adult website list…"
 
     func refreshAdultDatabase(force: Bool = true) async {
@@ -52,6 +63,12 @@ final class AppModel: ObservableObject {
     var setupReady: Bool { setupState == .ready }
     var needsServiceUpdate: Bool {
         snapshot.map { $0.protection.serviceVersion != ProtectedServiceContract.serviceVersion } ?? false
+    }
+    var serviceCanUpdateWithoutApproval: Bool {
+        guard let installed = Int(snapshot?.protection.serviceVersion ?? ""),
+            let bundled = Int(ProtectedServiceContract.serviceVersion)
+        else { return false }
+        return installed >= 8 && bundled >= installed
     }
     var setupServiceReady: Bool {
         serviceAvailability == .ready && snapshot?.protection.isEnforcing == true
@@ -326,10 +343,57 @@ final class AppModel: ObservableObject {
         browserConnectionMessages[identifier] = nil
         defer { connectingBrowserID = nil }
         await browserProtection.requestPermission(for: identifier)
+        let hadBrowserWorker = browserWorkerReadiness != nil
+        if hadBrowserWorker {
+            browserWorkerProbeGeneration += 1
+            let generation = browserWorkerProbeGeneration
+            let readiness = await browserWorker.requestPermission(for: identifier)
+            if generation == browserWorkerProbeGeneration { browserWorkerReadiness = readiness }
+        }
         browserStatuses = browserProtection.statuses
         adultDatabaseStatus = browserProtection.adultDatabaseStatus
         browserConnectionMessages[identifier] = browserProtection.statuses[identifier]
+        if hadBrowserWorker && browserWorkerReadiness == nil {
+            browserConnectionMessages[identifier] = "Hard Pause Browser Worker is unavailable."
+        } else if browserWorkerReadiness?.browserAccess.first(where: { $0.identifier == identifier })?.ready == false {
+            browserConnectionMessages[identifier] = "Allow Hard Pause Browser Worker to access this browser."
+        }
         await refreshSetup()
+    }
+
+    /// Always asks the signed worker directly; the cached value is only for display and fallback polling.
+    @discardableResult
+    func probeBrowserWorkerReadiness() async -> Bool {
+        lastBrowserWorkerProbe = Date()
+        browserWorkerProbeGeneration += 1
+        let generation = browserWorkerProbeGeneration
+        var candidates = BrowserWorkerClient.installedMachServices()
+        if browserWorkerReadiness != nil, !candidates.contains(browserWorker.machServiceName) {
+            candidates.append(browserWorker.machServiceName)
+        }
+        var selected: (BrowserWorkerClient, BrowserWorkerReadiness)?
+        for label in candidates {
+            guard let client = BrowserWorkerClient(machServiceName: label),
+                let report = await client.readiness()
+            else { continue }
+            if selected == nil || report.readyForHandoff {
+                selected = (client, report)
+            }
+            if report.readyForHandoff { break }
+        }
+        let readiness = selected?.1
+        if generation == browserWorkerProbeGeneration {
+            if let selected { browserWorker = selected.0 }
+            browserWorkerReadiness = readiness
+        }
+        if generation == browserWorkerProbeGeneration,
+            readiness?.isFresh() == true, readiness?.readyForHandoff == true,
+            let newPage = readiness?.pausePageURL, browserProtection.mayHaveLocalPauseTabs
+        {
+            _ = await browserProtection.migrateLocalPauseTabs(to: newPage)
+        }
+        return readiness?.isFresh() == true && readiness?.readyForHandoff == true
+            && !browserProtection.mayHaveLocalPauseTabs
     }
 
     func enableLoginStart() {
@@ -364,21 +428,48 @@ final class AppModel: ObservableObject {
     }
 
     func installService() async {
-        guard !isInstallingService, !isBusy, !hasPendingMutation else { return }
+        guard !isInstallingService, !isRequestingServiceUpdate, !isBusy, !hasPendingMutation else {
+            return
+        }
         isInstallingService = true
         defer { isInstallingService = false }
         while isRefreshing {
             try? await Task.sleep(for: .milliseconds(25))
         }
+        var liveUpdate = false
         if serviceAvailability == .ready {
             await refresh()
-            guard let snapshot, snapshot.blocks.allSatisfy({ $0.phase == .inactive }) else {
-                errorMessage = "End all plans through their normal waiting periods before updating protection."
+            guard let snapshot else {
+                errorMessage = "The protection service could not report its current state."
                 return
+            }
+            guard let appleStatus = try? await service.appleLockdownStatus() else {
+                errorMessage = "The protection service could not report Screen Time status."
+                return
+            }
+            if snapshot.blocks.contains(where: { $0.phase != .inactive })
+                || appleStatus.phase != .inactive
+            {
+                guard needsServiceUpdate,
+                    ProtectedServiceContract.liveServiceHandoffEnabled,
+                    let installedVersion = Int(snapshot.protection.serviceVersion),
+                    installedVersion >= 8,
+                    [.inactive, .active, .waitingForFullUnlock].contains(appleStatus.phase),
+                    await probeBrowserWorkerReadiness()
+                else {
+                    errorMessage = "Protection can update after all plans end or the browser worker is ready."
+                    return
+                }
+                liveUpdate = true
             }
         }
         do {
-            try await ServiceInstaller.install(updateExisting: needsServiceUpdate)
+            if serviceCanUpdateWithoutApproval {
+                _ = try await service.requestManagedUpdate(bundlePath: Bundle.main.bundleURL.path)
+                lastServiceUpdateRequest = Date()
+            } else {
+                try await ServiceInstaller.install(updateExisting: needsServiceUpdate, liveUpdate: liveUpdate)
+            }
             await refresh()
             await refreshSetup()
         } catch InstallerError.cancelled {
@@ -410,9 +501,54 @@ final class AppModel: ObservableObject {
             await refresh()
             await refreshSetup()
         }
+        if Date().timeIntervalSince(lastBrowserWorkerProbe) >= (browserWorkerReadiness == nil ? 10 : 4) {
+            lastBrowserWorkerProbe = Date()
+            Task { _ = await probeBrowserWorkerReadiness() }
+        }
+        await requestAutomaticServiceUpdateIfReady()
+        if let worker = browserWorkerReadiness, worker.isFresh(), worker.readyForHandoff {
+            browserStatuses = worker.browserStatuses
+            return
+        }
         await browserProtection.check(snapshot: snapshot) { [weak self] in self?.snapshot }
         browserStatuses = browserProtection.statuses
         adultDatabaseStatus = browserProtection.adultDatabaseStatus
+    }
+
+    private func requestAutomaticServiceUpdateIfReady() async {
+        guard serviceCanUpdateWithoutApproval,
+            !isRequestingServiceUpdate, !isInstallingService, !isBusy, !hasPendingMutation,
+            snapshot?.protection.isEnforcing == true,
+            snapshot?.protection.issues.isEmpty == true,
+            Date().timeIntervalSince(lastServiceUpdateRequest) >= 300
+        else { return }
+        lastServiceUpdateRequest = Date()
+        guard let status = try? await service.updateInstallationStatus(),
+            status.serviceVersion == snapshot?.protection.serviceVersion,
+            let bundleBuildText = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+            let bundleBuild = UInt64(bundleBuildText),
+            bundleBuild > status.installedAppBuild
+        else { return }
+        guard let appleStatus = try? await service.appleLockdownStatus() else { return }
+        let hasActiveBlock =
+            snapshot?.blocks.contains { $0.phase != .inactive } == true
+            || appleStatus.phase != .inactive
+        guard
+            !hasActiveBlock
+                || (ProtectedServiceContract.liveServiceHandoffEnabled
+                    && browserWorkerReadyForHandoff
+                    && [.inactive, .active, .waitingForFullUnlock].contains(appleStatus.phase))
+        else { return }
+        isRequestingServiceUpdate = true
+        defer { isRequestingServiceUpdate = false }
+        if hasActiveBlock {
+            guard await probeBrowserWorkerReadiness() else { return }
+        }
+        do {
+            _ = try await service.requestManagedUpdate(bundlePath: Bundle.main.bundleURL.path)
+        } catch {
+            errorMessage = "Protection could not start its update. Use Update protection to try again."
+        }
     }
 
     private func accept(_ nextSnapshot: ProtectedServiceSnapshot) {
