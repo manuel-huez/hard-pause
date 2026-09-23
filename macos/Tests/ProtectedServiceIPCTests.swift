@@ -126,14 +126,16 @@ final class ProtectedServiceIPCTests: XCTestCase {
         XCTAssertTrue(String(describing: operation).contains("<redacted>"))
     }
 
-    func testSafeUpdateVersionsAllowV4MigrationAndRejectUnknownVersions() {
+    func testSafeUpdateVersionsRequireAnUpdateGate() {
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "4"))
+        XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "5"))
         XCTAssertTrue(
             ProtectedServiceContract.supportsSafeUpdate(
                 from: ProtectedServiceContract.serviceVersion
             )
         )
         XCTAssertFalse(ProtectedServiceContract.supportsSafeUpdate(from: "3"))
+        XCTAssertFalse(ProtectedServiceContract.supportsSafeUpdate(from: "2"))
         XCTAssertFalse(ProtectedServiceContract.supportsSafeUpdate(from: ""))
     }
 }

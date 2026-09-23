@@ -8,30 +8,54 @@ protocol AppleLockdownStateStoring: AnyObject {
 
 final class JSONAppleLockdownStateStore: AppleLockdownStateStoring {
     private static let maximumBytes = 32 * 1_024
+    private static let maximumAuthenticatedBytes = 2 * maximumBytes + 4 * 1_024
 
     private let stateURL: URL
     private let requireRootOwnership: Bool
     private let fileManager: FileManager
+    private let authenticator: StateAuthenticator
 
     init(
         stateURL: URL = URL(fileURLWithPath: ProtectedServiceContract.appleLockdownStatePath),
         requireRootOwnership: Bool = true,
+        authenticationKeys: any StateAuthenticationKeyStoring = SystemKeychainStateAuthenticationKeys(
+            service: "org.hardpause.apple-lockdown-state"
+        ),
         fileManager: FileManager = .default
     ) {
         self.stateURL = stateURL
         self.requireRootOwnership = requireRootOwnership
+        authenticator = StateAuthenticator(keys: authenticationKeys)
         self.fileManager = fileManager
     }
 
     func load() throws -> AppleLockdownState {
         guard fileManager.fileExists(atPath: stateURL.path) else {
+            guard try !authenticator.keys.hasCommittedState() else {
+                throw ServiceRuntimeError.unreadableState("the Apple Lockdown state is missing")
+            }
             return AppleLockdownState()
         }
         do {
             try validateProtectedFile()
             let data = try Data(contentsOf: stateURL, options: .mappedIfSafe)
-            let state = try JSONDecoder().decode(AppleLockdownState.self, from: data)
+            let opened = try authenticator.open(data, purpose: "apple-lockdown")
+            guard opened.payload.count <= Self.maximumBytes else {
+                throw ServiceRuntimeError.unreadableState("the Apple Lockdown state is too large")
+            }
+            let state = try JSONDecoder().decode(AppleLockdownState.self, from: opened.payload)
             try state.validateForPersistence()
+            if opened.isLegacy {
+                guard !state.preventsMaintenance else {
+                    throw ServiceRuntimeError.unreadableState(
+                        "active legacy Apple Lockdown state needs the installed service"
+                    )
+                }
+                try writeAtomically(
+                    try authenticator.seal(opened.payload, purpose: "apple-lockdown")
+                )
+            }
+            try authenticator.keys.markCommittedState()
             return state
         } catch let error as ServiceRuntimeError {
             throw error
@@ -51,8 +75,10 @@ final class JSONAppleLockdownStateStore: AppleLockdownStateStoring {
             guard data.count <= Self.maximumBytes else {
                 throw AppleLockdownError.stateUnavailable
             }
+            _ = try load()
             try prepareDirectory()
-            try writeAtomically(data)
+            try writeAtomically(try authenticator.seal(data, purpose: "apple-lockdown"))
+            try authenticator.keys.markCommittedState()
         } catch let error as ServiceRuntimeError {
             throw error
         } catch let error as AppleLockdownError {
@@ -76,7 +102,7 @@ final class JSONAppleLockdownStateStore: AppleLockdownStateStoring {
                 "the Apple Lockdown state is not a regular file"
             )
         }
-        guard info.st_size > 0, info.st_size <= Self.maximumBytes else {
+        guard info.st_size > 0, info.st_size <= Self.maximumAuthenticatedBytes else {
             throw ServiceRuntimeError.unreadableState(
                 "the Apple Lockdown state has an invalid size"
             )

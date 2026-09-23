@@ -432,47 +432,46 @@ private struct BlockPanel: View {
         VStack(alignment: .leading, spacing: 16) {
             BlockStatusPanel(block: block, showUnlockGuidance: showUnlockGuidance)
 
-            if block.phase == .inactive || block.canRequestBreak || block.canCancelBreak
-                || block.canRequestFullEnd
-            {
-                HStack(spacing: 12) {
-                    if block.phase == .inactive {
-                        Button("Start", action: activate)
-                            .buttonStyle(PauseButtonStyle(primary: true))
-                            .accessibilityLabel("Start plan \(block.draft.name)")
-                        Button("Edit", action: edit)
-                            .buttonStyle(PauseButtonStyle())
-                            .accessibilityLabel("Edit plan \(block.draft.name)")
-                        Spacer()
-                        Menu {
-                            Button("Delete plan", role: .destructive, action: delete)
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 16, weight: .semibold))
-                                .frame(width: 32, height: 32)
-                                .contentShape(Circle())
+            HStack(spacing: 12) {
+                if block.phase == .inactive {
+                    Button("Start", action: activate)
+                        .buttonStyle(PauseButtonStyle(primary: true))
+                        .accessibilityLabel("Start plan \(block.draft.name)")
+                    Button("Edit", action: edit)
+                        .buttonStyle(PauseButtonStyle())
+                        .accessibilityLabel("Edit plan \(block.draft.name)")
+                    Spacer()
+                    Menu {
+                        Button("Delete plan", role: .destructive, action: delete)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 32, height: 32)
+                            .contentShape(Circle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .mascotHoverTarget()
+                    .fixedSize()
+                    .accessibilityLabel("More actions for plan \(block.draft.name)")
+                } else {
+                    Button("Add rules", action: edit)
+                        .buttonStyle(PauseButtonStyle())
+                        .accessibilityLabel("Add rules to plan \(block.draft.name)")
+                    if block.canRequestBreak || block.canCancelBreak {
+                        BreakRequestButton(block: block)
+                    }
+                    if block.canRequestFullEnd {
+                        Button("Request to end") {
+                            Task { _ = await model.requestEnd(for: block) }
                         }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        .mascotHoverTarget()
-                        .fixedSize()
-                        .accessibilityLabel("More actions for plan \(block.draft.name)")
-                    } else {
-                        if block.canRequestBreak || block.canCancelBreak {
-                            BreakRequestButton(block: block)
-                        }
-                        if block.canRequestFullEnd {
-                            Button("Request to end") {
-                                Task { _ = await model.requestEnd(for: block) }
-                            }
-                            .buttonStyle(PauseButtonStyle())
-                            .accessibilityLabel("Request to end for plan \(block.draft.name)")
-                        }
+                        .buttonStyle(PauseButtonStyle())
+                        .accessibilityLabel("Request to end for plan \(block.draft.name)")
                     }
                 }
-                .controlSize(.large)
-                .disabled(block.phase == .inactive ? !model.canChangeBlocks : !model.canRequestUnlock)
             }
+            .controlSize(.large)
+            .disabled(block.phase == .inactive ? !model.canChangeBlocks : !model.canRequestUnlock)
 
             Divider()
             Button {
@@ -818,6 +817,10 @@ private struct BlockEditorView: View {
     @State private var hasFixedDuration: Bool
     @State private var fixedDuration: TimeInterval
     @State private var validationMessage: String?
+    @State private var addedDomains: [String] = []
+    @State private var addedURLPatterns: [String] = []
+    @State private var addedApplications: [ProtectedApplication] = []
+    @State private var enableAdultWebsites = false
     @State private var isSubmitting = false
     @State private var mascotTracking = EditorMascotTracking()
     @State private var mascotGreetingTrigger = 0
@@ -892,17 +895,9 @@ private struct BlockEditorView: View {
 
             if isReadOnly, let block {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        Label(
-                            "This plan is active. Its rules and waiting periods cannot be edited until it ends.",
-                            systemImage: "lock.fill"
-                        )
-                        .foregroundStyle(PauseTheme.coral)
-                        .fixedSize(horizontal: false, vertical: true)
-                        FixedRulesView(draft: block.draft)
-                            .settingsPanel()
-                    }
-                    .padding(24)
+                    activeRulesStep(for: block)
+                        .padding(24)
+                        .disabled(isSubmitting)
                 }
             } else {
                 ScrollView {
@@ -956,16 +951,88 @@ private struct BlockEditorView: View {
     }
 
     private var headerTitle: String {
-        if isReadOnly { return "Plan details" }
+        if isReadOnly { return "Add protection" }
         return block == nil ? "Create a plan" : "Edit plan"
     }
 
     private var headerDetail: String {
-        if isReadOnly { return block?.draft.name ?? "" }
+        if isReadOnly {
+            return "Add rules to \(block?.draft.name ?? "this plan"). Existing rules and delays stay fixed."
+        }
         switch step {
         case .intention: return "Start with a suggestion that fits what you want to change."
         case .boundaries: return "Name your plan and choose the websites and apps it will block."
         case .commitment: return "Review your plan and choose when you can get access."
+        }
+    }
+
+    private func activeRulesStep(for block: ProtectedBlockSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Label(
+                "You can add websites and apps. You cannot remove existing rules or change the waiting periods while this plan is active.",
+                systemImage: "lock.fill"
+            )
+            .foregroundStyle(PauseTheme.coral)
+            .fixedSize(horizontal: false, vertical: true)
+            FixedRulesView(draft: block.draft)
+                .settingsPanel()
+
+            editorSection("Add websites") {
+                HStack(spacing: 10) {
+                    CaretTrackingTextField(
+                        "example.com or example.com/page", text: $domainInput,
+                        accessibilityLabel: "Website to add", onSubmit: { _ = addActiveWebsite() },
+                        onCaretChange: { mascotTracking.caret = $0 }
+                    )
+                    .frame(height: 28)
+                    Button("Add") { _ = addActiveWebsite() }
+                        .disabled(domainInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                PagedPlanRules(addedDomains) { domain in
+                    RemovableRule(title: domain, symbol: "globe") {
+                        addedDomains.removeAll { $0 == domain }
+                        addedURLPatterns.removeAll { $0 == "*.\(domain)" }
+                    }
+                }
+                PagedPlanRules(
+                    addedURLPatterns.filter { pattern in
+                        !addedDomains.contains { pattern == "*.\($0)" }
+                    }
+                ) { pattern in
+                    RemovableRule(title: pattern, symbol: "link") {
+                        addedURLPatterns.removeAll { $0 == pattern }
+                    }
+                }
+            }
+
+            if !block.draft.rules.blocksAdultWebsites {
+                editorSection("Adult websites") {
+                    Toggle("Block adult websites", isOn: $enableAdultWebsites)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                }
+            }
+
+            editorSection("Add applications") {
+                PagedPlanRules(addedApplications) { application in
+                    RemovableRule(title: application.displayName, symbol: "app") {
+                        addedApplications.removeAll { $0.id == application.id }
+                    }
+                }
+                Button {
+                    Task {
+                        let selected = await model.chooseApplications()
+                        for application in selected
+                        where !block.draft.rules.blockedApplications.contains(where: { $0.id == application.id })
+                            && !addedApplications.contains(where: { $0.id == application.id })
+                        {
+                            addedApplications.append(application)
+                        }
+                    }
+                } label: {
+                    Label("Add applications…", systemImage: "plus")
+                }
+            }
         }
     }
 
@@ -1343,7 +1410,7 @@ private struct BlockEditorView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if step == .commitment && !isReadOnly {
-                Text("Starting locks these rules and waiting periods until the plan ends.")
+                Text("Starting fixes these rules and waiting periods. You can add rules later.")
                     .font(.caption)
                     .foregroundStyle(PauseTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1371,8 +1438,9 @@ private struct BlockEditorView: View {
                 Spacer()
 
                 if isReadOnly {
-                    Button("Close") { dismiss() }
+                    Button("Save added rules") { saveAddedRules() }
                         .buttonStyle(PauseButtonStyle(primary: true))
+                        .disabled(!model.canRequestUnlock || !hasAddedRules)
                 } else {
                     if step != availableSteps.first {
                         Button("Back", action: goBack)
@@ -1426,6 +1494,11 @@ private struct BlockEditorView: View {
 
     private var hasRules: Bool {
         !domains.isEmpty || !urlPatterns.isEmpty || !applications.isEmpty || blocksAdultWebsites
+    }
+
+    private var hasAddedRules: Bool {
+        !addedDomains.isEmpty || !addedURLPatterns.isEmpty || !addedApplications.isEmpty
+            || enableAdultWebsites || !domainInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func editorSection<Content: View>(
@@ -1536,6 +1609,37 @@ private struct BlockEditorView: View {
         return true
     }
 
+    @discardableResult
+    private func addActiveWebsite() -> Bool {
+        guard let block else { return false }
+        let input = domainInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { return true }
+        if let domain = URLPatternRule.exactDomain(from: input) {
+            if !block.draft.rules.blockedDomains.contains(domain), !addedDomains.contains(domain) {
+                addedDomains.append(domain)
+            }
+            let wildcard = "*.\(domain)"
+            if URLPatternRule.normalize(wildcard) != nil,
+                !block.draft.rules.blockedURLPatterns.contains(wildcard),
+                !addedURLPatterns.contains(wildcard)
+            {
+                addedURLPatterns.append(wildcard)
+            }
+        } else if let pattern = URLPatternRule.normalize(input) {
+            if !block.draft.rules.blockedURLPatterns.contains(pattern),
+                !addedURLPatterns.contains(pattern)
+            {
+                addedURLPatterns.append(pattern)
+            }
+        } else {
+            validationMessage = "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
+            return false
+        }
+        domainInput = ""
+        validationMessage = nil
+        return true
+    }
+
     private func commitPendingWebsite() -> Bool {
         let input = domainInput.trimmingCharacters(in: .whitespacesAndNewlines)
         return input.isEmpty || addDomain()
@@ -1600,6 +1704,46 @@ private struct BlockEditorView: View {
                 } else {
                     saved = await model.create(draft)
                 }
+                isSubmitting = false
+                if saved { dismiss() }
+            }
+        } catch {
+            validationMessage = planValidationMessage(for: error)
+        }
+    }
+
+    private func saveAddedRules() {
+        guard isReadOnly, !isSubmitting, !model.isBusy, let block else { return }
+        guard addActiveWebsite() else { return }
+        let current = block.draft
+        let rules = current.rules.adding(
+            domains: addedDomains,
+            urlPatterns: addedURLPatterns,
+            applications: addedApplications,
+            adultWebsites: enableAdultWebsites
+        )
+        guard rules != current.rules else {
+            validationMessage = "Add at least one new website, application, or adult-site rule."
+            return
+        }
+        do {
+            let draft = try ProtectedBlockDraft(
+                name: current.name,
+                rules: rules,
+                protectionMode: current.protectionMode,
+                breakDelay: current.breakDelay,
+                fullUnlockDelay: current.fullUnlockDelay,
+                breakDuration: current.breakDuration,
+                elapsedDuration: current.elapsedDuration
+            ).validatedForMutation()
+            isSubmitting = true
+            validationMessage = nil
+            Task {
+                let saved = await model.update(
+                    id: block.id,
+                    expectedRevision: block.revision,
+                    draft: draft
+                )
                 isSubmitting = false
                 if saved { dismiss() }
             }

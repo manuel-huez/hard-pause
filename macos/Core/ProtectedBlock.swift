@@ -31,6 +31,43 @@ struct ProtectedRules: Codable, Equatable, Sendable {
     var blocksStarterAdultSites: Bool { !blockedAdultDomains.isEmpty }
     var allBlockedDomains: [String] { blockedDomains + blockedAdultDomains }
 
+    func includesAllRules(in previous: ProtectedRules) -> Bool {
+        Set(previous.blockedDomains).isSubset(of: Set(blockedDomains))
+            && Set(previous.blockedURLPatterns).isSubset(of: Set(blockedURLPatterns))
+            && Set(previous.blockedApplications).isSubset(of: Set(blockedApplications))
+            && Set(previous.blockedAdultDomains).isSubset(of: Set(blockedAdultDomains))
+            && (!previous.blocksAdultWebsites || blocksAdultWebsites)
+            && (previous.blockedAdultDomains.isEmpty
+                || adultRulesVersion == previous.adultRulesVersion)
+    }
+
+    func adding(
+        domains: [String] = [],
+        urlPatterns: [String] = [],
+        applications: [ProtectedApplication] = [],
+        adultWebsites: Bool = false
+    ) -> ProtectedRules {
+        let patterns = blockedURLPatterns + urlPatterns
+        let networkDomains = urlPatterns.flatMap { URLPatternRule.networkDomains(from: $0) }
+        var seenDomains = Set<String>()
+        let allDomains = (blockedDomains + domains + networkDomains).filter {
+            seenDomains.insert($0).inserted
+        }
+        var seenApplications = Set<String>()
+        let allApplications = (blockedApplications + applications).filter {
+            seenApplications.insert($0.id).inserted
+        }
+        var seenPatterns = Set<String>()
+        return ProtectedRules(
+            blockedDomains: allDomains,
+            blockedApplications: allApplications,
+            blockedAdultDomains: blockedAdultDomains,
+            adultRulesVersion: adultRulesVersion,
+            blockedURLPatterns: patterns.filter { seenPatterns.insert($0).inserted },
+            blocksAdultWebsites: blocksAdultWebsites || adultWebsites
+        )
+    }
+
     init(
         blockedDomains: [String],
         blockedApplications: [ProtectedApplication],
@@ -288,7 +325,7 @@ struct ProtectedPendingRequest: Codable, Equatable, Sendable {
 }
 
 struct ProtectedActivation: Codable, Equatable, Sendable {
-    let frozenDraft: ProtectedBlockDraft
+    private(set) var frozenDraft: ProtectedBlockDraft
     let activatedAt: Date
     private(set) var accumulatedElapsed: TimeInterval
     private(set) var anchorContinuousTime: TimeInterval?
@@ -309,6 +346,10 @@ struct ProtectedActivation: Codable, Equatable, Sendable {
     var restrictionsAreActive: Bool {
         guard let breakEndsAtElapsed else { return true }
         return accumulatedElapsed >= breakEndsAtElapsed
+    }
+
+    mutating func addRules(from draft: ProtectedBlockDraft) {
+        frozenDraft = draft
     }
 
     mutating func request(_ kind: ProtectedRequestKind, at reading: ClockReading) throws {
@@ -511,8 +552,20 @@ struct ProtectedBlockRecord: Codable, Equatable, Identifiable, Sendable {
     }
 
     mutating func update(_ draft: ProtectedBlockDraft) throws {
-        guard activation == nil else { throw ProtectedStateError.activeBlockIsImmutable }
-        self.draft = try draft.validatedForMutation()
+        let validated = try draft.validatedForMutation()
+        if var activation {
+            guard validated.name == self.draft.name,
+                validated.protectionMode == self.draft.protectionMode,
+                validated.breakDelay == self.draft.breakDelay,
+                validated.fullUnlockDelay == self.draft.fullUnlockDelay,
+                validated.breakDuration == self.draft.breakDuration,
+                validated.elapsedDuration == self.draft.elapsedDuration,
+                validated.rules.includesAllRules(in: self.draft.rules)
+            else { throw ProtectedStateError.activeBlockIsImmutable }
+            activation.addRules(from: validated)
+            self.activation = activation
+        }
+        self.draft = validated
         revision += 1
     }
 
@@ -912,7 +965,8 @@ enum ProtectedStateError: LocalizedError, Equatable {
         case .invalid(let message): return message
         case .blockNotFound: return "The block no longer exists."
         case .revisionConflict: return "The block changed. Reload it and try again."
-        case .activeBlockIsImmutable: return "An active block cannot be changed or deleted."
+        case .activeBlockIsImmutable:
+            return "An active block can only gain rules. It cannot be weakened or deleted."
         case .inactive: return "The block is not active."
         case .pendingRequestExists: return "A request is already waiting and cannot be replaced."
         case .noPendingBreakRequest: return "There is no pending break request to cancel."

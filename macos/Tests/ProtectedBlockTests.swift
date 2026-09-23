@@ -42,6 +42,66 @@ final class ProtectedBlockTests: XCTestCase {
         XCTAssertEqual(state.blocks.first?.activation?.frozenDraft, active.draft)
     }
 
+    func testActiveBlockCanGainRulesWithoutChangingItsCommitment() throws {
+        var state = ProtectedState()
+        let original = makeDraft(
+            domains: ["example.com"],
+            applications: [makeApplication("org.example.old", name: "Old")]
+        )
+        let created = try state.create(original)
+        try state.activate(id: created.id, expectedRevision: created.revision, at: reading(0))
+        let active = try XCTUnwrap(state.blocks.first)
+        let addedRules = original.rules.adding(
+            domains: ["new.example"],
+            urlPatterns: ["*.new.example"],
+            applications: [makeApplication("org.example.new", name: "New")],
+            adultWebsites: true
+        )
+        let strengthened = ProtectedBlockDraft(
+            name: original.name,
+            rules: addedRules,
+            protectionMode: original.protectionMode,
+            breakDelay: original.breakDelay,
+            fullUnlockDelay: original.fullUnlockDelay,
+            breakDuration: original.breakDuration,
+            elapsedDuration: original.elapsedDuration
+        )
+
+        try state.update(id: active.id, expectedRevision: active.revision, draft: strengthened)
+
+        let updated = try XCTUnwrap(state.blocks.first)
+        XCTAssertEqual(updated.activation?.frozenDraft, strengthened)
+        XCTAssertEqual(updated.draft, strengthened)
+        XCTAssertEqual(updated.revision, active.revision + 1)
+        XCTAssertEqual(
+            Set(state.effectiveRestrictions().blockedDomains),
+            Set(["example.com", "new.example", "www.new.example"])
+        )
+        XCTAssertEqual(state.effectiveRestrictions().blockedApplications.count, 2)
+        try state.validateForPersistence()
+
+        XCTAssertThrowsError(
+            try state.update(id: updated.id, expectedRevision: updated.revision, draft: original)
+        ) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .activeBlockIsImmutable)
+        }
+        let shorterWait = ProtectedBlockDraft(
+            name: strengthened.name,
+            rules: strengthened.rules,
+            protectionMode: strengthened.protectionMode,
+            breakDelay: strengthened.breakDelay,
+            fullUnlockDelay: 60,
+            breakDuration: strengthened.breakDuration,
+            elapsedDuration: strengthened.elapsedDuration
+        )
+        XCTAssertThrowsError(
+            try state.update(id: updated.id, expectedRevision: updated.revision, draft: shorterWait)
+        ) { error in
+            XCTAssertEqual(error as? ProtectedStateError, .activeBlockIsImmutable)
+        }
+        XCTAssertEqual(state.blocks.first, updated)
+    }
+
     func testLegacyDraftWithoutProtectionModeDefaultsToSoftLock() throws {
         let draft = makeDraft()
         var object = try XCTUnwrap(

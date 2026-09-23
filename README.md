@@ -12,7 +12,7 @@ Hard Pause is a local iPhone, iPad, and Mac app for intentional breaks from sele
 ## Product rules
 
 - Create independent named plans for apps and websites. **Pause** permits delayed breaks and an optional fixed duration. **Hard Pause** permits no breaks or automatic end; access returns only after the full-unlock wait.
-- Activation fixes the block name, rules, and timing. An active block cannot be edited or deleted, including during a break.
+- Activation fixes the block name and timing. On Mac, an active plan can gain rules but cannot lose rules or be deleted. iOS keeps active rules fixed.
 - A request affects its plan. Ending a Mac Hard Pause plan also starts the Screen Time code removal wait. Overlapping rules remain until every plan that contains them allows access.
 - A fixed duration ends only its block and takes priority over a pending request or break.
 - Protection and storage failures must remain visible.

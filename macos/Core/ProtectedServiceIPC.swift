@@ -2,8 +2,8 @@ import Foundation
 
 enum ProtectedServiceContract {
     static let machServiceName = "org.hardpause.service"
-    static let serviceVersion = "5"
-    static let safeUpdateSourceVersions: Set<String> = ["4"]
+    static let serviceVersion = "6"
+    static let safeUpdateSourceVersions: Set<String> = ["4", "5"]
     static let maximumPayloadBytes = 1_048_576
     static let supportDirectory = "/Library/Application Support/HardPause"
     static let enrollmentPath = "\(supportDirectory)/enrollment-v1.json"

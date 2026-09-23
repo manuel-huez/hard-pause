@@ -58,7 +58,8 @@ Do not test installation on a primary Mac until the installer, removal, reboot, 
 - iOS retains Apple's automatic web-content filter; this macOS database does not replace it.
 - Literal IPv4 and IPv6 rules use an owned PF child anchor. The service does not resolve domains to CDN addresses, reload the main PF ruleset, flush global state, or disable PF.
 - Selected apps are closed while a contributing block is active. The service checks their signed designated requirements. Closing an app can lose unsaved work and does not prevent an administrator from changing the system.
-- Active block rules stay fixed. A break removes only that block from the effective union; overlapping blocks continue to apply. A fixed duration can end its block before a pending request completes.
+- Active plans can gain website, application, and adult-site rules. Existing rules, the plan name, and waiting periods stay fixed. A break removes only that block from the effective union; overlapping blocks continue to apply. A fixed duration can end its block before a pending request completes.
+- The service authenticates saved plan state, pending transitions, and Screen Time setup state with keys in System Keychain. This detects direct file edits and missing committed files. The rules are not encrypted. An administrator can still restore an older authenticated file or defeat software-only protection. Legacy state is authenticated only when protection is inactive.
 - VPNs, proxies, encrypted DNS, existing connections, and direct addresses can bypass host-name controls. A local administrator can stop or remove the service. Browser redirects also check full tab URLs. Hard Pause does not decrypt page content.
 
 The old Network Extension target and shared writable GUI policy file were removed. The production route does not need browser extensions, a hosted service, accounts, analytics, or remote classification.

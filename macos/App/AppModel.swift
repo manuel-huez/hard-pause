@@ -170,7 +170,10 @@ final class AppModel: ObservableObject {
         expectedRevision: Int,
         draft: ProtectedBlockDraft
     ) async -> Bool {
-        await mutate {
+        if let current = blocks.first(where: { $0.id == id }), current.phase != .inactive {
+            guard await adultFilterReady(for: draft.rules) else { return false }
+        }
+        return await mutate {
             try await service.update(id: id, expectedRevision: expectedRevision, draft: draft)
         }
     }
@@ -214,7 +217,7 @@ final class AppModel: ObservableObject {
         guard rules.blocksAdultWebsites else { return true }
         guard await browserProtection.hasAdultDatabase() else {
             errorMessage =
-                "The adult website list must finish downloading before this plan can start. Check the download in Settings."
+                "The adult website list must finish downloading before adult-site blocking can be enabled. Check the download in Settings."
             return false
         }
         return true

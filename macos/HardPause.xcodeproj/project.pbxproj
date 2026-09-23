@@ -29,6 +29,7 @@
 		115568E2B919E0425F4623DC /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB8AD2EF9D6D37968F814C2 /* main.swift */; };
 		1331BFF18D1A156968B46014 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */; };
 		14695C6D99D94EC0283D4CD8 /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
+		14D8FBB2BD84FC58C476C8D9 /* StateAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC76340624380D7D5F0F92F /* StateAuthentication.swift */; };
 		151F8E002910DDB623202EC1 /* PFEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235822A68E5E99CAAA7E5132 /* PFEnforcer.swift */; };
 		15FCB2256620365A90E9EBE5 /* AppleProtectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC6EB2C362F7DBFE8E4323E3 /* AppleProtectionView.swift */; };
 		169269BEDCAD38E8FFBA2B50 /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D017F84348B17F323BBD8B /* PortableDomainList.swift */; };
@@ -162,6 +163,7 @@
 		F840DB0305648A2860A3684B /* BlockedPage in Resources */ = {isa = PBXBuildFile; fileRef = A132D52C40502F34307579F9 /* BlockedPage */; };
 		F8E0E77C288687C57C84BDF1 /* AppleProtectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77328E3BB0BF25A6443E2AA /* AppleProtectionState.swift */; };
 		FA3747BBC3512CBED969914F /* AdultWebsiteRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D05715D281272A3845C34D4 /* AdultWebsiteRules.swift */; };
+		FA6DDC80E8E305E7EED111F9 /* StateAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC76340624380D7D5F0F92F /* StateAuthentication.swift */; };
 		FB497191CB98D1C9BC2095A5 /* AppleProtectionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 005EBBCF670BEFB0962C0392 /* AppleProtectionModel.swift */; };
 		FC56B797FF1F9DFE7B744934 /* WebsiteRulePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E805518C3528C2FBF4512415 /* WebsiteRulePresentation.swift */; };
 		FD9BF478745AAB2F13893347 /* AgentCommitmentGuidance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */; };
@@ -254,6 +256,7 @@
 		CC6EB2C362F7DBFE8E4323E3 /* AppleProtectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleProtectionView.swift; sourceTree = "<group>"; };
 		D06475CAF9D4B4230C551ED7 /* AdultWebsiteDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdultWebsiteDatabase.swift; sourceTree = "<group>"; };
 		D77328E3BB0BF25A6443E2AA /* AppleProtectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleProtectionState.swift; sourceTree = "<group>"; };
+		DDC76340624380D7D5F0F92F /* StateAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateAuthentication.swift; sourceTree = "<group>"; };
 		E3F1EE681A9CD1B0B44159A0 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		E4CD98976EE9E6978DA56DD4 /* AppleProtectionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleProtectionModelTests.swift; sourceTree = "<group>"; };
 		E7A55B346B4C750C7BEED939 /* PauseCoreClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreClock.swift; sourceTree = "<group>"; };
@@ -541,6 +544,7 @@
 				C67932AFAB8002B6016394A3 /* ProtectedServiceEngine.swift */,
 				28277D418288D8C500796009 /* ProtectedStateStore.swift */,
 				C07578D74BB9C3F153392F59 /* ServiceSupport.swift */,
+				DDC76340624380D7D5F0F92F /* StateAuthentication.swift */,
 			);
 			path = Service;
 			sourceTree = "<group>";
@@ -818,6 +822,7 @@
 				10B3D00A3EDC901887D83EBF /* ProtectionMode.swift in Sources */,
 				02DD56773059EE71109D5379 /* ServiceSupport.swift in Sources */,
 				AE197935A8ECD1E71A091AE0 /* ServiceTestSupport.swift in Sources */,
+				FA6DDC80E8E305E7EED111F9 /* StateAuthentication.swift in Sources */,
 				04DE89A0CB419ED22D5F8A20 /* WebsiteRulePresentation.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -930,6 +935,7 @@
 				BCECA29FB4E5A381CCE0C380 /* ProtectedStateStore.swift in Sources */,
 				DC0F37ED3077E420360CC880 /* ProtectionMode.swift in Sources */,
 				271780DEEA027871BD257E4A /* ServiceSupport.swift in Sources */,
+				14D8FBB2BD84FC58C476C8D9 /* StateAuthentication.swift in Sources */,
 				E7EC975BD5528A82FC4145A8 /* WebsiteRulePresentation.swift in Sources */,
 				6E51B0224BEBB7E7A722102F /* main.swift in Sources */,
 			);

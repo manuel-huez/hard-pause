@@ -41,6 +41,7 @@ enum OfflineServiceMaintenance {
 
 final class JSONProtectedStateStore: ProtectedStateStoring {
     private static let maximumPendingBytes = ProtectedServiceContract.maximumPayloadBytes + 4 * 1_024
+    private static let maximumAuthenticatedBytes = 2 * maximumPendingBytes + 4 * 1_024
 
     private let stateURL: URL
     private let pendingStateURL: URL
@@ -48,6 +49,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
     private let requireRootOwnership: Bool
     private let maximumBackups: Int
     private let fileManager: FileManager
+    private let authenticator: StateAuthenticator
 
     init(
         stateURL: URL = URL(fileURLWithPath: ProtectedServiceContract.statePath),
@@ -57,6 +59,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         backupDirectory: URL = URL(fileURLWithPath: ProtectedServiceContract.backupDirectory),
         requireRootOwnership: Bool = true,
         maximumBackups: Int = 8,
+        authenticationKeys: any StateAuthenticationKeyStoring = SystemKeychainStateAuthenticationKeys(),
         fileManager: FileManager = .default
     ) {
         self.stateURL = stateURL
@@ -64,6 +67,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         self.backupDirectory = backupDirectory
         self.requireRootOwnership = requireRootOwnership
         self.maximumBackups = maximumBackups
+        authenticator = StateAuthenticator(keys: authenticationKeys)
         self.fileManager = fileManager
     }
 
@@ -74,7 +78,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                 let primary =
                     fileManager.fileExists(atPath: stateURL.path)
                     ? try readState(at: stateURL)
-                    : ProtectedState()
+                    : try emptyStateIfNeverCommitted()
                 if primary == pending.candidate {
                     try clearPendingCandidate()
                     return primary
@@ -88,7 +92,9 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                 try clearPendingCandidate()
                 return pending.candidate
             }
-            guard fileManager.fileExists(atPath: stateURL.path) else { return ProtectedState() }
+            guard fileManager.fileExists(atPath: stateURL.path) else {
+                return try emptyStateIfNeverCommitted()
+            }
             return try readState(at: stateURL)
         } catch let error as ServiceRuntimeError {
             throw error
@@ -109,15 +115,18 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
             try prepareDirectory(stateURL.deletingLastPathComponent())
             try prepareDirectory(backupDirectory)
             if fileManager.fileExists(atPath: stateURL.path) {
-                try validateProtectedFile(at: stateURL, maximumBytes: ProtectedServiceContract.maximumPayloadBytes)
+                _ = try readState(at: stateURL)
                 let previous = try Data(contentsOf: stateURL, options: .mappedIfSafe)
                 let milliseconds = Int(Date().timeIntervalSince1970 * 1_000)
                 let backup = backupDirectory.appendingPathComponent(
                     "state-v2-\(milliseconds)-\(UUID().uuidString).json"
                 )
                 try writeAtomically(previous, to: backup)
+            } else {
+                _ = try emptyStateIfNeverCommitted()
             }
-            try writeAtomically(data, to: stateURL)
+            try writeAtomically(try authenticator.seal(data, purpose: "primary"), to: stateURL)
+            try authenticator.keys.markCommittedState()
             try pruneBackups()
         } catch let error as ProtectedStateError {
             throw error
@@ -134,7 +143,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
             let base =
                 fileManager.fileExists(atPath: stateURL.path)
                 ? try readState(at: stateURL)
-                : ProtectedState()
+                : try emptyStateIfNeverCommitted()
             try base.validateForPersistence()
             let transition = PendingStateTransition(
                 baseStateDigest: try stateDigest(base),
@@ -147,7 +156,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                 throw ProtectedStateError.aggregateLimitReached
             }
             try prepareDirectory(pendingStateURL.deletingLastPathComponent())
-            try writeAtomically(data, to: pendingStateURL)
+            try writeAtomically(try authenticator.seal(data, purpose: "pending"), to: pendingStateURL)
         } catch let error as ProtectedStateError {
             throw error
         } catch let error as ServiceRuntimeError {
@@ -162,7 +171,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         do {
             try validateProtectedFile(
                 at: pendingStateURL,
-                maximumBytes: Self.maximumPendingBytes
+                maximumBytes: Self.maximumAuthenticatedBytes
             )
             try fileManager.removeItem(at: pendingStateURL)
             try syncDirectory(pendingStateURL.deletingLastPathComponent())
@@ -174,21 +183,56 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
     }
 
     private func readState(at url: URL) throws -> ProtectedState {
-        try validateProtectedFile(at: url, maximumBytes: ProtectedServiceContract.maximumPayloadBytes)
+        try validateProtectedFile(at: url, maximumBytes: Self.maximumAuthenticatedBytes)
         let data = try Data(contentsOf: url, options: .mappedIfSafe)
-        let state = try JSONDecoder().decode(ProtectedState.self, from: data)
+        let opened = try authenticator.open(data, purpose: "primary")
+        guard opened.payload.count <= ProtectedServiceContract.maximumPayloadBytes else {
+            throw ServiceRuntimeError.unreadableState("protected state is too large")
+        }
+        let state = try JSONDecoder().decode(ProtectedState.self, from: opened.payload)
         try state.validateForPersistence()
+        if opened.isLegacy {
+            guard state.blocks.allSatisfy({ $0.activation == nil }) else {
+                throw ServiceRuntimeError.unreadableState(
+                    "active legacy state needs the installed service; protection was not reset"
+                )
+            }
+            try writeAtomically(try authenticator.seal(opened.payload, purpose: "primary"), to: url)
+        }
+        try authenticator.keys.markCommittedState()
         return state
     }
 
     private func readPendingTransition() throws -> PendingStateTransition {
-        try validateProtectedFile(at: pendingStateURL, maximumBytes: Self.maximumPendingBytes)
+        try validateProtectedFile(at: pendingStateURL, maximumBytes: Self.maximumAuthenticatedBytes)
+        let data = try Data(contentsOf: pendingStateURL, options: .mappedIfSafe)
+        let opened = try authenticator.open(data, purpose: "pending")
+        guard opened.payload.count <= Self.maximumPendingBytes else {
+            throw ServiceRuntimeError.unreadableState("pending protected state is too large")
+        }
         let transition = try JSONDecoder().decode(
             PendingStateTransition.self,
-            from: Data(contentsOf: pendingStateURL, options: .mappedIfSafe)
+            from: opened.payload
         )
         try transition.validate()
+        if opened.isLegacy {
+            guard transition.candidate.blocks.allSatisfy({ $0.activation == nil }) else {
+                throw ServiceRuntimeError.unreadableState(
+                    "active legacy transition needs the installed service; protection was not reset"
+                )
+            }
+            try writeAtomically(
+                try authenticator.seal(opened.payload, purpose: "pending"), to: pendingStateURL
+            )
+        }
         return transition
+    }
+
+    private func emptyStateIfNeverCommitted() throws -> ProtectedState {
+        guard try !authenticator.keys.hasCommittedState() else {
+            throw ServiceRuntimeError.unreadableState("the protected state is missing")
+        }
+        return ProtectedState()
     }
 
     private func stateDigest(_ state: ProtectedState) throws -> String {

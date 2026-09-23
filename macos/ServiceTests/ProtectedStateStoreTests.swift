@@ -44,7 +44,8 @@ final class ProtectedStateStoreTests: XCTestCase {
             pendingStateURL: paths.pending,
             backupDirectory: paths.backups,
             requireRootOwnership: false,
-            maximumBackups: 2
+            maximumBackups: 2,
+            authenticationKeys: FakeStateAuthenticationKeys()
         )
         var state = ProtectedState()
         _ = try state.create(serviceTestDraft(name: "One", domains: ["one.example"]))
@@ -57,6 +58,10 @@ final class ProtectedStateStoreTests: XCTestCase {
         try store.save(state)
 
         XCTAssertEqual(try store.load(), state)
+        XCTAssertEqual(
+            try JSONDecoder().decode(ProtectedState.self, from: Data(contentsOf: paths.state)),
+            state
+        )
         let attributes = try FileManager.default.attributesOfItem(atPath: paths.state.path)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
         let backups = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
@@ -113,7 +118,8 @@ final class ProtectedStateStoreTests: XCTestCase {
         let url = root.appendingPathComponent("apple-lockdown-state-v1.json")
         let store = JSONAppleLockdownStateStore(
             stateURL: url,
-            requireRootOwnership: false
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
         )
         var state = AppleLockdownState()
         try state.beginSetup(
@@ -131,6 +137,17 @@ final class ProtectedStateStoreTests: XCTestCase {
         XCTAssertEqual(try store.load(), state)
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+
+        var changed = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        )
+        changed["unexpected"] = "edit"
+        try JSONSerialization.data(withJSONObject: changed).write(to: url)
+        XCTAssertThrowsError(try store.load()) { error in
+            guard case ServiceRuntimeError.unreadableState = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
     }
 
     func testAppleLockdownStateSymbolicLinkIsRejected() throws {
@@ -143,7 +160,8 @@ final class ProtectedStateStoreTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: state, withDestinationURL: target)
         let store = JSONAppleLockdownStateStore(
             stateURL: state,
-            requireRootOwnership: false
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
         )
 
         XCTAssertThrowsError(try store.load()) { error in
@@ -153,13 +171,42 @@ final class ProtectedStateStoreTests: XCTestCase {
         }
     }
 
+    func testActiveLegacyAppleLockdownStateIsNotSilentlyMigrated() throws {
+        let paths = try temporaryPaths()
+        let url = paths.root.appendingPathComponent("apple-lockdown-state-v1.json")
+        let store = JSONAppleLockdownStateStore(
+            stateURL: url,
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
+        )
+        var state = AppleLockdownState()
+        try state.beginSetup(
+            AppleLockdownSetupRequest(
+                fullUnlockDelay: 3_600,
+                enablesAdultFilter: true,
+                filterWasAlreadyEnabled: false,
+                shareAcrossDevicesVerified: false
+            )
+        )
+        let legacy = try JSONEncoder().encode(state)
+        try legacy.write(to: url)
+
+        XCTAssertThrowsError(try store.load()) { error in
+            guard case ServiceRuntimeError.unreadableState = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+        XCTAssertEqual(try Data(contentsOf: url), legacy)
+    }
+
     func testPendingCandidateWithoutPrimaryIsPromotedAndCleared() throws {
         let paths = try temporaryPaths()
         let store = JSONProtectedStateStore(
             stateURL: paths.state,
             pendingStateURL: paths.pending,
             backupDirectory: paths.backups,
-            requireRootOwnership: false
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
         )
         var pending = ProtectedState()
         _ = try pending.create(serviceTestDraft())
@@ -176,7 +223,8 @@ final class ProtectedStateStoreTests: XCTestCase {
             stateURL: paths.state,
             pendingStateURL: paths.pending,
             backupDirectory: paths.backups,
-            requireRootOwnership: false
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
         )
         var state = ProtectedState()
         _ = try state.create(serviceTestDraft())
@@ -190,11 +238,13 @@ final class ProtectedStateStoreTests: XCTestCase {
 
     func testStalePendingCandidateCannotOverwriteNewerPrimary() throws {
         let paths = try temporaryPaths()
+        let keys = FakeStateAuthenticationKeys()
         let store = JSONProtectedStateStore(
             stateURL: paths.state,
             pendingStateURL: paths.pending,
             backupDirectory: paths.backups,
-            requireRootOwnership: false
+            requireRootOwnership: false,
+            authenticationKeys: keys
         )
         var oldState = ProtectedState()
         _ = try oldState.create(serviceTestDraft(name: "Old"))
@@ -213,10 +263,82 @@ final class ProtectedStateStoreTests: XCTestCase {
             XCTAssertTrue(message.contains("pending transition"))
             XCTAssertTrue(message.contains("primary protected state"))
         }
-        XCTAssertEqual(
-            try JSONDecoder().decode(ProtectedState.self, from: Data(contentsOf: paths.state)),
-            newerState
+        let protected = try StateAuthenticator(keys: keys).open(
+            Data(contentsOf: paths.state), purpose: "primary"
         )
+        XCTAssertEqual(try JSONDecoder().decode(ProtectedState.self, from: protected.payload), newerState)
+    }
+
+    func testChangedStatePayloadAndMissingStateAreRejectedAfterCommit() throws {
+        let paths = try temporaryPaths()
+        let keys = FakeStateAuthenticationKeys()
+        let store = JSONProtectedStateStore(
+            stateURL: paths.state,
+            pendingStateURL: paths.pending,
+            backupDirectory: paths.backups,
+            requireRootOwnership: false,
+            authenticationKeys: keys
+        )
+        var state = ProtectedState()
+        _ = try state.create(serviceTestDraft())
+        try store.save(state)
+
+        var envelope = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: paths.state)) as? [String: Any]
+        )
+        envelope["blocks"] = []
+        try JSONSerialization.data(withJSONObject: envelope).write(to: paths.state)
+        XCTAssertThrowsError(try store.load()) { error in
+            guard case ServiceRuntimeError.unreadableState = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        try FileManager.default.removeItem(at: paths.state)
+        XCTAssertThrowsError(try store.load()) { error in
+            guard case ServiceRuntimeError.unreadableState = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testOnlyInactiveLegacyStateCanBeAuthenticatedOnLoad() throws {
+        let paths = try temporaryPaths()
+        let keys = FakeStateAuthenticationKeys()
+        let store = JSONProtectedStateStore(
+            stateURL: paths.state,
+            pendingStateURL: paths.pending,
+            backupDirectory: paths.backups,
+            requireRootOwnership: false,
+            authenticationKeys: keys
+        )
+        var state = ProtectedState()
+        let block = try state.create(serviceTestDraft())
+        try JSONEncoder().encode(state).write(to: paths.state)
+        XCTAssertEqual(try store.load(), state)
+        XCTAssertTrue(keys.committed)
+        XCTAssertFalse(
+            try StateAuthenticator(keys: keys).open(
+                Data(contentsOf: paths.state), purpose: "primary"
+            ).isLegacy)
+
+        let activePaths = try temporaryPaths()
+        let activeStore = JSONProtectedStateStore(
+            stateURL: activePaths.state,
+            pendingStateURL: activePaths.pending,
+            backupDirectory: activePaths.backups,
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
+        )
+        try state.activate(id: block.id, expectedRevision: block.revision, at: serviceTestReading(0))
+        let legacy = try JSONEncoder().encode(state)
+        try legacy.write(to: activePaths.state)
+        XCTAssertThrowsError(try activeStore.load()) { error in
+            guard case ServiceRuntimeError.unreadableState = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+        XCTAssertEqual(try Data(contentsOf: activePaths.state), legacy)
     }
 
     func testPendingCandidateReplaysAfterCrashBeforePrimarySave() throws {
@@ -225,7 +347,8 @@ final class ProtectedStateStoreTests: XCTestCase {
             stateURL: paths.state,
             pendingStateURL: paths.pending,
             backupDirectory: paths.backups,
-            requireRootOwnership: false
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
         )
         var base = ProtectedState()
         _ = try base.create(serviceTestDraft(name: "Base", domains: ["base.example"]))
@@ -244,7 +367,8 @@ final class ProtectedStateStoreTests: XCTestCase {
             stateURL: paths.state,
             pendingStateURL: paths.pending,
             backupDirectory: paths.backups,
-            requireRootOwnership: false
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
         )
         var persisted = ProtectedState()
         let block = try persisted.create(serviceTestDraft())
@@ -274,7 +398,8 @@ final class ProtectedStateStoreTests: XCTestCase {
             stateURL: paths.state,
             pendingStateURL: paths.pending,
             backupDirectory: paths.backups,
-            requireRootOwnership: false
+            requireRootOwnership: false,
+            authenticationKeys: FakeStateAuthenticationKeys()
         )
 
         XCTAssertThrowsError(try store.load()) { error in
@@ -300,4 +425,22 @@ final class ProtectedStateStoreTests: XCTestCase {
             root.appendingPathComponent("backups")
         )
     }
+}
+
+private final class FakeStateAuthenticationKeys: StateAuthenticationKeyStoring {
+    var key: Data?
+    var committed = false
+
+    func existingKey() throws -> Data? { key }
+
+    func keyForWrite() throws -> Data {
+        if let key { return key }
+        let generated = Data(repeating: 7, count: 32)
+        key = generated
+        return generated
+    }
+
+    func hasCommittedState() throws -> Bool { committed }
+
+    func markCommittedState() throws { committed = true }
 }

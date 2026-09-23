@@ -37,3 +37,9 @@ Signed-device Screen Time enforcement, background transitions, deletion preventi
 App-removal protection does not require a passcode. Opal documents [native session removal protection](https://opalapp.com/help/what-is-app-uninstall-protection) separately from an optional iOS 26.4+ Screen Time passcode and an older [Shortcuts-based Settings redirect](https://opalapp.com/help/how-to-lock-opals-screen-time-access). Hard Pause uses native deletion/date controls; its passcode guidance is optional and does not claim to verify the OS setting.
 
 Rust, Windows and Android remain outside this Apple implementation. See the [shared core](../core/README.md) for the current scope.
+
+## 2026-09-23 source check
+
+- Mac active plans can add rules without changing existing rules or waits. The service authenticates plan and Screen Time state with System Keychain keys; inactive legacy state migrates on load.
+- Xcode 27: 168 Mac tests, 9 shared-core tests, website checks, 14 browser tests, unsigned iPhone build, and signed Mac bundle validation passed.
+- Local iOS simulator tests could not run because this Mac has no compatible iPhone simulator. Physical iPhone enforcement and signed Mac service Keychain access still need live validation. No installed service or active protection was changed.
