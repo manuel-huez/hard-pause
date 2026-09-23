@@ -105,10 +105,8 @@ struct ContentView: View {
                         .background(LowLightBackground())
                         .navigationTitle((selection ?? .home).rawValue)
                         .toolbar {
-                            ToolbarItemGroup(placement: .primaryAction) {
-                                ServiceStatusLabel()
-                                    .lineLimit(1)
-                                if selection == .blocks {
+                            if selection == .blocks {
+                                ToolbarItem(placement: .primaryAction) {
                                     Button {
                                         editor = BlockEditorPresentation(block: nil)
                                     } label: {
@@ -119,7 +117,6 @@ struct ContentView: View {
                                     .mascotHoverTarget()
                                 }
                             }
-                            .sharedBackgroundVisibility(.visible)
                         }
                     }
                 }
@@ -216,7 +213,9 @@ private struct HomePane: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if !model.activeBlocks.isEmpty && !model.setupReady {
+                if !model.activeBlocks.isEmpty && !model.setupReady
+                    && !model.serviceUpdateIsOnlySetupGap
+                {
                     SetupIncompleteBanner(showSetup: showSetup)
                 }
 
@@ -251,27 +250,25 @@ private struct HomePane: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "lock.shield")
+                        .font(.system(size: 13))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Private on this Mac")
+                            .font(.caption.weight(.medium))
+                        Text("No account. No tracking. Checks stay on this Mac.")
+                            .font(.caption)
+                    }
+                }
+                .foregroundStyle(PauseTheme.muted)
+                .help(
+                    "Rules and protection state stay on this Mac. Adult website list updates contact a public provider. Browser checks read tab addresses only when page protection is active. Chrome and Safari RTA checks read rating tags only; Firefox cannot read RTA labels. Positive RTA detections are cached locally for 24 hours. No browsing history is uploaded."
+                )
+                .padding(.top, 12)
             }
             .frame(maxWidth: 680, alignment: .leading)
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .safeAreaInset(edge: .bottom, alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 9) {
-                Image(systemName: "lock.shield")
-                    .font(.system(size: 13))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Private on this Mac")
-                        .font(.caption.weight(.medium))
-                    Text("No account. No tracking. Checks stay on this Mac.")
-                        .font(.caption)
-                }
-            }
-            .foregroundStyle(PauseTheme.muted)
-            .help(
-                "Rules and protection state stay on this Mac. Adult website list updates contact a public provider. Browser checks read tab addresses only when page protection is active. Chrome and Safari RTA checks read rating tags only; Firefox cannot read RTA labels. Positive RTA detections are cached locally for 24 hours. No browsing history is uploaded."
-            )
-            .padding(24)
         }
     }
 }
@@ -2321,7 +2318,11 @@ private struct ProtectionSettingsPane: View {
                 Text("Settings")
                     .font(PauseFont.display(26, relativeTo: .title))
                 Text(
-                    model.setupReady ? "Everything is ready on this Mac." : "Finish setup before starting a new plan."
+                    model.setupReady
+                        ? "Everything is ready on this Mac."
+                        : model.serviceUpdateIsOnlySetupGap
+                            ? "Your active plan is protected. Update protection before starting a new plan."
+                            : "Finish setup before starting a new plan."
                 )
                 .foregroundStyle(PauseTheme.muted)
 
@@ -2413,28 +2414,6 @@ private struct ProtectionSettingsPane: View {
 private struct ServiceSetupPanel: View {
     var body: some View {
         SetupChecklistView()
-    }
-}
-
-private struct ServiceStatusLabel: View {
-    @EnvironmentObject private var model: AppModel
-
-    var body: some View {
-        switch model.setupState {
-        case .checking:
-            Label("Checking setup", systemImage: "ellipsis.circle")
-                .foregroundStyle(PauseTheme.muted)
-        case .incomplete:
-            Label("Finish setup", systemImage: "exclamationmark.shield")
-                .foregroundStyle(PauseTheme.coral)
-        case .ready:
-            if let protection = model.snapshot?.protection,
-                !protection.issues.isEmpty || (!protection.isEnforcing && !model.activeBlocks.isEmpty)
-            {
-                Label("Protection needs attention", systemImage: "exclamationmark.shield")
-                    .foregroundStyle(.orange)
-            }
-        }
     }
 }
 

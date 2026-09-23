@@ -75,6 +75,15 @@ final class AppModel: ObservableObject {
             && snapshot?.protection.issues.isEmpty == true
             && snapshot?.protection.serviceVersion == ProtectedServiceContract.serviceVersion
     }
+    var serviceUpdateIsOnlySetupGap: Bool {
+        needsServiceUpdate && serviceAvailability == .ready
+            && snapshot?.protection.isEnforcing == true
+            && snapshot?.protection.issues.isEmpty == true
+            && SetupReadiness.ready(
+                serviceReady: true,
+                access: SetupAccessState(browsers: browserReadiness, startsAtLogin: startsAtLogin)
+            )
+    }
 
     var installCommand: String? {
         guard
