@@ -1,0 +1,160 @@
+name: Release macOS
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to release with Developer ID
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.repository == 'manuel-huez/hard-pause'
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: macos-release
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      APPLE_TEAM_ID: ZBX6C7BJ5X
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - name: Check release inputs
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+          APPLE_NOTARY_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+          SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_DEVELOPER_ID_P12_BASE64 APPLE_DEVELOPER_ID_P12_PASSWORD APPLE_DEVELOPER_ID_IDENTITY APPLE_NOTARY_API_KEY APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID SPARKLE_EDDSA_PRIVATE_KEY SPARKLE_EDDSA_PUBLIC_KEY; do
+            [[ -n "${!name:-}" ]] || { echo "Missing release secret: $name" >&2; exit 1; }
+          done
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Release tag must be vMAJOR.MINOR.PATCH' >&2; exit 1; }
+          remote_commit="$(git ls-remote origin "refs/tags/$RELEASE_TAG^{}" | awk '{print $1}')"
+          if [[ -z "$remote_commit" ]]; then remote_commit="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"; fi
+          [[ -n "$remote_commit" && "$remote_commit" == "$(git rev-parse HEAD)" ]] || { echo 'Checkout differs from remote release tag commit' >&2; exit 1; }
+          python3 - <<'PY'
+          import base64
+          import os
+          key = base64.b64decode(os.environ['SPARKLE_EDDSA_PUBLIC_KEY'], validate=True)
+          if len(key) != 32:
+              raise SystemExit('Sparkle public key must decode to 32 bytes')
+          PY
+      - name: Import Developer ID certificate
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          certificate="$RUNNER_TEMP/release.p12"
+          keychain_password="$(openssl rand -base64 32)"
+          printf '%s' "$APPLE_DEVELOPER_ID_P12_BASE64" | base64 -D > "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$APPLE_DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign >/dev/null
+          rm -f "$certificate"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+          [[ "$APPLE_DEVELOPER_ID_IDENTITY" == "Developer ID Application: "*"($APPLE_TEAM_ID)" ]] || { echo 'Expected Developer ID Application identity for this team' >&2; exit 1; }
+          security find-identity -v -p codesigning "$keychain" | grep -Fq "$APPLE_DEVELOPER_ID_IDENTITY" || { echo 'Developer ID identity is unavailable' >&2; exit 1; }
+      - name: Build signed app
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+          SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen generate --spec macos/project.yml
+          xcodebuild -quiet archive \
+            -project macos/HardPause.xcodeproj -scheme HardPause \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -archivePath "$PWD/build/release/HardPause.xcarchive" \
+            -clonedSourcePackagesDirPath "$PWD/build/release/packages" \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_IDENTITY="$APPLE_DEVELOPER_ID_IDENTITY" \
+            SPARKLE_EDDSA_PUBLIC_KEY="$SPARKLE_EDDSA_PUBLIC_KEY"
+          app='build/release/HardPause.xcarchive/Products/Applications/HardPause.app'
+          [[ -d "$app" ]] || { echo 'Archive has no app' >&2; exit 1; }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" == "$SPARKLE_EDDSA_PUBLIC_KEY" ]] || { echo 'Archive has a different Sparkle public key' >&2; exit 1; }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "${RELEASE_TAG#v}" ]] || { echo 'Tag and app version differ' >&2; exit 1; }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" =~ ^[1-9][0-9]*$ ]] || { echo 'App build number is invalid' >&2; exit 1; }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$app/Contents/Info.plist")" == false ]] || { echo 'Silent updates must stay disabled' >&2; exit 1; }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUAllowsAutomaticUpdates' "$app/Contents/Info.plist")" == false ]] || { echo 'Automatic installation must stay disabled' >&2; exit 1; }
+          for code in "$app" "$app/Contents/Resources/hard-pause-service" "$app/Contents/Resources/hard-pause"; do
+            codesign --verify --deep --strict --verbose=2 "$code"
+            codesign -dv --verbose=4 "$code" 2>&1 | grep -Fq "Authority=$APPLE_DEVELOPER_ID_IDENTITY" || { echo 'Code lacks the expected Developer ID signature' >&2; exit 1; }
+          done
+      - name: Notarize and package app
+        shell: bash
+        env:
+          APPLE_NOTARY_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          app='build/release/HardPause.xcarchive/Products/Applications/HardPause.app'
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$APPLE_NOTARY_API_KEY" > "$key"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/HardPause-notary.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/HardPause-notary.zip" --key "$key" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          rm -f "$key" "$RUNNER_TEMP/HardPause-notary.zip"
+          xcrun stapler staple "$app"
+          xcrun stapler validate "$app"
+          spctl -a -vv -t exec "$app"
+          ditto -c -k --keepParent "$app" build/release/HardPause-macOS.zip
+      - name: Sign update and write appcast
+        shell: bash
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+          SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          signer='build/release/packages/artifacts/sparkle/Sparkle/bin/sign_update'
+          [[ -x "$signer" ]] || { echo 'Sparkle sign_update tool is unavailable' >&2; exit 1; }
+          key="$RUNNER_TEMP/sparkle-private-key"
+          printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" > "$key"
+          [[ "$(xcrun swift scripts/release-macos-public-key.swift "$key")" == "$SPARKLE_EDDSA_PUBLIC_KEY" ]] || { echo 'Sparkle signing key does not match the app key' >&2; exit 1; }
+          "$signer" -f "$key" build/release/HardPause-macOS.zip > build/release/signature.txt
+          rm -f "$key"
+          python3 scripts/release-macos-appcast.py \
+            --archive build/release/HardPause-macOS.zip \
+            --signature build/release/signature.txt \
+            --app build/release/HardPause.xcarchive/Products/Applications/HardPause.app \
+            --tag "$RELEASE_TAG" \
+            --output build/release/appcast.xml
+      - name: Publish release after both assets are ready
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" --draft --verify-tag --title "Hard Pause ${RELEASE_TAG#v}" --generate-notes
+          gh release upload "$RELEASE_TAG" build/release/HardPause-macOS.zip build/release/appcast.xml
+          gh release edit "$RELEASE_TAG" --draft=false
+      - name: Remove temporary signing keychain
+        if: always()
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/release.p12" "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/sparkle-private-key" "$RUNNER_TEMP/HardPause-notary.zip"

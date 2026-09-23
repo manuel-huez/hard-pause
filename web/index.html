@@ -8,10 +8,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#1c1d29" />
-    <title>Hard Pause — A little further away.</title>
+    <title>Hard Pause — Give yourself time before access returns</title>
     <meta
       name="description"
-      content="Hard Pause is a local iPhone and Mac app that fixes selected app and website blocks until a full waiting period ends."
+      content="Hard Pause is a local app for iPhone, iPad, and Mac. Choose what to block and set a wait before access returns. In development; build from source."
     />
     <link rel="icon" href="mascot/first-frame.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
@@ -26,7 +26,7 @@
       <nav aria-label="Main navigation">
         <a href="#product">how it works</a>
         <a href="#platforms">platforms</a>
-        <a href="#availability">get the source</a>
+        <a href="#availability">get the app</a>
       </nav>
     </header>
     <main id="top">
@@ -58,30 +58,29 @@
             <p class="eyebrow">THE PAUSE STAYS FIXED</p>
             <h2 id="product-title">Decide once.<br />Wait it out.</h2>
             <p class="section-intro">
-              Create separate named blocks for different parts of your day. Each block keeps its own
-              apps, websites, break delay, full-unlock delay, break length, and optional fixed
-              duration.
+              Create separate named plans for different parts of your day. Choose apps and websites,
+              then set the waits that control access for each plan.
             </p>
             <ol class="steps">
               <li>
                 <span>01</span>
                 <div>
                   <h3>Choose the block</h3>
-                  <p>Select the apps and website domains that can wait.</p>
+                  <p>Select the apps and websites that can wait.</p>
                 </div>
               </li>
               <li>
                 <span>02</span>
                 <div>
                   <h3>Fix the rules</h3>
-                  <p>Starting a block makes its name, rules, and timing read-only.</p>
+                  <p>Starting a plan fixes its name and timing. Existing rules stay in place.</p>
                 </div>
               </li>
               <li>
                 <span>03</span>
                 <div>
                   <h3>Request access</h3>
-                  <p>The full delay must pass before a break or complete unlock begins.</p>
+                  <p>Set one wait for a short break and another for ending the block.</p>
                 </div>
               </li>
             </ol>
@@ -105,7 +104,7 @@
                 <div class="block-status">
                   <span class="status-pill">RULES FIXED</span>
                   <h3>Deep work is active.</h3>
-                  <p>A request starts the full wait. Overlapping blocks stay in place.</p>
+                  <p>A request starts its wait. Overlapping plans stay in place.</p>
                   <div class="rule-chips"><span>social apps</span><span>example.com</span></div>
                   <div class="static-action">request a break <span>↗</span></div>
                 </div>
@@ -118,11 +117,39 @@
               <div class="small-presence">
                 <img src="mascot/first-frame.svg" width="400" height="380" alt="" />
               </div>
-              <p>Rules stay fixed until the block ends or the full unlock wait completes.</p>
+              <p>Active rules stay in place while a request is waiting.</p>
               <div class="phone-line"></div>
             </div>
           </div>
         </div>
+      </section>
+
+      <section class="modes-section wrap" id="modes" aria-labelledby="modes-title">
+        <div class="modes-heading">
+          <p class="eyebrow">TWO WAYS TO PAUSE</p>
+          <h2 id="modes-title">Choose how access returns.</h2>
+        </div>
+        <div class="modes-grid">
+          <article class="mode-card">
+            <span class="mode-number">01 / FLEXIBLE</span>
+            <h3>Pause</h3>
+            <p>
+              Wait before a short break. When the break ends, the block returns. Ending the plan has
+              its own wait. You can also choose an end time when you create it.
+            </p>
+          </article>
+          <article class="mode-card">
+            <span class="mode-number">02 / NO BREAKS</span>
+            <h3>Hard Pause</h3>
+            <p>
+              Keep the block in place without breaks or an automatic end. To get access back, ask to
+              end the plan and wait for the time you chose.
+            </p>
+          </article>
+        </div>
+        <p class="modes-footnote">
+          If plans overlap, access returns only when every plan that blocks it allows access.
+        </p>
       </section>
 
       <section class="platform-section wrap" id="platforms" aria-labelledby="platform-title">
@@ -136,33 +163,43 @@
             <div class="platform-meta"><span>01</span><span>iOS 26 or later</span></div>
             <h3>iPhone and iPad</h3>
             <p>
-              Screen Time keeps selected apps and websites blocked, even while Hard Pause is closed.
+              The app uses Screen Time to block selected apps and websites while a plan is active.
             </p>
             <ul>
-              <li>Selected apps and website domains</li>
-              <li>Independent named blocks and delays</li>
-              <li>Optional device-wide app-removal protection</li>
+              <li>Block the apps and websites you choose</li>
+              <li>Make separate plans with their own waits</li>
+              <li>Make it harder to delete apps during a block</li>
             </ul>
-            <p class="limit-note">Screen Time permission remains under iOS control.</p>
+            <p class="limit-note">
+              You can change Screen Time permission in iPhone settings. We still need to test the
+              protection on a real iPhone.
+            </p>
           </article>
           <article class="platform-card">
             <div class="platform-meta"><span>02</span><span>macOS 26 or later</span></div>
             <h3>Mac</h3>
             <p>
-              A protected background service keeps your rules active when the app closes. No browser
-              extension is required.
+              Close the window and your block stays on. Hard Pause keeps running in the menu bar to
+              check websites.
             </p>
             <ul>
-              <li>Selected apps and exact website domains</li>
-              <li>Independent named blocks and delays</li>
-              <li>Protection continues after the app closes</li>
+              <li>Block apps, websites, and specific pages</li>
+              <li>Make separate plans with their own waits</li>
+              <li>Keep blocks on when you close the window</li>
             </ul>
             <p class="limit-note">
-              An exact domain does not include every subdomain. A Mac administrator can remove the
-              service. Closing a selected app can interrupt unsaved work.
+              Some ways of browsing can get around website blocks. A Mac administrator can turn off
+              this protection. Closing a blocked app can lose unsaved work.
             </p>
           </article>
         </div>
+        <p class="validation-note">
+          Hard Pause is still in development. We are testing how reliably the iPhone blocks apps and
+          how Screen Time setup works on Mac.
+          <a href="https://github.com/manuel-huez/hard-pause/blob/main/docs/apple-validation.md"
+            >Read the validation record <span aria-hidden="true">↗</span></a
+          >
+        </p>
       </section>
 
       <section class="principles-section">
@@ -173,19 +210,19 @@
               <span>PRIVATE</span>
               <h3>Your rules stay on your device.</h3>
               <p>
-                No account, analytics, browsing-history uploads, or remote classification. Website
-                lists update from public sources; filtering stays on your device.
+                No account, usage tracking, or uploaded browsing history. Website lists come from
+                public sources, but checks happen on your device.
               </p>
             </article>
             <article>
               <span>HONEST</span>
               <h3>Protection limits stay visible.</h3>
-              <p>Hard Pause reports permission, storage, and enforcement failures in the app.</p>
+              <p>If a block cannot run correctly, Hard Pause tells you in the app.</p>
             </article>
             <article>
               <span>INDEPENDENT</span>
               <h3>One block cannot release another.</h3>
-              <p>Overlapping rules remain until every block that contains them allows access.</p>
+              <p>If two plans block the same thing, both must allow it before access returns.</p>
             </article>
           </div>
         </div>
@@ -193,17 +230,31 @@
 
       <section class="availability wrap" id="availability" aria-labelledby="availability-title">
         <div>
-          <p class="eyebrow">IN DEVELOPMENT</p>
-          <h2 id="availability-title">Build from source.</h2>
+          <p class="eyebrow">EARLY RELEASE</p>
+          <h2 id="availability-title">Try the Mac app.</h2>
         </div>
         <div class="availability-copy">
           <p>
-            A public installer is not available yet. The repository contains the native app source,
-            tests, and current build results.
+            The Mac download is a development build. It is signed, but Apple has not approved it for
+            distribution. You may need to approve it in Mac settings before opening it. Check the
+            validation record before using real blocks. iPhone and iPad still need a source build.
           </p>
           <div class="source-links">
+            <a class="quiet-link" href="https://github.com/manuel-huez/hard-pause/releases/latest"
+              >download for Mac <span aria-hidden="true">↗</span></a
+            >
             <a class="quiet-link" href="https://github.com/manuel-huez/hard-pause"
               >view the source <span aria-hidden="true">↗</span></a
+            >
+            <a
+              class="quiet-link"
+              href="https://github.com/manuel-huez/hard-pause/blob/main/macos/README.md"
+              >build for Mac <span aria-hidden="true">↗</span></a
+            >
+            <a
+              class="quiet-link"
+              href="https://github.com/manuel-huez/hard-pause/blob/main/ios/README.md"
+              >build for iPhone <span aria-hidden="true">↗</span></a
             >
             <a
               class="quiet-link"
@@ -212,8 +263,8 @@
             >
           </div>
           <p class="system-note">
-            The native apps target iOS 26 and macOS 26 and use the system Liquid Glass design. Core
-            blocking is intended to remain free.
+            Requires iOS 26 or macOS 26. Native signing and system permissions are needed for device
+            builds and local protection.
           </p>
         </div>
       </section>

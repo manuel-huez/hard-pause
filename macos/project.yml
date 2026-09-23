@@ -10,8 +10,12 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: Apple Development
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
-    CURRENT_PROJECT_VERSION: 2
-    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 3
+    MARKETING_VERSION: 0.1.1
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
 targets:
   HardPause:
     type: application
@@ -49,14 +53,23 @@ targets:
       properties:
         com.apple.security.network.client: true
         com.apple.security.automation.apple-events: true
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Hard Pause
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        NSPrincipalClass: NSApplication
+        NSAppleEventsUsageDescription: Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.
+        SUFeedURL: https://github.com/manuel-huez/hard-pause/releases/latest/download/appcast.xml
+        SUPublicEDKey: $(SPARKLE_EDDSA_PUBLIC_KEY)
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: false
+        SUAllowsAutomaticUpdates: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.app
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Hard Pause
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        INFOPLIST_KEY_NSPrincipalClass: NSApplication
-        INFOPLIST_KEY_NSAppleEventsUsageDescription: Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
     dependencies:
@@ -65,6 +78,7 @@ targets:
       - target: HardPauseCLI
         embed: false
       - sdk: Security.framework
+      - package: Sparkle
     postBuildScripts:
       - name: Bundle production service
         script: |

@@ -88,6 +88,8 @@
 		6EF82D5D963A7417B6603BDD /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F873CDBDD0D34068E1B22C2 /* PauseCoreEncryptedState.swift */; };
 		727AED47F1FD4B5BD08A6886 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
 		7404036BE3B7C3D940135334 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */; };
+		7675290B5655F25D6907EBB7 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E4F0A168A1D0B45455880B /* AppUpdater.swift */; };
+		773F95229B0EEB8C3EEF6705 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 87A1A4469F35AC9F07AACBE4 /* Sparkle */; };
 		7BE559A003F3CA9F1343A2DF /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 919227CFCCEBC5936594BC47 /* ProtectionMode.swift */; };
 		7F2BD52D61021B449DC70C4C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 721BDA26F3C01BE8A4471DAD /* ContentView.swift */; };
 		7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
@@ -248,6 +250,7 @@
 		956C9AB2D8A5E4F0DA9123E8 /* PauseSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseSeed.swift; sourceTree = "<group>"; };
 		97468816A1CC993DAAC51C96 /* ServiceTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceTestSupport.swift; sourceTree = "<group>"; };
 		9D54959695EE4B7D0D254B40 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A0E4F0A168A1D0B45455880B /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		A0E98F323A7120D7C2BED91E /* AdultRatingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdultRatingStore.swift; sourceTree = "<group>"; };
 		A132D52C40502F34307579F9 /* BlockedPage */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BlockedPage; path = Resources/BlockedPage; sourceTree = SOURCE_ROOT; };
 		A3A9B40334B2C8EF80C77D3C /* ProtectedServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedServiceClient.swift; sourceTree = "<group>"; };
@@ -259,6 +262,7 @@
 		C67932AFAB8002B6016394A3 /* ProtectedServiceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedServiceEngine.swift; sourceTree = "<group>"; };
 		C6AC102D0805B788A197E82E /* mascot */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mascot; path = ../web/mascot; sourceTree = SOURCE_ROOT; };
 		C8E8BED6DCD333C51BB9227F /* HostsEnforcerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsEnforcerTests.swift; sourceTree = "<group>"; };
+		CC180345D481C61E5696F730 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CC6EB2C362F7DBFE8E4323E3 /* AppleProtectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleProtectionView.swift; sourceTree = "<group>"; };
 		D06475CAF9D4B4230C551ED7 /* AdultWebsiteDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdultWebsiteDatabase.swift; sourceTree = "<group>"; };
 		D77328E3BB0BF25A6443E2AA /* AppleProtectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleProtectionState.swift; sourceTree = "<group>"; };
@@ -309,6 +313,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7404036BE3B7C3D940135334 /* Security.framework in Frameworks */,
+				773F95229B0EEB8C3EEF6705 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -471,12 +476,14 @@
 				CC6EB2C362F7DBFE8E4323E3 /* AppleProtectionView.swift */,
 				2EAC3D6AC0367FD5F3F5BF46 /* AppleScreenTimeAutomation.swift */,
 				76FE540206093F3051809B5B /* AppModel.swift */,
+				A0E4F0A168A1D0B45455880B /* AppUpdater.swift */,
 				9D54959695EE4B7D0D254B40 /* Assets.xcassets */,
 				26A1925EA42F4E11AC9582C6 /* BrowserProtection.swift */,
 				721BDA26F3C01BE8A4471DAD /* ContentView.swift */,
 				438D47E49D9C1B002570AA49 /* FirefoxBrowserProtection.swift */,
 				32C95D6B54F8FFFE9739BADB /* HardPause.entitlements */,
 				515D0ACE76FFE733C3585779 /* HardPauseApp.swift */,
+				CC180345D481C61E5696F730 /* Info.plist */,
 				73CE020B75644E033DA2B68E /* LocalPausePageServer.swift */,
 				A3A9B40334B2C8EF80C77D3C /* ProtectedServiceClient.swift */,
 				19AA79F4313E580D58F07DBE /* ServiceInstaller.swift */,
@@ -585,6 +592,7 @@
 			);
 			name = HardPause;
 			packageProductDependencies = (
+				87A1A4469F35AC9F07AACBE4 /* Sparkle */,
 			);
 			productName = HardPause;
 			productReference = 66E09A917BA6D23FE3E35CA4 /* HardPause.app */;
@@ -701,6 +709,9 @@
 			);
 			mainGroup = 8CBC5D0E04A593DFB1F08231;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				42E481FEC25224261E7ACE46 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1795A9A2D8B93C6D4E303A41 /* Products */;
 			projectDirPath = "";
@@ -887,6 +898,7 @@
 				3298AC88216790B838E80861 /* AdultWebsiteRules.swift in Sources */,
 				027629807844E0ADABB43801 /* AgentCommitmentGuidance.swift in Sources */,
 				10A2E895A570D7ED934ABF34 /* AppModel.swift in Sources */,
+				7675290B5655F25D6907EBB7 /* AppUpdater.swift in Sources */,
 				2B757ECCC300D44152E66279 /* AppleProtectionIPC.swift in Sources */,
 				0C51B4C37C470FD6C4444318 /* AppleProtectionModel.swift in Sources */,
 				262CD1F0BE910706F95C9549 /* AppleProtectionState.swift in Sources */,
@@ -1008,11 +1020,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/HardPause.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Hard Pause";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.";
-				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1059,7 +1067,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1073,7 +1081,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1171,11 +1179,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/HardPause.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Hard Pause";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.";
-				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1238,7 +1242,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1258,7 +1262,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1328,6 +1332,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		42E481FEC25224261E7ACE46 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		87A1A4469F35AC9F07AACBE4 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 42E481FEC25224261E7ACE46 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E3762ED8A1A1506DDEA98CC0 /* Project object */;
 }

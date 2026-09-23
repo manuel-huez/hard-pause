@@ -35,7 +35,18 @@ test('production landing is honest, local, and contains no simulated controls', 
   ).toBeVisible();
   await expect(page.getByText('iOS 26 or later')).toBeVisible();
   await expect(page.getByText('macOS 26 or later')).toBeVisible();
-  await expect(page.getByText('A public installer is not available yet.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pause', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Hard Pause', exact: true })).toBeVisible();
+  await expect(
+    page.getByText('We still need to test the protection on a real iPhone.'),
+  ).toBeVisible();
+  await expect(
+    page.getByText('The Mac download is a development build.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'download for Mac' })).toHaveAttribute(
+    'href',
+    `${repositoryURL}/releases/latest`,
+  );
   await expect(page.getByRole('link', { name: 'view the source' })).toHaveAttribute(
     'href',
     repositoryURL,
@@ -43,6 +54,10 @@ test('production landing is honest, local, and contains no simulated controls', 
   await expect(page.getByRole('link', { name: 'view build checks' })).toHaveAttribute(
     'href',
     checksURL,
+  );
+  await expect(page.getByRole('link', { name: 'Read the validation record' })).toHaveAttribute(
+    'href',
+    `${repositoryURL}/blob/main/docs/apple-validation.md`,
   );
   await expect(page.locator('.product-illustration')).toHaveAttribute('role', 'img');
   await expect(
@@ -88,7 +103,7 @@ test('landing fits a narrow viewport and enlarged text', async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );
-  await expect(page.getByRole('link', { name: 'get the source' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'get the app' })).toBeVisible();
 });
 
 test('bundled native renderer remains local and morphs without body zoom', async ({ page }) => {

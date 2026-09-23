@@ -1,58 +1,79 @@
 # Hard Pause
 
-Hard Pause is a local iPhone, iPad, and Mac app for intentional breaks from selected apps and websites. It targets iOS 26 and macOS 26 with native SwiftUI and Liquid Glass. The project is in development and is not ready for trusted enforcement.
+**Choose what to block. Set the wait. Give yourself time before access returns.**
 
-| Folder          | Purpose                                                        |
-| --------------- | -------------------------------------------------------------- |
-| [web](web/)     | Static Low Light product website and shared mascot renderer    |
-| [ios](ios/)     | SwiftUI app and native Screen Time extensions                  |
-| [macos](macos/) | SwiftUI app, local root service, and command-line client       |
-| [core](core/)   | Shared Apple lifecycle, elapsed clock and transaction ordering |
+Hard Pause is a local app for iPhone, iPad, and Mac that blocks selected apps and
+websites. Named plans let you keep separate commitments, each with its own rules
+and waiting periods. The apps use native SwiftUI controls and a shared animated
+mascot.
 
-## Product rules
+**In development.** Requires iOS 26+ or macOS 26+. Physical-device enforcement and
+the Mac Screen Time setup flow still need validation. An early
+[Mac download](https://github.com/manuel-huez/hard-pause/releases/latest) is development signed
+and not notarized. See the [validation record](docs/apple-validation.md) before
+using real blocks.
 
-- Create independent named plans for apps and websites. **Pause** permits delayed breaks and an optional fixed duration. **Hard Pause** permits no breaks or automatic end; access returns only after the full-unlock wait.
-- Activation fixes the block name and timing. On Mac, an active plan can gain rules but cannot lose rules or be deleted. iOS keeps active rules fixed.
-- A request affects its plan. Ending a Mac Hard Pause plan also starts the Screen Time code removal wait. Overlapping rules remain until every plan that contains them allows access.
-- A fixed duration ends only its block and takes priority over a pending request or break.
-- Protection and storage failures must remain visible.
-- No account, telemetry, hosted API, browsing-history uploads, remote classification, browser extension, or paid enforcement tier. Public adult-domain lists can refresh over HTTPS; checks stay on the device.
+## Two ways to pause
 
-## Platform design
+| Mode           | Breaks                           | How access returns                                            |
+| -------------- | -------------------------------- | ------------------------------------------------------------- |
+| **Pause**      | Available after the wait you set | A timed break, an optional fixed end, or the full-unlock wait |
+| **Hard Pause** | No breaks                        | Only after the full-unlock wait                               |
 
-| Platform  | Local enforcement                                                                                                                                                                                                                                        | Limits before release                                                                                                                                                                 |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| iOS 26+   | Family Controls selection, Managed Settings shields, and Device Activity transitions; at most 16 active named blocks                                                                                                                                     | Apple approval, permission revocation, app removal, reboot, and background delivery need signed-device tests                                                                          |
-| macOS 26+ | Root launchd service with authoritative rules and elapsed deadlines; exact domains in the hosts file; literal IP rules through an active PF `com.apple/*` dispatcher; selected signed apps are closed; browser URL rules redirect to a local mascot page | Administrators can remove the service; exact domains do not imply wildcard subdomains; VPNs and encrypted DNS can bypass hosts/PF coverage; closing an app can interrupt unsaved work |
-| Website   | Product information and source/build links                                                                                                                                                                                                               | The website does not block, store settings, or simulate enforcement                                                                                                                   |
+- **Separate plans, shared protection.** If two plans block the same app or site, both must allow access before it opens.
+- **A commitment that stays fixed.** Starting a plan fixes its name and timing. Mac plans can add rules while active; existing rules cannot be removed. iOS keeps active rules fixed.
+- **Local by design.** No account, telemetry, hosted API, or browsing-history uploads. Mac adult-site lists download over HTTPS; matching stays on the device.
 
-The macOS design uses no browser, Network Extension, or Endpoint Security extension. It preserves unrelated hosts and PF rules, does not change system DNS, and does not expand domains to changing CDN addresses. The installed command-line client uses the same service and unlock rules as the app.
+## Start here
 
-The website and both native apps share the local renderer in `web/mascot/`. Native controls remain SwiftUI; only the character uses bundled web content. Preserve the renderer's `LICENSE.txt` and `NOTICE.txt` files.
+| I want to…                       | Guide                                        |
+| -------------------------------- | -------------------------------------------- |
+| Download or build the Mac app    | [macOS guide](macos/README.md)               |
+| Build for iPhone or iPad         | [iOS guide](ios/README.md)                   |
+| Understand the protection limits | [Design and security boundaries](DESIGN.md)  |
+| Check what has been tested       | [Apple validation](docs/apple-validation.md) |
+| Work on the shared lifecycle     | [Shared Apple core](core/README.md)          |
 
-See [DESIGN.md](DESIGN.md) for the security boundaries and release checks. Each platform README has build instructions and current implementation details.
+### What each platform protects
 
-See the [shared core](core/README.md) for the Apple implementation and its platform boundaries.
-Mac Hard Pause setup includes an experimental native Screen Time code flow. The root service saves the code in System Keychain before entry and retains it across interrupted setup or release. Native code entry and cross-device sync remain unverified; this does not prove that iPhone permissions cannot be revoked.
+**Mac:** a local root service manages plans and waiting periods, blocks exact
+host names and literal IP addresses, and closes selected signed apps. Browser
+controls cover page patterns, subdomains, and adult-site filtering. Closing apps
+can lose unsaved work. Administrators, VPNs, proxies, and encrypted DNS can bypass
+parts of this protection. The experimental Screen Time code flow is not yet
+verified on a real device.
 
-See [Apple validation](docs/apple-validation.md) for completed checks and the remaining physical-device gate.
+**iPhone and iPad:** Apple's Screen Time APIs shield selected apps and websites.
+Up to 16 plans can be active. App-removal and automatic-date protection are
+available, but permission changes, reboot behavior, and background transitions
+still need signed-device tests. Mac setup does not prove iPhone protection.
 
 ## Development
 
-Use Xcode 26.6 and XcodeGen. Website files need only a local static server. Do not enable real blocks on a primary device until the device test checklist passes.
+Use Node.js 22.13+, Xcode, and XcodeGen. CI uses Xcode 26.6; newer local checks are
+recorded in the [validation record](docs/apple-validation.md). Native signing and
+capability requirements are in the platform guides.
 
-| Command or workflow                                       | Purpose                                                              |
-| --------------------------------------------------------- | -------------------------------------------------------------------- |
-| `npm ci && npm run check`                                 | Pinned formatting, lint, and JavaScript tests                        |
-| `npx playwright install chromium && npm run test:browser` | Landing-page, local-asset, CSP, responsive-layout, and mascot checks |
-| `npm run format`                                          | Format web, configuration, and Markdown files                        |
-| `xcrun swift-format format -i -r ios macos`               | Format Swift with the checked-in rules                               |
-| `scripts/check-native.sh`                                 | Project generation, capability checks, and native tests              |
-| `swift test --package-path core`                          | Shared lifecycle fixtures and transaction ordering                   |
-| GitHub Actions → Checks                                   | Website artifact and native test results                             |
+```sh
+npm ci
+npm run check
+swift test --package-path core
+```
 
-CI uses Xcode 26.6 on `macos-26`, read-only repository permissions, and pinned action revisions. It runs on each push and pull request. Dependabot checks development tools and actions weekly.
+For browser checks, run `npx playwright install chromium` then
+`npm run test:browser`. Run `scripts/check-native.sh` for the full native checks.
+These checks do not install the Mac service or enable real blocks.
 
-Website deployment is opt-in through the **Deploy website to GitHub Pages** workflow. No deployment is part of the local build or test commands.
+| Folder          | Contents                                             |
+| --------------- | ---------------------------------------------------- |
+| [ios](ios/)     | iPhone and iPad app, Screen Time extensions          |
+| [macos](macos/) | Mac app, root service, command-line client           |
+| [core](core/)   | Shared lifecycle, elapsed clock, and storage helpers |
+| [web](web/)     | Product website and shared mascot renderer           |
 
-There is no public installer, checkout, or licensing server. An Apple team, approved capabilities, provisioning, installed-service tests, and signed-device verification are still required. A source license must be selected before release; no license grant is implied yet.
+The [website](https://manuel-huez.github.io/hard-pause/) provides product
+information; it does not enforce blocks. GitHub Pages publishes it from `main`.
+
+The source has no general license grant. The bundled mascot has its own license
+and attribution notices in `web/mascot/`.
+For maintenance that affects a commitment, read [AGENTS.md](AGENTS.md).

@@ -169,6 +169,16 @@ final class ProtectedServiceClient: ProtectedServiceServing {
         return try await perform { service, reply in service.requestEnd(payload, withReply: reply) }
     }
 
+    func prepareUpdate(id: UUID) async throws -> ProtectedServiceSnapshot {
+        let payload = try ProtectedServiceCodec.encode(ProtectedBlockRequest(id: id))
+        return try await perform { service, reply in service.prepareUpdate(payload, withReply: reply) }
+    }
+
+    func cancelUpdate(id: UUID) async throws -> ProtectedServiceSnapshot {
+        let payload = try ProtectedServiceCodec.encode(ProtectedBlockRequest(id: id))
+        return try await perform { service, reply in service.cancelUpdate(payload, withReply: reply) }
+    }
+
     func appleLockdownStatus() async throws -> AppleLockdownSnapshot {
         let reply = try await performApple { service, callback in
             service.appleLockdownStatus(withReply: callback)
