@@ -70,15 +70,15 @@ final class AppModel: ObservableObject {
         else { return false }
         return installed >= 8 && bundled >= installed
     }
-    var setupServiceReady: Bool {
+    var serviceIsHealthy: Bool {
         serviceAvailability == .ready && snapshot?.protection.isEnforcing == true
             && snapshot?.protection.issues.isEmpty == true
-            && snapshot?.protection.serviceVersion == ProtectedServiceContract.serviceVersion
+    }
+    var setupServiceReady: Bool {
+        serviceIsHealthy && snapshot?.protection.serviceVersion == ProtectedServiceContract.serviceVersion
     }
     var serviceUpdateIsOnlySetupGap: Bool {
-        needsServiceUpdate && serviceAvailability == .ready
-            && snapshot?.protection.isEnforcing == true
-            && snapshot?.protection.issues.isEmpty == true
+        needsServiceUpdate && serviceIsHealthy
             && SetupReadiness.ready(
                 serviceReady: true,
                 access: SetupAccessState(browsers: browserReadiness, startsAtLogin: startsAtLogin)

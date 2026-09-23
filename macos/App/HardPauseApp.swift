@@ -49,7 +49,7 @@ private struct HardPauseMenu: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Text(model.setupServiceReady ? "Protection service running" : "Protection needs attention")
+        Text(model.serviceIsHealthy ? "Protection service running" : "Protection needs attention")
         if model.activeBlocks.isEmpty {
             Text("No active plans")
         } else if model.activeBlocks.count == 1 {
@@ -69,7 +69,11 @@ private struct HardPauseMenu: View {
         if !model.activeBlocks.isEmpty && !model.browserWorkerReadyForHandoff {
             Text("Updates wait until browser protection is ready")
         } else if !model.setupServiceReady {
-            Text("App updates wait until the protection service is ready")
+            Text(
+                model.needsServiceUpdate
+                    ? "App updates wait until protection is updated"
+                    : "App updates wait until the protection service is ready"
+            )
         }
         if !updater.isConfigured {
             Text("App updates are unavailable in this build")
