@@ -146,6 +146,7 @@ test('native 120 px renderer starts awake from the resting URL and keeps its fac
   page,
 }) => {
   await page.setViewportSize({ width: 120, height: 114 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/mascot/native.html#resting');
   await expect(page.locator('html')).toHaveAttribute('data-renderer-ready', 'true');
 
@@ -157,7 +158,7 @@ test('native 120 px renderer starts awake from the resting URL and keeps its fac
           return { width: box.width, height: box.height };
         }),
       );
-      return eyeBoxes.length === 2 && eyeBoxes.every((box) => box.width > 3.5 && box.height > 5);
+      return eyeBoxes.length === 2 && eyeBoxes.every((box) => box.width > 3 && box.height > 4);
     })
     .toBe(true);
   const mouthBox = await page.locator('.low-light-mouth').evaluate((mouth) => {

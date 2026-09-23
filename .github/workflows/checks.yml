@@ -54,6 +54,11 @@ jobs:
           python3 scripts/test_project_settings.py
       - name: Test macOS
         run: xcodebuild -project macos/HardPause.xcodeproj -scheme HardPause -destination 'platform=macOS' -derivedDataPath build/macos -resultBundlePath build/macos-tests.xcresult CODE_SIGNING_ALLOWED=NO test
+      - name: Ensure iOS simulator runtime
+        run: |
+          if ! xcrun simctl list runtimes available | rg -q 'iOS 26'; then
+            xcodebuild -downloadPlatform iOS
+          fi
       - name: Test iOS
         shell: bash
         run: |
