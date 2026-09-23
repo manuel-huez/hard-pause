@@ -110,7 +110,7 @@ p12_password=$(/usr/bin/openssl rand -hex 24)
 /usr/bin/security unlock-keychain -p "$keychain_password" "$keychain"
 /usr/bin/security import "$certificate_dir/certificate.p12" -k "$keychain" \
     -P "$p12_password" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
-/usr/bin/security add-trusted-cert -r trustRoot -p codeSigning \
+/usr/bin/security add-trusted-cert -r trustRoot -p codeSign \
     -k "$keychain" "$certificate_dir/certificate.pem" >/dev/null
 /usr/bin/security set-key-partition-list \
     -S apple-tool:,apple:,codesign: -s - -k "$keychain_password" "$keychain" >/dev/null
