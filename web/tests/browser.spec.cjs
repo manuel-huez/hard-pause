@@ -149,17 +149,17 @@ test('native 120 px renderer starts awake from the resting URL and keeps its fac
   await page.goto('/mascot/native.html#resting');
   await expect(page.locator('html')).toHaveAttribute('data-renderer-ready', 'true');
 
-  const eyeBoxes = await page.locator('.low-light-eye').evaluateAll((eyes) =>
-    eyes.map((eye) => {
-      const box = eye.getBoundingClientRect();
-      return { width: box.width, height: box.height };
-    }),
-  );
-  expect(eyeBoxes).toHaveLength(2);
-  for (const box of eyeBoxes) {
-    expect(box.width).toBeGreaterThan(3.5);
-    expect(box.height).toBeGreaterThan(5);
-  }
+  await expect
+    .poll(async () => {
+      const eyeBoxes = await page.locator('.low-light-eye').evaluateAll((eyes) =>
+        eyes.map((eye) => {
+          const box = eye.getBoundingClientRect();
+          return { width: box.width, height: box.height };
+        }),
+      );
+      return eyeBoxes.length === 2 && eyeBoxes.every((box) => box.width > 3.5 && box.height > 5);
+    })
+    .toBe(true);
   const mouthBox = await page.locator('.low-light-mouth').evaluate((mouth) => {
     const box = mouth.getBoundingClientRect();
     return { width: box.width, height: box.height };

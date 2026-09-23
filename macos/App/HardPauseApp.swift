@@ -148,7 +148,8 @@ final class HardPauseLifecycle: NSObject, NSApplicationDelegate {
             (event?.paramDescriptor(forKeyword: AEKeyword(kAEQuitReason))
             ?? event?.attributeDescriptor(forKeyword: AEKeyword(kAEQuitReason)))?.enumCodeValue
         if let reason, [kAEQuitAll, kAEShutDown, kAERestart, kAEReallyLogOut].contains(reason),
-           updater?.installationIsStarting != true {
+            updater?.installationIsStarting != true
+        {
             return .terminateNow
         }
         if model?.keepsBrowserProtectionRunning == true || updater?.shouldHoldTermination == true {

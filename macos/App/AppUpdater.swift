@@ -88,7 +88,10 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
             throw NSError(
                 domain: "org.hardpause.app.updates",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Updates wait until all Hard Pause plans are inactive and protection is available."]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Updates wait until all Hard Pause plans are inactive and protection is available."
+                ]
             )
         }
     }
@@ -114,8 +117,8 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
 
     private func recoverPendingGate() async {
         guard !installationIsStarting, !recoveringGate,
-              let value = UserDefaults.standard.string(forKey: Self.updateGateKey),
-              let token = UUID(uuidString: value)
+            let value = UserDefaults.standard.string(forKey: Self.updateGateKey),
+            let token = UUID(uuidString: value)
         else { return }
         recoveringGate = true
         defer { recoveringGate = false }
@@ -140,16 +143,16 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
 
     private static var hasReleaseConfiguration: Bool {
         #if DEBUG
-        return false
+            return false
         #else
-        guard
-            let key = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String,
-            let decoded = Data(base64Encoded: key),
-            decoded.count == 32,
-            decoded.base64EncodedString() == key,
-            let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
-        else { return false }
-        return feed == "https://github.com/manuel-huez/hard-pause/releases/latest/download/appcast.xml"
+            guard
+                let key = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String,
+                let decoded = Data(base64Encoded: key),
+                decoded.count == 32,
+                decoded.base64EncodedString() == key,
+                let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
+            else { return false }
+            return feed == "https://github.com/manuel-huez/hard-pause/releases/latest/download/appcast.xml"
         #endif
     }
 }
