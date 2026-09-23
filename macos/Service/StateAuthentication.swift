@@ -7,11 +7,19 @@ protocol StateAuthenticationKeyStoring: AnyObject {
     func keyForWrite() throws -> Data
     func hasCommittedState() throws -> Bool
     func markCommittedState() throws
+    func readAnchor() throws -> StateCommitAnchor?
+    func saveAnchor(_ anchor: StateCommitAnchor) throws
+}
+
+struct StateCommitAnchor: Codable, Equatable {
+    let currentDigest: String?
+    let pendingDigest: String?
 }
 
 final class SystemKeychainStateAuthenticationKeys: StateAuthenticationKeyStoring {
     private static let keyAccount = "authentication-key-v1"
     private static let committedAccount = "committed-state-v1"
+    private static let anchorAccount = "state-anchor-v1"
     private let service: String
 
     init(service: String = "org.hardpause.protected-state") {
@@ -45,11 +53,45 @@ final class SystemKeychainStateAuthenticationKeys: StateAuthenticationKeyStoring
     }
 
     func hasCommittedState() throws -> Bool {
+        if try readAnchor() != nil { return true }
         guard let marker = try read(account: Self.committedAccount) else { return false }
         guard marker == Data([1]) else {
             throw ServiceRuntimeError.unreadableState("the protected state marker is invalid")
         }
         return true
+    }
+
+    func readAnchor() throws -> StateCommitAnchor? {
+        guard let data = try read(account: Self.anchorAccount) else { return nil }
+        guard let anchor = try? JSONDecoder().decode(StateCommitAnchor.self, from: data),
+            anchor.currentDigest != nil || anchor.pendingDigest != nil
+        else { throw ServiceRuntimeError.unreadableState("the protected state anchor is invalid") }
+        return anchor
+    }
+
+    func saveAnchor(_ anchor: StateCommitAnchor) throws {
+        guard anchor.currentDigest != nil || anchor.pendingDigest != nil else {
+            throw ServiceRuntimeError.stateWriteFailed("the protected state anchor is empty")
+        }
+        let data = try JSONEncoder().encode(anchor)
+        if try readAnchor() == nil {
+            do {
+                try add(data, account: Self.anchorAccount)
+                return
+            } catch {
+                guard try readAnchor() != nil else { throw error }
+            }
+        }
+        let keychain = try systemKeychain()
+        var query = baseQuery(account: Self.anchorAccount)
+        query[kSecMatchSearchList as String] = [keychain]
+        let status = SecItemUpdate(
+            query as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        guard status == errSecSuccess else {
+            throw ServiceRuntimeError.stateWriteFailed("the protected state anchor could not be saved")
+        }
     }
 
     func markCommittedState() throws {
@@ -112,30 +154,24 @@ struct StateAuthenticator {
     private let authenticationField = "_hardPauseAuthentication"
 
     func seal(_ payload: Data, purpose: String) throws -> Data {
-        guard var object = try JSONSerialization.jsonObject(with: payload) as? [String: Any],
-            object[authenticationField] == nil
-        else {
-            throw ServiceRuntimeError.stateWriteFailed("protected state has an invalid format")
-        }
-        let unsigned = try canonicalJSON(object)
-        let key = try keys.keyForWrite()
-        let code = Data(
-            HMAC<SHA256>.authenticationCode(
-                for: authenticatedBytes(unsigned, purpose: purpose),
-                using: SymmetricKey(data: key)
-            )
+        try PauseCoreEncryptedState.seal(
+            payload, masterKey: keys.keyForWrite(), purpose: purpose
         )
-        object[authenticationField] = [
-            "format": "hmac-sha256-v1",
-            "purpose": purpose,
-            "code": code.base64EncodedString(),
-        ]
-        return try canonicalJSON(object)
     }
 
     func open(_ data: Data, purpose: String) throws -> (payload: Data, isLegacy: Bool) {
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ServiceRuntimeError.unreadableState("protected state has an invalid format")
+        }
+        if object["format"] as? String == PauseCoreEncryptedState.format {
+            guard let key = try keys.existingKey() else {
+                throw ServiceRuntimeError.unreadableState("the protected state key is missing")
+            }
+            do {
+                return (try PauseCoreEncryptedState.open(data, masterKey: key, purpose: purpose), false)
+            } catch {
+                throw ServiceRuntimeError.unreadableState("protected state decryption failed")
+            }
         }
         if let value = object.removeValue(forKey: authenticationField) {
             guard let metadata = value as? [String: String],
@@ -157,7 +193,7 @@ struct StateAuthenticator {
             else {
                 throw ServiceRuntimeError.unreadableState("protected state authentication failed")
             }
-            return (unsigned, false)
+            return (unsigned, true)
         }
         guard try !keys.hasCommittedState() else {
             throw ServiceRuntimeError.unreadableState("protected state authentication is missing")

@@ -129,6 +129,7 @@ final class ProtectedServiceIPCTests: XCTestCase {
     func testSafeUpdateVersionsRequireAnUpdateGate() {
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "4"))
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "5"))
+        XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "6"))
         XCTAssertTrue(
             ProtectedServiceContract.supportsSafeUpdate(
                 from: ProtectedServiceContract.serviceVersion

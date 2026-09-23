@@ -5,6 +5,36 @@ import Testing
 
 @Suite("Shared Apple lifecycle fixtures")
 struct PauseCoreTests {
+    @Test("Encrypted state matches an independent AES-GCM implementation")
+    func encryptedStateEnvelope() throws {
+        let masterKey = Data(repeating: 7, count: 32)
+        let sealed = try PauseCoreEncryptedState.seal(
+            Data("hello".utf8),
+            masterKey: masterKey,
+            purpose: "primary",
+            nonce: Data(repeating: 9, count: 12)
+        )
+        let envelope = try #require(
+            JSONSerialization.jsonObject(with: sealed) as? [String: String]
+        )
+        #expect(envelope["format"] == PauseCoreEncryptedState.format)
+        #expect(Data(base64Encoded: envelope["ciphertext"] ?? "") == Data([0x2d, 0x2a, 0xee, 0x23, 0x5f]))
+        #expect(
+            Data(base64Encoded: envelope["tag"] ?? "")
+                == Data([
+                    0x0e, 0x7f, 0x8b, 0xb6, 0x6e, 0x6f, 0xd1, 0xab,
+                    0x86, 0xe3, 0x2f, 0x62, 0xe4, 0x5d, 0x3c, 0x46,
+                ])
+        )
+        #expect(
+            try PauseCoreEncryptedState.open(sealed, masterKey: masterKey, purpose: "primary")
+                == Data("hello".utf8)
+        )
+        #expect(throws: (any Error).self) {
+            try PauseCoreEncryptedState.open(sealed, masterKey: masterKey, purpose: "pending")
+        }
+    }
+
     @Test("JSON traces preserve shared transitions and explicit platform differences")
     func lifecycleFixtures() throws {
         let url = try #require(

@@ -40,6 +40,6 @@ Rust, Windows and Android remain outside this Apple implementation. See the [sha
 
 ## 2026-09-23 source check
 
-- Mac active plans can add rules without changing existing rules or waits. The service authenticates plan and Screen Time state with System Keychain keys; inactive legacy state migrates on load.
-- Xcode 27: 168 Mac tests, 9 shared-core tests, website checks, 14 browser tests, unsigned iPhone build, and signed Mac bundle validation passed.
+- Mac active plans can add rules without changing existing rules or waits. The service encrypts plan and Screen Time state with a System Keychain key; a separate Keychain anchor detects plan-state rollback. Inactive legacy state migrates on load.
+- Xcode 27: 169 Mac tests, 10 shared-core tests, website checks, 14 browser tests, unsigned iPhone build, and signed Mac bundle validation passed.
 - Local iOS simulator tests could not run because this Mac has no compatible iPhone simulator. Physical iPhone enforcement and signed Mac service Keychain access still need live validation. No installed service or active protection was changed.

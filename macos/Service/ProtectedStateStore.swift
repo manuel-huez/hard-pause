@@ -74,12 +74,35 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
     func load() throws -> ProtectedState {
         do {
             if fileManager.fileExists(atPath: pendingStateURL.path) {
-                let pending = try readPendingTransition()
+                let (pending, legacyPending) = try readPendingTransition()
+                let pendingDigest = try stateDigest(pending.candidate)
+                let anchor = try authenticator.keys.readAnchor()
                 let primary =
                     fileManager.fileExists(atPath: stateURL.path)
                     ? try readState(at: stateURL)
-                    : try emptyStateIfNeverCommitted()
+                    : try emptyStateIfNeverCommitted(allowPending: true)
                 if primary == pending.candidate {
+                    guard
+                        anchor?.pendingDigest == pendingDigest
+                            || anchor?.currentDigest == pendingDigest || legacyPending
+                    else {
+                        throw ServiceRuntimeError.unreadableState(
+                            "the pending transition is not anchored"
+                        )
+                    }
+                    try authenticator.keys.saveAnchor(
+                        StateCommitAnchor(currentDigest: pendingDigest, pendingDigest: nil)
+                    )
+                    try clearPendingCandidate()
+                    return primary
+                }
+                if anchor?.pendingDigest != pendingDigest && !legacyPending {
+                    guard anchor?.pendingDigest == nil else {
+                        throw ServiceRuntimeError.unreadableState(
+                            "the pending transition does not match the Keychain anchor"
+                        )
+                    }
+                    // The journal was written, but its Keychain commit was interrupted.
                     try clearPendingCandidate()
                     return primary
                 }
@@ -91,6 +114,9 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                 try save(pending.candidate)
                 try clearPendingCandidate()
                 return pending.candidate
+            }
+            if try authenticator.keys.readAnchor()?.pendingDigest != nil {
+                throw ServiceRuntimeError.unreadableState("the pending protected state is missing")
             }
             guard fileManager.fileExists(atPath: stateURL.path) else {
                 return try emptyStateIfNeverCommitted()
@@ -112,6 +138,18 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
             guard data.count <= ProtectedServiceContract.maximumPayloadBytes else {
                 throw ProtectedStateError.aggregateLimitReached
             }
+            let digest = try stateDigest(state)
+            if try authenticator.keys.readAnchor()?.pendingDigest != digest {
+                try savePendingCandidate(state)
+            } else {
+                guard fileManager.fileExists(atPath: pendingStateURL.path),
+                    try stateDigest(readPendingTransition().0.candidate) == digest
+                else {
+                    throw ServiceRuntimeError.unreadableState(
+                        "the anchored pending protected state is missing or invalid"
+                    )
+                }
+            }
             try prepareDirectory(stateURL.deletingLastPathComponent())
             try prepareDirectory(backupDirectory)
             if fileManager.fileExists(atPath: stateURL.path) {
@@ -123,10 +161,14 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                 )
                 try writeAtomically(previous, to: backup)
             } else {
-                _ = try emptyStateIfNeverCommitted()
+                _ = try emptyStateIfNeverCommitted(allowPending: true)
             }
             try writeAtomically(try authenticator.seal(data, purpose: "primary"), to: stateURL)
+            try authenticator.keys.saveAnchor(
+                StateCommitAnchor(currentDigest: digest, pendingDigest: nil)
+            )
             try authenticator.keys.markCommittedState()
+            try clearPendingCandidate()
             try pruneBackups()
         } catch let error as ProtectedStateError {
             throw error
@@ -145,8 +187,15 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                 ? try readState(at: stateURL)
                 : try emptyStateIfNeverCommitted()
             try base.validateForPersistence()
+            let baseDigest = try stateDigest(base)
+            let anchor = try authenticator.keys.readAnchor()
+            guard anchor == nil || anchor?.currentDigest == baseDigest else {
+                throw ServiceRuntimeError.unreadableState(
+                    "the primary protected state does not match the Keychain anchor"
+                )
+            }
             let transition = PendingStateTransition(
-                baseStateDigest: try stateDigest(base),
+                baseStateDigest: baseDigest,
                 candidate: state
             )
             let encoder = JSONEncoder()
@@ -157,6 +206,12 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
             }
             try prepareDirectory(pendingStateURL.deletingLastPathComponent())
             try writeAtomically(try authenticator.seal(data, purpose: "pending"), to: pendingStateURL)
+            try authenticator.keys.saveAnchor(
+                StateCommitAnchor(
+                    currentDigest: fileManager.fileExists(atPath: stateURL.path) ? baseDigest : nil,
+                    pendingDigest: try stateDigest(state)
+                )
+            )
         } catch let error as ProtectedStateError {
             throw error
         } catch let error as ServiceRuntimeError {
@@ -191,6 +246,15 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         }
         let state = try JSONDecoder().decode(ProtectedState.self, from: opened.payload)
         try state.validateForPersistence()
+        let digest = try stateDigest(state)
+        let anchor = try authenticator.keys.readAnchor()
+        if let anchor {
+            guard digest == anchor.currentDigest || digest == anchor.pendingDigest else {
+                throw ServiceRuntimeError.unreadableState(
+                    "the primary protected state does not match the Keychain anchor"
+                )
+            }
+        }
         if opened.isLegacy {
             guard state.blocks.allSatisfy({ $0.activation == nil }) else {
                 throw ServiceRuntimeError.unreadableState(
@@ -199,11 +263,21 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
             }
             try writeAtomically(try authenticator.seal(opened.payload, purpose: "primary"), to: url)
         }
+        if anchor == nil {
+            guard state.blocks.allSatisfy({ $0.activation == nil }) else {
+                throw ServiceRuntimeError.unreadableState(
+                    "active state has no Keychain anchor"
+                )
+            }
+            try authenticator.keys.saveAnchor(
+                StateCommitAnchor(currentDigest: digest, pendingDigest: nil)
+            )
+        }
         try authenticator.keys.markCommittedState()
         return state
     }
 
-    private func readPendingTransition() throws -> PendingStateTransition {
+    private func readPendingTransition() throws -> (PendingStateTransition, Bool) {
         try validateProtectedFile(at: pendingStateURL, maximumBytes: Self.maximumAuthenticatedBytes)
         let data = try Data(contentsOf: pendingStateURL, options: .mappedIfSafe)
         let opened = try authenticator.open(data, purpose: "pending")
@@ -225,10 +299,15 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                 try authenticator.seal(opened.payload, purpose: "pending"), to: pendingStateURL
             )
         }
-        return transition
+        return (transition, opened.isLegacy)
     }
 
-    private func emptyStateIfNeverCommitted() throws -> ProtectedState {
+    private func emptyStateIfNeverCommitted(allowPending: Bool = false) throws -> ProtectedState {
+        if allowPending, let anchor = try authenticator.keys.readAnchor(),
+            anchor.currentDigest == nil, anchor.pendingDigest != nil
+        {
+            return ProtectedState()
+        }
         guard try !authenticator.keys.hasCommittedState() else {
             throw ServiceRuntimeError.unreadableState("the protected state is missing")
         }

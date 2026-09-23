@@ -26,6 +26,7 @@ Usage: sudo install-macos-service.sh [--update | --reenroll]
 --update replaces the installed service and CLI while preserving the enrolled
 user and approved code requirements. Every block must be inactive.
 --reenroll replaces the enrolled user and pinned GUI/CLI code requirements.
+For an existing installation, it also requires every block to be inactive.
 EOF
     exit 64
 }
@@ -92,7 +93,7 @@ fi
 
 existing_enrolled_uid=""
 existing_requirements=()
-if [[ ${update_existing} -eq 1 ]]; then
+if [[ ${managed_install} -eq 1 ]]; then
     existing_schema_version=$(/usr/bin/plutil -extract schemaVersion raw -expect integer -o - \
         "${enrollment_destination}" 2>/dev/null) \
         || fail "the existing enrollment schema cannot be read"
@@ -103,8 +104,10 @@ if [[ ${update_existing} -eq 1 ]]; then
         || fail "the enrolled user cannot be read from the existing enrollment"
     [[ "${existing_enrolled_uid}" =~ ^[0-9]+$ && "${existing_enrolled_uid}" -gt 0 ]] \
         || fail "the existing enrollment contains an invalid user"
-    [[ "${existing_enrolled_uid}" == "${sudo_uid}" ]] \
-        || fail "the existing enrollment belongs to a different user"
+    if [[ ${update_existing} -eq 1 ]]; then
+        [[ "${existing_enrolled_uid}" == "${sudo_uid}" ]] \
+            || fail "the existing enrollment belongs to a different user"
+    fi
 
     /usr/bin/plutil -extract approvedClientRequirements xml1 -expect array -o /dev/null \
         "${enrollment_destination}" >/dev/null 2>&1 \
@@ -319,9 +322,15 @@ verify_existing_inactive_blocks() {
         "${cli_destination}" list >"${existing_health}" 2>"${stage}/${snapshot}.stderr" \
         || fail "the installed CLI could not authenticate and list protected state; update stopped"
     verify_inactive_snapshot "${existing_health}"
+    if [[ ${reenroll} -eq 1 ]]; then
+        /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
+            "${cli_destination}" can-uninstall >"${stage}/existing-can-uninstall.txt" \
+            2>"${stage}/existing-can-uninstall.stderr" \
+            || fail "the installed service reports protection that prevents reenrollment"
+    fi
 }
 
-if [[ ${update_existing} -eq 1 ]]; then
+if [[ ${managed_install} -eq 1 ]]; then
     verify_existing_inactive_blocks "existing-health-check.json"
 fi
 
@@ -396,6 +405,10 @@ if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
     previous_service_loaded=1
 fi
 rollback_armed=1
+if [[ ${managed_install} -eq 1 && ${reenroll} -eq 1 ]]; then
+    "${service_destination}" --verify-uninstall-offline \
+        || fail "durable protection changed before reenrollment; the previous service will be restarted"
+fi
 
 if [[ -e "${support_dir}" ]]; then
     [[ -d "${support_dir}" && ! -L "${support_dir}" ]] || fail "the support directory is unsafe"
@@ -438,6 +451,9 @@ else
     /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
         "${cli_destination}" list >"${stage}/health-check.json" \
         || fail "the installed service did not pass its authenticated health check"
+    if [[ ${managed_install} -eq 1 ]]; then
+        verify_inactive_snapshot "${stage}/health-check.json"
+    fi
     rollback_armed=0
 fi
 

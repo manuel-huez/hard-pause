@@ -23,6 +23,7 @@
 		32D13D9D7C65E981C70DDF74 /* TransitionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */; };
 		35917CB15157942FA738C5AC /* HardPauseConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */; };
 		36CED3C87A874D940813BB16 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */; };
+		3747FD356BAC24D68054EE12 /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4376EAB4E128DF91945EF54B /* PauseCoreEncryptedState.swift */; };
 		3D2DE7724B5796631DEBCE0E /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20CEC851791C27571D4516A /* ProtectionMode.swift */; };
 		4311D599FEA14F19E3D06821 /* HardPauseShieldAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		44492E6359DADDF5382C9208 /* HardPauseMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 840F73B7C5B3F4C84ADFEC56 /* HardPauseMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -33,6 +34,7 @@
 		562D18A508E6E79331381769 /* ShieldActionExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1664575DC09CCFD8AAD978B /* ShieldActionExtension.swift */; };
 		5A4BB56C2C86220DD91D9329 /* LockControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28AC9F0F91D97372B71A98E4 /* LockControllerTests.swift */; };
 		6246D0CF5C032BF211580CCC /* LocalLockRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */; };
+		65B25494262C2EAF5D7CFE31 /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4376EAB4E128DF91945EF54B /* PauseCoreEncryptedState.swift */; };
 		6AC7096D3804023D7F5CB208 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
 		721AE788979CAF819E52C674 /* HardPauseShieldConfiguration.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
@@ -138,6 +140,7 @@
 		32C95D6B54F8FFFE9739BADB /* HardPause.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HardPause.entitlements; sourceTree = "<group>"; };
 		3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPolicyRepository.swift; sourceTree = "<group>"; };
 		404D8B647D1426A483797A07 /* mascot */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mascot; path = ../web/mascot; sourceTree = SOURCE_ROOT; };
+		4376EAB4E128DF91945EF54B /* PauseCoreEncryptedState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreEncryptedState.swift; sourceTree = "<group>"; };
 		49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortableDomainList.swift; sourceTree = "<group>"; };
 		515D0ACE76FFE733C3585779 /* HardPauseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseApp.swift; sourceTree = "<group>"; };
 		53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockPolicy.swift; sourceTree = "<group>"; };
@@ -211,6 +214,7 @@
 			isa = PBXGroup;
 			children = (
 				1D48D4E251122EB63A61006B /* PauseCoreClock.swift */,
+				4376EAB4E128DF91945EF54B /* PauseCoreEncryptedState.swift */,
 				D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */,
 				56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */,
 				49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */,
@@ -557,6 +561,7 @@
 				C80ECB031082C50CD28DB3CB /* LockState.swift in Sources */,
 				15882B1EAC69D5394188450B /* MonitorExtension.swift in Sources */,
 				F7BC647A89553C257867BB24 /* PauseCoreClock.swift in Sources */,
+				3747FD356BAC24D68054EE12 /* PauseCoreEncryptedState.swift in Sources */,
 				FDC8A44030450D923FDFD9B4 /* PauseCoreLifecycle.swift in Sources */,
 				05A68068ECEBCAC4A3F28C82 /* PauseCoreTransaction.swift in Sources */,
 				849669699B688F2000A3FFCE /* PortableDomainList.swift in Sources */,
@@ -606,6 +611,7 @@
 				0BE4BEDEFF67BC13E0661B17 /* LockRepository.swift in Sources */,
 				A6B43742FBE37C05BDE23758 /* LockState.swift in Sources */,
 				1CEF28B0B65069E5A03E9306 /* PauseCoreClock.swift in Sources */,
+				65B25494262C2EAF5D7CFE31 /* PauseCoreEncryptedState.swift in Sources */,
 				B20753AFDD1C4F79B7275B9A /* PauseCoreLifecycle.swift in Sources */,
 				0C193A523AD9EC8FB97CBCDD /* PauseCoreTransaction.swift in Sources */,
 				F883C2DD801A5D5DF2B4BED4 /* PauseSeed.swift in Sources */,

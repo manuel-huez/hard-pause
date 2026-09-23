@@ -63,6 +63,7 @@
 		3B15C2A3B2399452C373775F /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
 		3C1FAD29773DC572C153CBE9 /* AppleProtectionIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2CF63A97D4B104E70AC07D /* AppleProtectionIPC.swift */; };
 		40B01687BD87C09E359882A9 /* AGENTS.md in Resources */ = {isa = PBXBuildFile; fileRef = 8D1F4228069182E29D66DE68 /* AGENTS.md */; };
+		4175BB41F90438E642701B7F /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F873CDBDD0D34068E1B22C2 /* PauseCoreEncryptedState.swift */; };
 		436AC669BD642FB70346F7C3 /* AppleProtectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77328E3BB0BF25A6443E2AA /* AppleProtectionState.swift */; };
 		4498954D0B4C85B7117832BF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1A97B9164197B452C7956E60 /* PrivacyInfo.xcprivacy */; };
 		470E2DC8A5CB5EA19939EFD7 /* PFEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235822A68E5E99CAAA7E5132 /* PFEnforcer.swift */; };
@@ -84,6 +85,7 @@
 		6B257FE7FA06E33636C8829E /* AppleProtectionIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2CF63A97D4B104E70AC07D /* AppleProtectionIPC.swift */; };
 		6CA8A342751BCA4D14502687 /* first-frame.svg in Resources */ = {isa = PBXBuildFile; fileRef = 8DFB577A7A8C9ECB95AC00E4 /* first-frame.svg */; };
 		6E51B0224BEBB7E7A722102F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295E29404D4010DD806082FB /* main.swift */; };
+		6EF82D5D963A7417B6603BDD /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F873CDBDD0D34068E1B22C2 /* PauseCoreEncryptedState.swift */; };
 		727AED47F1FD4B5BD08A6886 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
 		7404036BE3B7C3D940135334 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */; };
 		7BE559A003F3CA9F1343A2DF /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 919227CFCCEBC5936594BC47 /* ProtectionMode.swift */; };
@@ -110,6 +112,7 @@
 		9F40F483F79EB64882D70AFA /* SetupReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE19D586EC509EECAD2D8C2 /* SetupReadiness.swift */; };
 		A0FF429B4B1E17F6C31C024A /* AdultWebsiteRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D05715D281272A3845C34D4 /* AdultWebsiteRules.swift */; };
 		A38898838F5B827B4A8E738F /* BrowserURLMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */; };
+		A5EF5835B724EFC88E94979A /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F873CDBDD0D34068E1B22C2 /* PauseCoreEncryptedState.swift */; };
 		A62D104AD8DC7D2FBA0DF43A /* ClientAuthorizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A46799FEC96C8266F520550 /* ClientAuthorizer.swift */; };
 		A6C6470EF73041FDEC11F27B /* PauseCoreClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A55B346B4C750C7BEED939 /* PauseCoreClock.swift */; };
 		A92DF7645611BA544A86C843 /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D017F84348B17F323BBD8B /* PortableDomainList.swift */; };
@@ -128,9 +131,11 @@
 		BCECA29FB4E5A381CCE0C380 /* ProtectedStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28277D418288D8C500796009 /* ProtectedStateStore.swift */; };
 		BDCBA6939F3AB0FB968FFC26 /* AppleProtectionStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAFAA8B64D1DAB6E5595C18B /* AppleProtectionStateStore.swift */; };
 		BE2D7769F1FE77222E617CBC /* AppleProtectionIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2CF63A97D4B104E70AC07D /* AppleProtectionIPC.swift */; };
+		BF80B1DF9A215A30825B16BE /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F873CDBDD0D34068E1B22C2 /* PauseCoreEncryptedState.swift */; };
 		BF8B9635BB837C23AA9681FD /* HostsEnforcerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E8BED6DCD333C51BB9227F /* HostsEnforcerTests.swift */; };
 		C5A47190993B036892A2A314 /* Enforcement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C6280E722B6CF50F934980A /* Enforcement.swift */; };
 		C704BD5AF02366A1ACB2C7AE /* ProtectedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357AF05730AE2F838061AF19 /* ProtectedService.swift */; };
+		C93849CB58905F60575E3DDE /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F873CDBDD0D34068E1B22C2 /* PauseCoreEncryptedState.swift */; };
 		CA1F1EB9EB683589C2EE4999 /* PausePageAssetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30A474BF5A2F17C2066899D /* PausePageAssetsTests.swift */; };
 		CAE92C52DF5BE390AF9E35E7 /* AgentCommitmentGuidance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */; };
 		CAEDAD73119951086EECDB79 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
@@ -216,6 +221,7 @@
 		3D05715D281272A3845C34D4 /* AdultWebsiteRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdultWebsiteRules.swift; sourceTree = "<group>"; };
 		3D176EE416BCE7E416A82CCC /* HardPauseServiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HardPauseServiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3DD32AB2DC3999BB912BD497 /* AppleScreenTimeAutomationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleScreenTimeAutomationTests.swift; sourceTree = "<group>"; };
+		3F873CDBDD0D34068E1B22C2 /* PauseCoreEncryptedState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreEncryptedState.swift; sourceTree = "<group>"; };
 		43707335DAD448AFF9FA3738 /* PauseCoreTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreTransaction.swift; sourceTree = "<group>"; };
 		438D47E49D9C1B002570AA49 /* FirefoxBrowserProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxBrowserProtection.swift; sourceTree = "<group>"; };
 		4A38AE50C0DE33FBB37FE332 /* libbsm.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libbsm.tbd; path = usr/lib/libbsm.tbd; sourceTree = SDKROOT; };
@@ -483,6 +489,7 @@
 			isa = PBXGroup;
 			children = (
 				E7A55B346B4C750C7BEED939 /* PauseCoreClock.swift */,
+				3F873CDBDD0D34068E1B22C2 /* PauseCoreEncryptedState.swift */,
 				092DDF23C78D3F3F39E3E11B /* PauseCoreLifecycle.swift */,
 				43707335DAD448AFF9FA3738 /* PauseCoreTransaction.swift */,
 				11D017F84348B17F323BBD8B /* PortableDomainList.swift */,
@@ -772,6 +779,7 @@
 				DB4FF0C6F8649DF68EF28227 /* AppleProtectionState.swift in Sources */,
 				9EE7C7101405F51024732837 /* BrowserURLMatcher.swift in Sources */,
 				D709C7C92840AA29FD9EA14B /* PauseCoreClock.swift in Sources */,
+				C93849CB58905F60575E3DDE /* PauseCoreEncryptedState.swift in Sources */,
 				0B63CC67D13916F611CF428C /* PauseCoreLifecycle.swift in Sources */,
 				4C9C9D121903B56013CE8D12 /* PauseCoreTransaction.swift in Sources */,
 				3959950E60785594926BED68 /* PortableDomainList.swift in Sources */,
@@ -807,6 +815,7 @@
 				151F8E002910DDB623202EC1 /* PFEnforcer.swift in Sources */,
 				69828EAC0ED7711B58C47214 /* PFEnforcerTests.swift in Sources */,
 				8C98FB8262D33E607689A0ED /* PauseCoreClock.swift in Sources */,
+				A5EF5835B724EFC88E94979A /* PauseCoreEncryptedState.swift in Sources */,
 				EC106278E6FAA4026B77A46A /* PauseCoreLifecycle.swift in Sources */,
 				982112844CFD4CFAB9FA4ED9 /* PauseCoreTransaction.swift in Sources */,
 				169269BEDCAD38E8FFBA2B50 /* PortableDomainList.swift in Sources */,
@@ -850,6 +859,7 @@
 				AA13F5E7DF49C348EBA07018 /* FirefoxBrowserProtection.swift in Sources */,
 				E43EEB6564AE293D64E0DD8D /* LocalPausePageServer.swift in Sources */,
 				01256D41D8E82A75A05532F5 /* PauseCoreClock.swift in Sources */,
+				4175BB41F90438E642701B7F /* PauseCoreEncryptedState.swift in Sources */,
 				2FDC8E2E83D09C98868BB963 /* PauseCoreLifecycle.swift in Sources */,
 				ABBC6957C18CD8A682A11F55 /* PauseCoreTransaction.swift in Sources */,
 				CA1F1EB9EB683589C2EE4999 /* PausePageAssetsTests.swift in Sources */,
@@ -890,6 +900,7 @@
 				2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */,
 				1CFF81DCB16B1D6A363EB17F /* LocalPausePageServer.swift in Sources */,
 				A6C6470EF73041FDEC11F27B /* PauseCoreClock.swift in Sources */,
+				6EF82D5D963A7417B6603BDD /* PauseCoreEncryptedState.swift in Sources */,
 				F39A0D5F88A568AAC5E0FD75 /* PauseCoreLifecycle.swift in Sources */,
 				58BF0AD98EBA2D3AE6A6E22D /* PauseCoreTransaction.swift in Sources */,
 				B04963FD01B67C7A67B9EE8E /* PauseSeed.swift in Sources */,
@@ -924,6 +935,7 @@
 				010FE046703CFEE5BBD7C48B /* HostsEnforcer.swift in Sources */,
 				470E2DC8A5CB5EA19939EFD7 /* PFEnforcer.swift in Sources */,
 				EC01692D2AF09A805B6E967A /* PauseCoreClock.swift in Sources */,
+				BF80B1DF9A215A30825B16BE /* PauseCoreEncryptedState.swift in Sources */,
 				05107332EC94CFF8B8989A9C /* PauseCoreLifecycle.swift in Sources */,
 				99D0C41C8E5743EA2A5E2CF5 /* PauseCoreTransaction.swift in Sources */,
 				543A49424494ABB34F783447 /* PortableDomainList.swift in Sources */,
