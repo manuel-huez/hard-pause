@@ -15,7 +15,8 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
 
     var canCheckForUpdates: Bool {
         controller?.updater.canCheckForUpdates == true && Self.canUpdate(model)
-            && !installationIsStarting
+            && !installationIsStarting && !recoveringGate
+            && UserDefaults.standard.string(forKey: Self.updateGateKey) == nil
     }
 
     func checkForUpdates() {
@@ -44,7 +45,9 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
             installationIsStarting,
             Self.canUpdate(model),
             let latest = try? await ProtectedServiceClient().list(),
-            Self.isSafeToUpdate(latest)
+            Self.isSafeToUpdate(latest),
+            !recoveringGate,
+            UserDefaults.standard.string(forKey: Self.updateGateKey) == nil
         else { return false }
         let token = UUID()
         let defaults = UserDefaults.standard
@@ -84,7 +87,9 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
-        guard Self.canUpdate(model) else {
+        guard Self.canUpdate(model), !recoveringGate,
+            UserDefaults.standard.string(forKey: Self.updateGateKey) == nil
+        else {
             throw NSError(
                 domain: "org.hardpause.app.updates",
                 code: 1,
@@ -123,7 +128,9 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
         recoveringGate = true
         defer { recoveringGate = false }
         guard (try? await ProtectedServiceClient().cancelUpdate(id: token)) != nil else { return }
-        UserDefaults.standard.removeObject(forKey: Self.updateGateKey)
+        if UserDefaults.standard.string(forKey: Self.updateGateKey) == value {
+            UserDefaults.standard.removeObject(forKey: Self.updateGateKey)
+        }
     }
 
     private static func canUpdate(_ model: AppModel?) -> Bool {
