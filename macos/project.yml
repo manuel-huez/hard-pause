@@ -25,7 +25,7 @@ targets:
     sources:
       - App
       - Core
-      - ../core/apple
+      - ../ios/Shared/CoreBridge
       - path: ../data/adult-domains
         type: folder
         buildPhase: resources
@@ -122,7 +122,7 @@ targets:
     sources:
       - BrowserWorker
       - Core
-      - ../core/apple
+      - ../ios/Shared/CoreBridge
       - App/BrowserWorkerIPC.swift
       - App/BrowserWorkerClient.swift
       - App/BrowserProtection.swift
@@ -177,7 +177,7 @@ targets:
     sources:
       - Service
       - Core
-      - ../core/apple
+      - ../ios/Shared/CoreBridge
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/Service/SystemKeychainBridge.h
@@ -199,7 +199,7 @@ targets:
     sources:
       - CLI
       - Core
-      - ../core/apple
+      - ../ios/Shared/CoreBridge
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
@@ -217,7 +217,7 @@ targets:
     sources:
       - Tests
       - Core
-      - ../core/apple
+      - ../ios/Shared/CoreBridge
       - App/AppModel.swift
       - App/AppleProtectionModel.swift
       - App/AppleScreenTimeAutomation.swift
@@ -250,7 +250,7 @@ targets:
         excludes:
           - main.swift
       - Core
-      - ../core/apple
+      - ../ios/Shared/CoreBridge
       - ServiceTests
     settings:
       base:

@@ -27,7 +27,6 @@ targets:
       - path: Shared
         excludes:
           - PrivacyInfo.xcprivacy
-      - path: ../core/apple
       - path: Shared/PrivacyInfo.xcprivacy
         buildPhase: resources
       - path: App/Resources
@@ -88,7 +87,6 @@ targets:
       - path: Shared
         excludes:
           - PrivacyInfo.xcprivacy
-      - path: ../core/apple
       - path: Shared/PrivacyInfo.xcprivacy
         buildPhase: resources
     info:
