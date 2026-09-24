@@ -270,6 +270,16 @@ printf 'installed-candidate CDHash: %s\nsuccessor CDHash: %s\n' \
 installed_cli="$helper_dir/hard-pause"
 installed_uninstaller="$helper_dir/hard-pause-uninstall"
 run_cli() { "$installed_cli" "$@"; }
+request_full_unlock() {
+    local output=$1
+    for _ in {1..180}; do
+        if run_cli end "$active_block_id" >"$output" 2>&1; then
+            return 0
+        fi
+        /bin/sleep 1
+    done
+    return 1
+}
 
 assert_snapshot() {
     python3 - "$1" "$2" "$3" "$4" <<'PY'
@@ -447,7 +457,9 @@ PY
 
 sudo -n /usr/bin/python3 "$observer" "$fixture_hosts_file" main
 watch_stop="$build_root/stop-enforcement-watch"
-watch_log="$artifact_dir/enforcement-watch.jsonl"
+watch_log="$build_root/enforcement-watch.jsonl"
+: >"$watch_log"
+/bin/chmod 0644 "$watch_log"
 watch_pid=""
 stop_watcher() {
     if [[ -n "$watch_pid" ]]; then
@@ -464,14 +476,15 @@ fixture_exit() {
         /usr/bin/pkill -f -x "$live_successor_app/Contents/MacOS/HardPause" || true
     fi
     if [[ "$status" -ne 0 && -x "$installed_cli" ]]; then
-        echo "The fixture stopped; completing its normal full unlock before removal."
+        echo "The fixture stopped; completing its normal full unlock before removal." >&2
         if [[ -n "${active_block_id:-}" ]]; then
-            "$installed_cli" end "$active_block_id" >"$artifact_dir/failure-full-unlock.json" 2>&1 || true
+            request_full_unlock "$artifact_dir/failure-full-unlock.json" \
+                || echo "The fixture remains active; its normal unlock request did not succeed." >&2
         fi
-        for _ in {1..90}; do
+        for _ in {1..120}; do
             if "$installed_cli" can-uninstall >/dev/null 2>&1; then
                 if sudo -n "$installed_uninstaller"; then
-                    echo "Inactive fixture removed after failure."
+                    echo "Inactive fixture removed after failure." >&2
                 else
                     echo "The inactive fixture needs normal manual removal." >&2
                 fi
@@ -559,12 +572,8 @@ capture_update_stderr() {
         | /usr/bin/tee "$artifact_dir/update-installer.stderr" >/dev/null || true
 }
 updated=0
+result=""
 for attempt in {1..180}; do
-    if [[ -f "$helper_dir/hard-pause-service" \
-        && $(shasum -a 256 "$helper_dir/hard-pause-service" | awk '{ print $1 }') == "$successor_sha" ]]; then
-        updated=1
-        break
-    fi
     if (( attempt % 5 == 0 )); then
         result=$(update_result) || fail "cannot read the service update result"
         if [[ -n "$result" && "$result" != success ]]; then
@@ -572,6 +581,11 @@ for attempt in {1..180}; do
             capture_update_stderr
             fail "the service update failed: $result"
         fi
+    fi
+    if [[ "$result" == success && -f "$helper_dir/hard-pause-service" \
+        && $(shasum -a 256 "$helper_dir/hard-pause-service" | awk '{ print $1 }') == "$successor_sha" ]]; then
+        updated=1
+        break
     fi
     /bin/sleep 1
 done
@@ -585,7 +599,15 @@ if [[ "$updated" -ne 1 ]]; then
         >"$artifact_dir/update-app.log" 2>&1 || true
     fail "the app did not complete its no-password service update"
 fi
-run_cli list >"$artifact_dir/after-successful-handoff.json"
+healthy=0
+for _ in {1..60}; do
+    if run_cli list >"$artifact_dir/after-successful-handoff.json" 2>&1; then
+        healthy=1
+        break
+    fi
+    /bin/sleep 1
+done
+[[ "$healthy" -eq 1 ]] || fail "the updated service did not answer its health check"
 assert_snapshot "$artifact_dir/after-successful-handoff.json" "8" "$active_block_id" active
 [[ $(shasum -a 256 "$helper_dir/hard-pause-service" | awk '{ print $1 }') \
     == "$successor_sha" ]] \
@@ -610,7 +632,8 @@ print(f"Continuity observer passed: {len(records)} samples, no sampled gap.")
 PY
 
 echo "Completing the full-unlock delay and normal service removal."
-run_cli end "$active_block_id" >"$artifact_dir/full-unlock-requested.json"
+request_full_unlock "$artifact_dir/full-unlock-requested.json" \
+    || fail "the updated service did not accept the normal full unlock request"
 /bin/sleep 65
 run_cli end "$active_block_id" >"$artifact_dir/full-unlock-completed.json"
 run_cli can-uninstall
