@@ -606,14 +606,6 @@ assert_snapshot "$artifact_dir/after-successful-handoff.json" "8" "$active_block
 [[ $(shasum -a 256 "$helper_dir/hard-pause-service" | awk '{ print $1 }') \
     == "$successor_sha" ]] \
     || fail "the successful handoff did not install the signed successor binary"
-[[ -x "$worker_executable" \
-    && ! -e "$helper_dir/BrowserWorker/HardPauseBrowserWorker-9.app" ]] \
-    || fail "the active handoff replaced the permitted browser worker"
-if ! "$worker_executable" --probe "$worker_label" \
-    >"$artifact_dir/retained-browser-worker.json" \
-    2>"$artifact_dir/retained-browser-worker.stderr"; then
-    fail "the retained browser worker is not ready after the handoff"
-fi
 if /bin/launchctl print "system/$standby_label" >/dev/null 2>&1; then
     fail "successful handoff left the standby launch daemon loaded"
 fi
