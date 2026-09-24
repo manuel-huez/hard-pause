@@ -54,6 +54,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
     private let maximumBackups: Int
     private let fileManager: FileManager
     private let authenticator: StateAuthenticator
+    private let allowActiveLegacyMigration: Bool
 
     init(
         stateURL: URL = URL(fileURLWithPath: ProtectedServiceContract.statePath),
@@ -64,7 +65,8 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         requireRootOwnership: Bool = true,
         maximumBackups: Int = 8,
         authenticationKeys: any StateAuthenticationKeyStoring = SystemKeychainStateAuthenticationKeys(),
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        allowActiveLegacyMigration: Bool = false
     ) {
         self.stateURL = stateURL
         self.pendingStateURL = pendingStateURL
@@ -73,6 +75,7 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
         self.maximumBackups = maximumBackups
         authenticator = StateAuthenticator(keys: authenticationKeys)
         self.fileManager = fileManager
+        self.allowActiveLegacyMigration = allowActiveLegacyMigration
     }
 
     func load() throws -> ProtectedState {
@@ -165,6 +168,27 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
                 throw ProtectedStateError.aggregateLimitReached
             }
             let digest = try stateDigest(state)
+            if allowActiveLegacyMigration,
+                try authenticator.keys.readAnchor() == nil,
+                fileManager.fileExists(atPath: stateURL.path)
+            {
+                let previous = try Data(contentsOf: stateURL, options: .mappedIfSafe)
+                if try authenticator.open(previous, purpose: "primary").isLegacy {
+                    _ = try readState(at: stateURL, readOnly: true)
+                    try prepareDirectory(backupDirectory)
+                    let backup = backupDirectory.appendingPathComponent(
+                        "state-v2-\(Int(Date().timeIntervalSince1970 * 1_000))-\(UUID().uuidString).json"
+                    )
+                    try writeAtomically(previous, to: backup)
+                    try writeAtomically(try authenticator.seal(data, purpose: "primary"), to: stateURL)
+                    try authenticator.keys.saveAnchor(
+                        StateCommitAnchor(currentDigest: digest, pendingDigest: nil)
+                    )
+                    try authenticator.keys.markCommittedState()
+                    try pruneBackups()
+                    return
+                }
+            }
             if try authenticator.keys.readAnchor()?.pendingDigest != digest {
                 try savePendingCandidate(state)
             } else {
@@ -296,22 +320,22 @@ final class JSONProtectedStateStore: ProtectedStateStoring {
             }
         }
         if opened.isLegacy {
-            guard state.blocks.allSatisfy({ $0.activation == nil }) else {
+            guard allowActiveLegacyMigration || state.blocks.allSatisfy({ $0.activation == nil }) else {
                 throw ServiceRuntimeError.unreadableState(
                     "active legacy state needs the installed service; protection was not reset"
                 )
             }
-            if !readOnly {
+            if !readOnly && !allowActiveLegacyMigration {
                 try writeAtomically(try authenticator.seal(opened.payload, purpose: "primary"), to: url)
             }
         }
         if anchor == nil {
-            guard state.blocks.allSatisfy({ $0.activation == nil }) else {
+            guard allowActiveLegacyMigration || state.blocks.allSatisfy({ $0.activation == nil }) else {
                 throw ServiceRuntimeError.unreadableState(
                     "active state has no Keychain anchor"
                 )
             }
-            if !readOnly {
+            if !readOnly && (!allowActiveLegacyMigration || !opened.isLegacy) {
                 try authenticator.keys.saveAnchor(
                     StateCommitAnchor(currentDigest: digest, pendingDigest: nil)
                 )

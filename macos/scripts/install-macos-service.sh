@@ -25,12 +25,15 @@ fail() {
 
 usage() {
     cat >&2 <<'EOF'
-Usage: sudo install-macos-service.sh [--update | --live-update | --reenroll]
+Usage: sudo install-macos-service.sh [--update | --live-update | --active-legacy-update | --reenroll]
 
 --update replaces the installed service and CLI while preserving the enrolled
 user and approved code requirements. Every block must be inactive.
 --live-update transfers an active v8 service to a signed successor while the
 browser worker and overlapping service enforcement remain available.
+--active-legacy-update migrates an active v2 service when Screen Time protection
+is inactive and no applications are blocked. Native rules stay installed while
+the new service is checked.
 --reenroll replaces the enrolled user and pinned GUI/CLI code requirements.
 For an existing installation, it also requires every block to be inactive.
 EOF
@@ -40,11 +43,13 @@ EOF
 reenroll=0
 update_existing=0
 live_update=0
+active_legacy_migration=0
 case "${1:-}" in
     "") ;;
     --reenroll) reenroll=1 ;;
     --update) update_existing=1 ;;
     --live-update) live_update=1 ;;
+    --active-legacy-update) update_existing=1; active_legacy_migration=1 ;;
     *) usage ;;
 esac
 [[ $# -le 1 ]] || usage
@@ -273,7 +278,7 @@ finish_install() {
         fi
     elif [[ ${installer_exit_code} -ne 0 && ${migration_finalization_started} -eq 1 ]]; then
         preserve_stage=1
-        echo "hard-pause installer: inactive migration may have committed; do not restore v2." >&2
+        echo "hard-pause installer: legacy migration may have committed; do not restore v2." >&2
         echo "hard-pause installer: recovery evidence is retained at ${migration_stage}." >&2
     elif [[ ${installer_exit_code} -ne 0 && ${rollback_armed} -eq 1 ]]; then
         rollback_install
@@ -293,13 +298,16 @@ trap finish_install EXIT
 
 verify_inactive_snapshot() {
     local snapshot=$1
+    local expect_active=${2:-0}
     local plist_snapshot="${snapshot}.plist"
     local index=0
+    local active_count=0
     local phase
     local inactive_keys
     local is_enforcing
     local issue_count
     local contributor_count
+    local application_count
     /usr/bin/sed -E 's/:[[:space:]]*null([,}])/: ""\1/g' "${snapshot}" >"${plist_snapshot}" \
         || fail "the installed CLI returned an unreadable protected-state list"
     /usr/bin/plutil -extract blocks xml1 -expect array -o /dev/null "${plist_snapshot}" >/dev/null 2>&1 \
@@ -316,23 +324,37 @@ verify_inactive_snapshot() {
         /usr/bin/plutil -extract effectiveRestrictions.contributingBlockIDs raw -expect array -o - \
             "${plist_snapshot}" 2>/dev/null
     ) || fail "the installed CLI returned an unreadable restriction ownership list"
-    [[ "${contributor_count}" == 0 ]] \
-        || fail "the installed CLI reports enforced restrictions; update stopped"
+    if [[ ${expect_active} -eq 0 ]]; then
+        [[ "${contributor_count}" == 0 ]] \
+            || fail "the installed CLI reports enforced restrictions; update stopped"
+    else
+        application_count=$(/usr/bin/plutil -extract effectiveRestrictions.blockedApplications raw -expect array -o - \
+            "${plist_snapshot}" 2>/dev/null) \
+            || fail "the installed CLI returned an unreadable application restriction list"
+        [[ "${application_count}" == 0 ]] \
+            || fail "active legacy migration cannot transfer blocked applications"
+    fi
     while [[ ${index} -lt 128 ]]; do
         if phase=$(
             /usr/bin/plutil -extract "blocks.${index}.phase" raw -expect dictionary -o - "${plist_snapshot}" \
                 2>/dev/null
         ); then
-            [[ "${phase}" == inactive ]] \
-                || fail "the installed CLI reports an active or unknown block; update stopped"
-            inactive_keys=$(/usr/bin/plutil -extract "blocks.${index}.phase.inactive" raw -expect dictionary -o - \
-                "${plist_snapshot}" 2>/dev/null) \
-                || fail "the installed CLI returned an invalid inactive block phase"
-            [[ -z "${inactive_keys}" ]] \
-                || fail "the installed CLI returned an invalid inactive block phase"
+            if [[ "${phase}" == inactive ]]; then
+                inactive_keys=$(/usr/bin/plutil -extract "blocks.${index}.phase.inactive" raw -expect dictionary -o - \
+                    "${plist_snapshot}" 2>/dev/null) \
+                    || fail "the installed CLI returned an invalid inactive block phase"
+                [[ -z "${inactive_keys}" ]] \
+                    || fail "the installed CLI returned an invalid inactive block phase"
+            elif [[ ${expect_active} -eq 1 && "${phase}" =~ ^(active|waitingForBreak|waitingForFullUnlock|breakActive)$ ]]; then
+                active_count=$((active_count + 1))
+            else
+                fail "the installed CLI reports an active or unknown block; update stopped"
+            fi
         elif /usr/bin/plutil -extract "blocks.${index}" xml1 -o /dev/null "${plist_snapshot}" >/dev/null 2>&1; then
             fail "the installed CLI returned a block with an unreadable phase"
         else
+            [[ ${expect_active} -eq 0 || ${active_count} -gt 0 ]] \
+                || fail "the installed CLI reports no active block for legacy migration"
             return 0
         fi
         index=$((index + 1))
@@ -340,6 +362,19 @@ verify_inactive_snapshot() {
     if /usr/bin/plutil -extract "blocks.${index}" xml1 -o /dev/null "${plist_snapshot}" >/dev/null 2>&1; then
         fail "the installed CLI returned too many blocks to verify safely"
     fi
+    [[ ${expect_active} -eq 0 || ${active_count} -gt 0 ]] \
+        || fail "the installed CLI reports no active block for legacy migration"
+}
+
+verify_same_restrictions() {
+    local previous=$1
+    local successor=$2
+    /usr/bin/plutil -extract effectiveRestrictions json -o "${previous}.restrictions" \
+        "${previous}.plist" || fail "the previous restriction list is unreadable"
+    /usr/bin/plutil -extract effectiveRestrictions json -o "${successor}.restrictions" \
+        "${successor}.plist" || fail "the successor restriction list is unreadable"
+    /usr/bin/cmp -s "${previous}.restrictions" "${successor}.restrictions" \
+        || fail "the successor did not report the same active restrictions"
 }
 
 verify_staged_requirement() {
@@ -431,6 +466,7 @@ probe_installed_browser_worker() {
 
 verify_existing_inactive_blocks() {
     local snapshot=$1
+    local expect_active=${2:-0}
     [[ -x "${cli_destination}" && ! -L "${cli_destination}" ]] \
         || fail "--update requires the existing installed CLI"
     /bin/launchctl print "system/${label}" >/dev/null 2>&1 \
@@ -439,13 +475,16 @@ verify_existing_inactive_blocks() {
     /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
         "${cli_destination}" list >"${existing_health}" 2>"${stage}/${snapshot}.stderr" \
         || fail "the installed CLI could not authenticate and list protected state; update stopped"
-    verify_inactive_snapshot "${existing_health}"
+    verify_inactive_snapshot "${existing_health}" "${expect_active}"
     installed_service_version=$(/usr/bin/plutil -extract protection.serviceVersion raw -expect string -o - \
         "${existing_health}.plist" 2>/dev/null) \
         || fail "the installed service version is unreadable"
     [[ "${installed_service_version}" =~ ^[0-9]+$ ]] \
         || fail "the installed service version is invalid"
-    if [[ ${update_existing} -eq 1 && ${installed_service_version} -lt 8 ]]; then
+    if [[ ${expect_active} -eq 1 ]]; then
+        [[ "${installed_service_version}" == 2 ]] \
+            || fail "active legacy migration requires the installed v2 service"
+    elif [[ ${update_existing} -eq 1 && ${installed_service_version} -lt 8 ]]; then
         inactive_migration=1
     fi
     if [[ ${reenroll} -eq 1 ]]; then
@@ -482,7 +521,7 @@ if [[ ${managed_install} -eq 1 ]]; then
             || fail "the installed protection issue list is unreadable"
         [[ "${issue_count}" == 0 ]] || fail "the installed service reports protection issues"
     else
-        verify_existing_inactive_blocks "existing-health-check.json"
+        verify_existing_inactive_blocks "existing-health-check.json" "${active_legacy_migration}"
     fi
 fi
 
@@ -781,9 +820,14 @@ run_live_update() {
 
 if [[ ${live_update} -eq 0 ]]; then
 if [[ ${update_existing} -eq 1 ]]; then
-    if [[ ${inactive_migration} -eq 1 ]]; then
-        run_enrolled_cli "${cli_destination}" "${stage}/existing-can-uninstall.json" can-uninstall \
-            || fail "the installed service reports protection that prevents migration"
+    if [[ ${inactive_migration} -eq 1 || ${active_legacy_migration} -eq 1 ]]; then
+        if [[ ${inactive_migration} -eq 1 ]]; then
+            run_enrolled_cli "${cli_destination}" "${stage}/existing-can-uninstall.json" can-uninstall \
+                || fail "the installed service reports protection that prevents migration"
+        else
+            "${stage}/hard-pause-service" --verify-active-legacy-state \
+                || fail "the active legacy state cannot be migrated safely"
+        fi
         migration_stage=$(/usr/bin/mktemp -d "${helper_dir}/inactive-migration.XXXXXXXX") \
             || fail "could not create a durable migration stage"
         /bin/chmod 0700 "${migration_stage}"
@@ -791,7 +835,11 @@ if [[ ${update_existing} -eq 1 ]]; then
         /usr/bin/printf '%s\n' "${migration_token}" >"${migration_stage}/token"
         /bin/chmod 0600 "${migration_stage}/token"
         /bin/cp -p "${stage}/${label}.plist" "${stage}/${label}.migration.plist"
-        /usr/libexec/PlistBuddy -c 'Add :ProgramArguments:1 string --inactive-migration' \
+        migration_mode=--inactive-migration
+        if [[ ${active_legacy_migration} -eq 1 ]]; then
+            migration_mode=--active-legacy-migration
+        fi
+        /usr/libexec/PlistBuddy -c "Add :ProgramArguments:1 string ${migration_mode}" \
             "${stage}/${label}.migration.plist"
         /usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string ${migration_token}" \
             "${stage}/${label}.migration.plist"
@@ -823,8 +871,12 @@ if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
     previous_service_loaded=1
 fi
 rollback_armed=1
-if [[ ${inactive_migration} -eq 1 ]]; then
-    "${stage}/hard-pause-service" --verify-inactive-legacy-state \
+if [[ ${inactive_migration} -eq 1 || ${active_legacy_migration} -eq 1 ]]; then
+    migration_verifier=--verify-inactive-legacy-state
+    if [[ ${active_legacy_migration} -eq 1 ]]; then
+        migration_verifier=--verify-active-legacy-state
+    fi
+    "${stage}/hard-pause-service" "${migration_verifier}" \
         || fail "durable state changed before migration; the old service will be restarted"
 fi
 if [[ ${managed_install} -eq 1 && ${reenroll} -eq 1 ]]; then
@@ -849,7 +901,7 @@ fi
 /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause-service" "${service_destination}"
 /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause" "${cli_destination}"
 /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause-uninstall" "${uninstaller_destination}"
-if [[ ${inactive_migration} -eq 1 ]]; then
+if [[ ${inactive_migration} -eq 1 || ${active_legacy_migration} -eq 1 ]]; then
     /usr/bin/install -o root -g wheel -m 0644 "${stage}/${label}.migration.plist" "${plist_destination}"
 else
     /usr/bin/install -o root -g wheel -m 0644 "${stage}/${label}.plist" "${plist_destination}"
@@ -865,16 +917,26 @@ fi
 /bin/launchctl kickstart -k "system/${label}" \
     || fail "launchd could not start ${label}"
 if [[ ${update_existing} -eq 1 ]]; then
-    if [[ ${inactive_migration} -eq 1 ]]; then
+    if [[ ${inactive_migration} -eq 1 || ${active_legacy_migration} -eq 1 ]]; then
         run_enrolled_cli "${cli_destination}" "${stage}/migration-read-only.json" list \
             || fail "the read-only migrated service is not available"
-        verify_inactive_snapshot "${stage}/migration-read-only.json"
+        verify_inactive_snapshot "${stage}/migration-read-only.json" "${active_legacy_migration}"
+        if [[ ${active_legacy_migration} -eq 1 ]]; then
+            verify_same_restrictions "${existing_health}" "${stage}/migration-read-only.json"
+        fi
         rollback_armed=0
         migration_finalization_started=1
+        migration_finalizer=finalize-inactive-migration
+        if [[ ${active_legacy_migration} -eq 1 ]]; then
+            migration_finalizer=finalize-active-legacy-migration
+        fi
         run_enrolled_cli "${cli_destination}" "${stage}/migration-finalized.json" \
-            finalize-inactive-migration "${migration_token}" \
+            "${migration_finalizer}" "${migration_token}" \
             || fail "migration finalization needs inspection"
-        verify_inactive_snapshot "${stage}/migration-finalized.json"
+        verify_inactive_snapshot "${stage}/migration-finalized.json" "${active_legacy_migration}"
+        if [[ ${active_legacy_migration} -eq 1 ]]; then
+            verify_same_restrictions "${existing_health}" "${stage}/migration-finalized.json"
+        fi
     else
         rollback_armed=0
         /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \

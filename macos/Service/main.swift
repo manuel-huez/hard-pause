@@ -51,6 +51,7 @@ do {
     }
     if arguments == ["--verify-uninstall-offline"]
         || arguments == ["--verify-inactive-legacy-state"]
+        || arguments == ["--verify-active-legacy-state"]
         || arguments == ["--recovery-cleanup"]
     {
         AgentCommitmentGuidance.writeToStandardError()
@@ -68,6 +69,19 @@ do {
         )
         exit(EXIT_SUCCESS)
     }
+    if arguments == ["--verify-active-legacy-state"] {
+        guard geteuid() == 0 else {
+            throw ServiceRuntimeError.authorizationFailed("legacy state verification requires root")
+        }
+        let state = try JSONProtectedStateStore(allowActiveLegacyMigration: true)
+            .loadReadOnly(requireCurrentFormat: false)
+        guard state.blocks.contains(where: { $0.activation != nil }),
+            state.updateGateToken == nil, state.liveUpdateGate == nil,
+            try JSONAppleLockdownStateStore().loadReadOnly(requireCurrentFormat: false).phase == .inactive,
+            try !SystemFileKeychainAppleLockdownVault().containsAnyCredential()
+        else { throw ProtectedStateError.updateUnavailable }
+        exit(EXIT_SUCCESS)
+    }
     if arguments == ["--recovery-cleanup"] {
         guard geteuid() == 0 else {
             throw ServiceRuntimeError.authorizationFailed("recovery cleanup requires root")
@@ -78,22 +92,32 @@ do {
     let standbyToken: UUID?
     let primaryToken: UUID?
     let inactiveMigrationToken: UUID?
+    let activeLegacyMigrationToken: UUID?
     if arguments.count == 2, arguments[0] == "--standby" {
         standbyToken = try liveUpdateToken(arguments[1])
         primaryToken = nil
         inactiveMigrationToken = nil
+        activeLegacyMigrationToken = nil
     } else if arguments.count == 2, arguments[0] == "--live-update-primary" {
         standbyToken = nil
         primaryToken = try liveUpdateToken(arguments[1])
         inactiveMigrationToken = nil
+        activeLegacyMigrationToken = nil
     } else if arguments.count == 2, arguments[0] == "--inactive-migration" {
         standbyToken = nil
         primaryToken = nil
         inactiveMigrationToken = try liveUpdateToken(arguments[1])
+        activeLegacyMigrationToken = nil
+    } else if arguments.count == 2, arguments[0] == "--active-legacy-migration" {
+        standbyToken = nil
+        primaryToken = nil
+        inactiveMigrationToken = nil
+        activeLegacyMigrationToken = try liveUpdateToken(arguments[1])
     } else if arguments.isEmpty {
         standbyToken = nil
         primaryToken = nil
         inactiveMigrationToken = nil
+        activeLegacyMigrationToken = nil
     } else {
         throw ServiceRuntimeError.invalidInstall("the service does not accept command-line arguments")
     }
@@ -106,7 +130,9 @@ do {
 
     let enrollment = try ProtectedEnrollmentLoader().load()
     let authorizer = try ClientAuthorizer(enrollment: enrollment)
-    let store = JSONProtectedStateStore()
+    let store = JSONProtectedStateStore(
+        allowActiveLegacyMigration: activeLegacyMigrationToken != nil
+    )
     let appleStore = JSONAppleLockdownStateStore()
     let runningDigest = try ServiceCodeIdentity.runningDigest()
     if let standbyToken {
@@ -131,12 +157,15 @@ do {
     } else {
         let writerFence = try ServiceWriterFence()
         let preloadedState: ProtectedState?
-        if let inactiveMigrationToken {
+        if let migrationToken = inactiveMigrationToken ?? activeLegacyMigrationToken {
             let state = try store.loadReadOnly(requireCurrentFormat: false)
-            if state.lastInactiveMigrationToken == inactiveMigrationToken {
+            if state.lastInactiveMigrationToken == migrationToken {
                 preloadedState = nil
             } else {
-                guard state.blocks.allSatisfy({ $0.activation == nil }),
+                guard
+                    activeLegacyMigrationToken != nil
+                        ? state.blocks.contains(where: { $0.activation != nil })
+                        : state.blocks.allSatisfy({ $0.activation == nil }),
                     state.liveUpdateGate == nil,
                     state.updateGateToken == nil
                 else { throw ProtectedStateError.updateUnavailable }
@@ -167,8 +196,9 @@ do {
         if preloadedState != nil {
             appleState = try appleStore.loadReadOnly(
                 requireCurrentFormat: inactiveMigrationToken == nil
+                    && activeLegacyMigrationToken == nil
             )
-            if inactiveMigrationToken != nil {
+            if inactiveMigrationToken != nil || activeLegacyMigrationToken != nil {
                 guard let appleState,
                     !appleState.preventsMaintenance,
                     try !SystemFileKeychainAppleLockdownVault().containsAnyCredential()
@@ -192,7 +222,8 @@ do {
             appleLockdown: appleLockdown,
             authorizer: authorizer,
             runningDigest: runningDigest,
-            inactiveMigrationToken: inactiveMigrationToken
+            inactiveMigrationToken: inactiveMigrationToken ?? activeLegacyMigrationToken,
+            allowsActiveLegacyMigration: activeLegacyMigrationToken != nil
         )
         let listener = NSXPCListener(
             machServiceName: ProtectedServiceContract.machServiceName

@@ -6,19 +6,22 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
     private let coordinator: ProtectedServiceCoordinator
     private let runningDigest: String
     private let inactiveMigrationToken: UUID?
+    private let allowsActiveLegacyMigration: Bool
 
     init(
         engine: ProtectedServiceEngine,
         appleLockdown: AppleLockdownEngine,
         coordinator: ProtectedServiceCoordinator,
         runningDigest: String = "",
-        inactiveMigrationToken: UUID? = nil
+        inactiveMigrationToken: UUID? = nil,
+        allowsActiveLegacyMigration: Bool = false
     ) {
         self.engine = engine
         self.appleLockdown = appleLockdown
         self.coordinator = coordinator
         self.runningDigest = runningDigest
         self.inactiveMigrationToken = inactiveMigrationToken
+        self.allowsActiveLegacyMigration = allowsActiveLegacyMigration
     }
 
     func list(withReply reply: @escaping (NSData) -> Void) {
@@ -96,8 +99,13 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
             guard inactiveMigrationToken == request.token else {
                 throw ProtectedStateError.updateNotOwned
             }
-            try appleLockdown.commitInactiveMigration()
-            let snapshot = try engine.finalizeInactiveMigration(token: request.token)
+            if !allowsActiveLegacyMigration {
+                try appleLockdown.commitInactiveMigration()
+            }
+            let snapshot = try engine.finalizeInactiveMigration(
+                token: request.token,
+                allowsActiveLegacyMigration: allowsActiveLegacyMigration
+            )
             appleLockdown.unfreezeAfterLiveUpdate()
             return snapshot
         }
@@ -424,13 +432,15 @@ final class ProtectedServiceListenerDelegate: NSObject, NSXPCListenerDelegate {
     private let authorizer: ClientAuthorizer
     private let runningDigest: String
     private let inactiveMigrationToken: UUID?
+    private let allowsActiveLegacyMigration: Bool
 
     init(
         engine: ProtectedServiceEngine,
         appleLockdown: AppleLockdownEngine,
         authorizer: ClientAuthorizer,
         runningDigest: String = "",
-        inactiveMigrationToken: UUID? = nil
+        inactiveMigrationToken: UUID? = nil,
+        allowsActiveLegacyMigration: Bool = false
     ) {
         self.engine = engine
         self.appleLockdown = appleLockdown
@@ -438,6 +448,7 @@ final class ProtectedServiceListenerDelegate: NSObject, NSXPCListenerDelegate {
         self.authorizer = authorizer
         self.runningDigest = runningDigest
         self.inactiveMigrationToken = inactiveMigrationToken
+        self.allowsActiveLegacyMigration = allowsActiveLegacyMigration
     }
 
     func listener(
@@ -451,7 +462,8 @@ final class ProtectedServiceListenerDelegate: NSObject, NSXPCListenerDelegate {
             appleLockdown: appleLockdown,
             coordinator: coordinator,
             runningDigest: runningDigest,
-            inactiveMigrationToken: inactiveMigrationToken
+            inactiveMigrationToken: inactiveMigrationToken,
+            allowsActiveLegacyMigration: allowsActiveLegacyMigration
         )
         newConnection.activate()
         return true

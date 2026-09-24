@@ -317,6 +317,7 @@ private func usage() -> String {
       hard-pause cancel-live-update <token>
       hard-pause retire-standby <token>
       hard-pause finalize-inactive-migration <token>
+      hard-pause finalize-active-legacy-migration <token>
       hard-pause can-uninstall
       hard-pause agent-guidance
 
@@ -466,7 +467,7 @@ private func run() throws {
         case "prepare-update": snapshot = try client.prepareUpdate(request)
         default: snapshot = try client.cancelUpdate(request)
         }
-    case "finalize-inactive-migration":
+    case "finalize-inactive-migration", "finalize-active-legacy-migration":
         guard arguments.count == 2 else { throw CLIError.usage(usage()) }
         snapshot = try client.finalizeInactiveMigration(
             ProtectedLiveUpdateRequest(token: try identifier(arguments[1]))
