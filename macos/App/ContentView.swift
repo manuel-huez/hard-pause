@@ -39,7 +39,11 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if shouldShowMandatorySetup {
+            if model.setupState == .checking {
+                ProgressView("Checking protection…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(LowLightBackground())
+            } else if shouldShowMandatorySetup {
                 MandatorySetupView()
             } else {
                 NavigationSplitView {
@@ -190,12 +194,7 @@ struct ContentView: View {
 
     private var shouldShowMandatorySetup: Bool {
         guard model.activeBlocks.isEmpty else { return false }
-        switch model.setupState {
-        case .checking, .incomplete:
-            return true
-        case .ready:
-            return false
-        }
+        return model.setupState == .incomplete
     }
 
     private var sidebarMascotMood: PauseSeedMood {
@@ -213,7 +212,7 @@ private struct HomePane: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if !model.activeBlocks.isEmpty && !model.setupReady
+                if !model.activeBlocks.isEmpty && model.setupState == .incomplete
                     && !model.serviceUpdateIsOnlySetupGap
                 {
                     SetupIncompleteBanner(showSetup: showSetup)

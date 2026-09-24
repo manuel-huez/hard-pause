@@ -66,7 +66,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check Swift formatting
-        run: xcrun swift-format lint --strict --recursive core/apple ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/BrowserWorker macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
+        run: xcrun swift-format lint --strict --recursive ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/BrowserWorker macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
       - name: Check portable core
         run: |
           cargo fmt --manifest-path core/rust/Cargo.toml --check
