@@ -80,7 +80,7 @@ path preserves saved plans only after live and offline checks confirm inactive
 protection. See [agent maintenance guidance](#agent-maintenance-guidance) before
 removal or recovery.
 
-Do not test installation on a primary Mac until the installer, removal, reboot, and recovery checks pass. The development checks do not install launchd files, change hosts or PF rules, or close real apps.
+For a local handoff check, run `scripts/test-macos-service-handoff-local.sh` from the repository root. It builds development-signed fixture apps and uses separate launchd names, root storage, Keychain items, a copy of the hosts file, and PF anchors. It requests one administrator approval after building. A failure leaves its test evidence for inspection. It does not migrate the installed v2 service.
 
 ## Enforcement boundary
 

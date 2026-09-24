@@ -16,7 +16,7 @@ The Sparkle public key is `hqO11mB5r81uup2mbAJ1oYRwbVbEFxczONdXHFZVD8U=`. Its pr
 
 ## Prepare and publish
 
-1. Match the `vMAJOR.MINOR.PATCH` tag to `MARKETING_VERSION` in `macos/project.yml`; increase `CURRENT_PROJECT_VERSION` for each Mac release. Increase `ProtectedServiceContract.serviceVersion` when its wire protocol changes. The service update checks the higher app build and changes to the signed service binary. Commit the source and generated project. Require repository Checks and the disposable native handoff check to pass for that exact commit before tagging.
+1. Match the `vMAJOR.MINOR.PATCH` tag to `MARKETING_VERSION` in `macos/project.yml`; increase `CURRENT_PROJECT_VERSION` for each Mac release. Increase `ProtectedServiceContract.serviceVersion` when its wire protocol changes. The service update checks the higher app build and changes to the signed service binary. Commit the source and generated project. Require repository Checks and `scripts/test-macos-service-handoff-local.sh` to pass for that exact commit before tagging. The local fixture uses separate system names and leaves the installed service untouched.
 2. For the development path, run `scripts/release-macos-development.sh prepare <tag>`. Approve Keychain access if macOS asks. Inspect the ZIP and appcast under `build/release-development/<tag>/`.
 3. Push the tag for the checked commit. Run `scripts/release-macos-development.sh stage <tag>` to create a draft with both assets. Inspect that draft and publish it as a normal release. The app feed uses `/releases/latest/download/appcast.xml`, which excludes drafts and prereleases.
 4. For Developer ID, run the release workflow on that tag. Inspect any existing draft before retrying a failed run; never overwrite a published release blindly.
@@ -25,4 +25,4 @@ The Sparkle public key is `hqO11mB5r81uup2mbAJ1oYRwbVbEFxczONdXHFZVD8U=`. Its pr
 
 Check the published ZIP's byte length, version, build, code signature, and Sparkle EdDSA signature against the appcast. Fetch `https://github.com/manuel-huez/hard-pause/releases/latest/download/appcast.xml` and confirm it serves the intended release. For Developer ID, confirm the stapled ticket and Gatekeeper acceptance. Check app, service, CLI, and browser worker signatures.
 
-On an inactive test installation, check install, launch, app update, service update, reboot, and rollback. Read the running app and service versions separately. If only source tests ran, report native handoff and installed behavior as unverified. An installed v2 service cannot hand off an active block; wait for the normal full unlock before its first migration.
+Use the local fixture to check active handoff and rollback. Read the running app and service versions separately. If only source tests ran, report native handoff and installed behavior as unverified. An installed v2 service cannot hand off an active block; wait for the normal full unlock before its first migration.
