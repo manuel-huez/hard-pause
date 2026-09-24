@@ -44,8 +44,9 @@ permissions stable across updates.
 For a signed local build, run `scripts/build-macos-local-update.sh BUILD_NUMBER`
 from the repository root with a number above the installed app build. The
 archive is for validation; opening it beside the installed app does not
-replace that app. Use the installed app's update flow for a full update. A
-service with handoff support can update without another administrator prompt.
+replace that app. Publish a signed release, then use **Check for Updates** in
+the installed app. A service with handoff support can update without another
+administrator prompt.
 The installed v2 service still needs its first migration after all blocks end.
 
 ## Local installation

@@ -43,4 +43,4 @@ xcodebuild -quiet archive \
 "$app/Contents/Resources/service-dry-run.sh"
 echo "Local update build: $app"
 echo "Do not open this archive while Hard Pause is running; it does not replace the installed app."
-echo "Use the installed app's signed update flow to update the GUI and service."
+echo "Publish a signed release, then use Check for Updates in the installed app."
