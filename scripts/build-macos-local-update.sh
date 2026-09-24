@@ -42,4 +42,5 @@ xcodebuild -quiet archive \
     || { echo 'App build number does not match.' >&2; exit 1; }
 "$app/Contents/Resources/service-dry-run.sh"
 echo "Local update build: $app"
-echo "Open this app to request an update through the installed service."
+echo "Do not open this archive while Hard Pause is running; it does not replace the installed app."
+echo "Publish a signed release, then use Check for Updates in the installed app."

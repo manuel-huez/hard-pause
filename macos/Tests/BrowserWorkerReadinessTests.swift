@@ -37,18 +37,21 @@ final class BrowserWorkerReadinessTests: XCTestCase {
             pausePageURL: URL(string: "http://127.0.0.1:1234/BlockedPage/index.html"),
             browserAccess: [granted, absent, firefox], browserStatuses: [:])
         XCTAssertTrue(ready.readyForHandoff)
+        XCTAssertTrue(ready.readyForRetirement)
 
         let closedPreviouslyGranted = BrowserWorkerAccess(
             identifier: "com.apple.Safari", installed: true, running: false,
             permission: "previouslyGranted")
-        XCTAssertFalse(replacing(ready, browserAccess: [closedPreviouslyGranted, absent, firefox]).readyForHandoff)
+        let closedBrowser = replacing(ready, browserAccess: [closedPreviouslyGranted, absent, firefox])
+        XCTAssertTrue(closedBrowser.readyForHandoff)
+        XCTAssertFalse(closedBrowser.readyForRetirement)
         let reopenedWithoutGrant = BrowserWorkerAccess(
             identifier: "com.apple.Safari", installed: true, running: true,
             permission: "previouslyGranted")
         XCTAssertFalse(replacing(ready, browserAccess: [reopenedWithoutGrant, absent, firefox]).readyForHandoff)
         let firefoxWithoutGrant = BrowserWorkerAccess(
             identifier: "org.mozilla.firefox", installed: true, running: false,
-            permission: "previouslyGranted")
+            permission: "denied")
         XCTAssertFalse(replacing(ready, browserAccess: [granted, absent, firefoxWithoutGrant]).readyForHandoff)
         XCTAssertFalse(replacing(ready, serviceReady: false).readyForHandoff)
         XCTAssertFalse(replacing(ready, pausePageReady: false).readyForHandoff)

@@ -189,7 +189,7 @@ private final class BrowserWorkerServer: NSObject, NSXPCListenerDelegate, Browse
 enum BrowserWorkerMain {
     @MainActor static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
-        if arguments.first == "--probe" {
+        if arguments.first == "--probe" || arguments.first == "--probe-existing" {
             let name =
                 arguments.count == 1
                 ? BrowserWorkerIdentity.machService
@@ -197,7 +197,10 @@ enum BrowserWorkerMain {
             guard let client = BrowserWorkerClient(machServiceName: name) else { exit(EX_USAGE) }
             Task { @MainActor in
                 let report = await client.readiness()
-                let ready = report?.readyForHandoff == true
+                let ready =
+                    arguments.first == "--probe"
+                    ? report?.readyForRetirement == true
+                    : report?.readyForHandoff == true
                 if ready, let report, let data = try? JSONEncoder().encode(report),
                     let json = String(data: data, encoding: .utf8)
                 {
@@ -215,7 +218,7 @@ enum BrowserWorkerMain {
             old.machServiceName != new.machServiceName
         {
             Task { @MainActor in
-                guard let report = await new.readiness(), report.readyForHandoff,
+                guard let report = await new.readiness(), report.readyForRetirement,
                     let page = report.pausePageURL, await old.migratePausePages(to: page)
                 else {
                     fputs("Hard Pause browser page migration did not finish.\n", stderr)

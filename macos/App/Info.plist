@@ -22,6 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.</string>
 	<key>NSPrincipalClass</key>

@@ -41,11 +41,12 @@ Public distribution needs Developer ID signing and Apple notarization. The
 installer rejects unsigned apps. Use certificate signing for local builds to keep
 permissions stable across updates.
 
-For a local test update, run `scripts/build-macos-local-update.sh BUILD_NUMBER`
-from the repository root. Use a number above the installed app build, then open
-the signed app printed by the script. This uses the same development identity
-and does not need a GitHub release or notarization. A service with handoff
-support can install the newer local build without another administrator prompt.
+For a signed local build, run `scripts/build-macos-local-update.sh BUILD_NUMBER`
+from the repository root with a number above the installed app build. The
+archive is for validation; opening it beside the installed app does not
+replace that app. Publish a signed release, then use **Check for Updates** in
+the installed app. A service with handoff support can update without another
+administrator prompt.
 The installed v2 service still needs its first migration after all blocks end.
 
 ## Local installation
@@ -72,8 +73,10 @@ Other users or binaries cannot control the service.
 **Update protection** preserves saved plans and enrollment. The replacement
 clients must match the enrolled signing requirements. A service with handoff
 support can update during a later active block while the separate browser
-worker and old service keep enforcement on. The installed v2 service cannot do
-this; its first migration requires inactive protection.
+worker and old service keep enforcement on. A replacement worker starts without
+opening closed browsers; the permitted worker stays until access is confirmed.
+The installed v2 service cannot do this; its first migration requires inactive
+protection.
 
 For an older service or a changed signing requirement, the installer's `--reenroll`
 path preserves saved plans only after live and offline checks confirm inactive

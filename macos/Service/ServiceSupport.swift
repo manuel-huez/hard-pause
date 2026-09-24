@@ -671,10 +671,9 @@ final class PrivilegedServiceUpdateTrigger: @unchecked Sendable {
     }
 
     private func makeUpdatesDirectory() throws {
-        try FileManager.default.createDirectory(
-            at: updatesDirectory, withIntermediateDirectories: false,
-            attributes: [.posixPermissions: 0o700]
-        )
+        if mkdir(updatesDirectory.path, 0o700) != 0 && errno != EEXIST {
+            throw ProtectedStateError.updateUnavailable
+        }
         try requireRootDirectory(updatesDirectory)
     }
 

@@ -203,10 +203,17 @@ final class BrowserProtection: ObservableObject {
 private actor BrowserAutomationWorker {
     private let defaults = UserDefaults.standard
 
+    private func approvalKey(_ identifier: String) -> String {
+        let workerPath =
+            Bundle.main.bundleIdentifier == BrowserWorkerIdentity.bundleIdentifier
+            ? "\(Bundle.main.bundleURL.standardizedFileURL.path)." : ""
+        return "browserPreviouslyApproved.\(workerPath)\(identifier)"
+    }
+
     func permission(_ identifier: String, prompt: Bool) -> OSStatus {
         let target = NSAppleEventDescriptor(bundleIdentifier: identifier)
         let status = AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, prompt)
-        let key = "browserPreviouslyApproved.\(identifier)"
+        let key = approvalKey(identifier)
         if status == noErr {
             defaults.set(true, forKey: key)
         } else if status == errAEEventNotPermitted || status == errAEEventWouldRequireUserConsent {
@@ -219,7 +226,7 @@ private actor BrowserAutomationWorker {
         let status = permission(identifier, prompt: false)
         if status == noErr { return .granted }
         // macOS cannot query a closed browser. This remembers setup only, never tab access.
-        if status == procNotFound && defaults.bool(forKey: "browserPreviouslyApproved.\(identifier)") {
+        if status == procNotFound && defaults.bool(forKey: approvalKey(identifier)) {
             return .previouslyGranted
         }
         return status == errAEEventNotPermitted ? .denied : .unknown
