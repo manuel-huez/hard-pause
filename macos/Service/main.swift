@@ -76,6 +76,7 @@ do {
         let state = try JSONProtectedStateStore(allowActiveLegacyMigration: true)
             .loadReadOnly(requireCurrentFormat: false)
         guard state.blocks.contains(where: { $0.activation != nil }),
+            state.blocks.allSatisfy({ $0.draft.rules.blockedApplications.isEmpty }),
             state.updateGateToken == nil, state.liveUpdateGate == nil,
             try JSONAppleLockdownStateStore().loadReadOnly(requireCurrentFormat: false).phase == .inactive,
             try !SystemFileKeychainAppleLockdownVault().containsAnyCredential()
