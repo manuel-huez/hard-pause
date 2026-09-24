@@ -8,6 +8,16 @@ struct HardPauseApp: App {
     @StateObject private var model = AppModel()
     @State private var updater = AppUpdater()
 
+    init() {
+        let installedApp = URL(fileURLWithPath: "/Applications/HardPause.app").standardizedFileURL
+        guard Bundle.main.bundleURL.standardizedFileURL != installedApp else { return }
+        if NSRunningApplication.runningApplications(withBundleIdentifier: "org.hardpause.app")
+            .contains(where: { $0.bundleURL?.standardizedFileURL == installedApp })
+        {
+            exit(EXIT_SUCCESS)
+        }
+    }
+
     var body: some Scene {
         Window("Hard Pause", id: "main") {
             ContentView()
@@ -147,16 +157,6 @@ private struct WindowSizeReader: NSViewRepresentable {
 final class HardPauseLifecycle: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     weak var updater: AppUpdater?
-
-    func applicationWillFinishLaunching(_ notification: Notification) {
-        let installedApp = URL(fileURLWithPath: "/Applications/HardPause.app").standardizedFileURL
-        guard Bundle.main.bundleURL.standardizedFileURL != installedApp else { return }
-        if NSRunningApplication.runningApplications(withBundleIdentifier: "org.hardpause.app")
-            .contains(where: { $0.bundleURL?.standardizedFileURL == installedApp })
-        {
-            exit(EXIT_SUCCESS)
-        }
-    }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
