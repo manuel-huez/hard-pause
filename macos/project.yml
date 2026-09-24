@@ -156,6 +156,7 @@ targets:
         CFBundleDisplayName: Hard Pause Browser Worker
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
         LSUIElement: true
         NSAppleEventsUsageDescription: Hard Pause Browser Worker checks browser tabs and redirects blocked pages.
     settings:
