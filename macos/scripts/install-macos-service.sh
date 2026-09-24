@@ -176,6 +176,7 @@ stage=$(/usr/bin/mktemp -d "/tmp/hard-pause-install.XXXXXX")
 rollback_armed=0
 previous_service_loaded=0
 preserve_stage=0
+install_complete=0
 live_stage=""
 live_started=0
 live_old_stopped=0
@@ -263,6 +264,9 @@ release_update_gate() {
 finish_install() {
     local installer_exit_code=$?
     trap - EXIT
+    if [[ ${installer_exit_code} -eq 0 && ${install_complete} -eq 0 ]]; then
+        installer_exit_code=1
+    fi
     if [[ ${live_update} -eq 1 ]]; then
         if [[ ${installer_exit_code} -ne 0 && ${live_started} -eq 1 && ${live_finalization_started} -eq 0 ]]; then
             recover_live_update || preserve_stage=1
@@ -922,7 +926,8 @@ if [[ ${update_existing} -eq 1 ]]; then
             || fail "the read-only migrated service is not available"
         verify_inactive_snapshot "${stage}/migration-read-only.json" "${active_legacy_migration}"
         if [[ ${active_legacy_migration} -eq 1 ]]; then
-            verify_same_restrictions "${existing_health}" "${stage}/migration-read-only.json"
+            verify_same_restrictions "${stage}/existing-health-check.json" \
+                "${stage}/migration-read-only.json"
         fi
         rollback_armed=0
         migration_finalization_started=1
@@ -935,7 +940,8 @@ if [[ ${update_existing} -eq 1 ]]; then
             || fail "migration finalization needs inspection"
         verify_inactive_snapshot "${stage}/migration-finalized.json" "${active_legacy_migration}"
         if [[ ${active_legacy_migration} -eq 1 ]]; then
-            verify_same_restrictions "${existing_health}" "${stage}/migration-finalized.json"
+            verify_same_restrictions "${stage}/existing-health-check.json" \
+                "${stage}/migration-finalized.json"
         fi
     else
         rollback_armed=0
@@ -1100,3 +1106,4 @@ echo "Hard Pause enrolled user ${sudo_user} (${sudo_uid}) and started ${label}."
 echo "Installed CLI: ${cli_destination}"
 echo "Browser worker: ${browser_worker_destination}"
 echo "Agent maintenance guidance: ${guidance_destination}"
+install_complete=1
