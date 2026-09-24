@@ -496,6 +496,35 @@ final class ProtectedStateStoreTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: activePaths.state), legacy)
     }
 
+    func testActiveLegacyMigrationKeepsStateRawUntilFinalSave() throws {
+        let paths = try temporaryPaths()
+        let keys = FakeStateAuthenticationKeys()
+        var state = ProtectedState()
+        let block = try state.create(serviceTestDraft())
+        try state.activate(id: block.id, expectedRevision: block.revision, at: serviceTestReading(0))
+        let raw = try JSONEncoder().encode(state)
+        try raw.write(to: paths.state)
+        let store = JSONProtectedStateStore(
+            stateURL: paths.state,
+            pendingStateURL: paths.pending,
+            backupDirectory: paths.backups,
+            requireRootOwnership: false,
+            authenticationKeys: keys,
+            allowActiveLegacyMigration: true
+        )
+
+        XCTAssertEqual(try store.loadReadOnly(requireCurrentFormat: false), state)
+        XCTAssertEqual(try Data(contentsOf: paths.state), raw)
+        XCTAssertNil(keys.anchor)
+        XCTAssertFalse(keys.committed)
+
+        state.completeInactiveMigration(token: UUID())
+        try store.save(state)
+        XCTAssertEqual(try store.load(), state)
+        XCTAssertNotNil(keys.anchor)
+        XCTAssertTrue(keys.committed)
+    }
+
     func testPendingCandidateReplaysAfterCrashBeforePrimarySave() throws {
         let paths = try temporaryPaths()
         let store = JSONProtectedStateStore(

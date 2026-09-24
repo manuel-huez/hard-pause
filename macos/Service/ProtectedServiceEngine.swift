@@ -47,7 +47,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         lastCheckpointContinuous = reading.continuousTime
         lastApplicationScanContinuous = reading.continuousTime
         lastRetryContinuous = reading.continuousTime
-        if state.liveUpdateGate == nil {
+        if preloadedState == nil && state.liveUpdateGate == nil {
             do {
                 try reconcileLocked(at: reading, forceCheckpoint: true)
             } catch {
@@ -86,7 +86,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         withLock {
             let reading = clock.read()
             do {
-                if state.liveUpdateGate == nil {
+                if state.liveUpdateGate == nil && !readOnlyUntilFinalize {
                     try resumePendingCommitLocked(at: reading)
                     try reconcileLocked(at: reading, forceCheckpoint: false)
                 }
@@ -228,11 +228,16 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         try withLock { try ServiceStateDigest.hash(state) }
     }
 
-    func finalizeInactiveMigration(token: UUID) throws -> ProtectedServiceSnapshot {
+    func finalizeInactiveMigration(
+        token: UUID,
+        allowsActiveLegacyMigration: Bool = false
+    ) throws -> ProtectedServiceSnapshot {
         try withLock {
             guard readOnlyUntilFinalize,
                 state.liveUpdateGate == nil,
-                state.blocks.allSatisfy({ $0.activation == nil })
+                allowsActiveLegacyMigration || state.blocks.allSatisfy({ $0.activation == nil }),
+                !allowsActiveLegacyMigration
+                    || (enforcementIssues.isEmpty && applicationIssues.isEmpty && lastAppliedAt != nil)
             else { throw ProtectedStateError.updateUnavailable }
             var candidate = state
             candidate.completeInactiveMigration(token: token)
@@ -349,7 +354,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         withLock {
             let reading = clock.read()
             do {
-                if state.liveUpdateGate == nil {
+                if state.liveUpdateGate == nil && !readOnlyUntilFinalize {
                     try resumePendingCommitLocked(at: reading)
                     try reconcileLocked(at: reading, forceCheckpoint: false)
                 }

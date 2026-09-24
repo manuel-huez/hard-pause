@@ -239,6 +239,46 @@ final class ProtectedServiceEngineTests: XCTestCase {
         _ = try engine.create(ProtectedCreateRequest(draft: serviceTestDraft()))
     }
 
+    func testActiveLegacyMigrationRequiresHealthyEnforcementBeforeCommit() throws {
+        var state = ProtectedState()
+        let block = try state.create(serviceTestDraft())
+        try state.activate(id: block.id, expectedRevision: block.revision, at: serviceTestReading(0))
+        let store = FakeProtectedStateStore(state)
+        let enforcer = FakeProtectionEnforcer()
+        enforcer.outcome = EnforcementOutcome(
+            issues: [ProtectionIssue(code: "test_issue", message: "Unavailable", blockIDs: [block.id])],
+            closedApplications: []
+        )
+        let engine = try ProtectedServiceEngine(
+            stateStore: store,
+            enforcer: enforcer,
+            preloadedState: state
+        )
+        let token = UUID()
+        XCTAssertThrowsError(
+            try engine.finalizeInactiveMigration(token: token, allowsActiveLegacyMigration: true)
+        )
+        XCTAssertNil(store.persisted.lastInactiveMigrationToken)
+    }
+
+    func testActiveLegacyMigrationDoesNotCheckpointBeforeFinalization() throws {
+        var state = ProtectedState()
+        let block = try state.create(serviceTestDraft())
+        try state.activate(id: block.id, expectedRevision: block.revision, at: serviceTestReading(0))
+        let store = FakeProtectedStateStore(state)
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try ProtectedServiceEngine(
+            stateStore: store,
+            enforcer: FakeProtectionEnforcer(),
+            clock: clock,
+            preloadedState: state
+        )
+        clock.reading = serviceTestReading(60)
+        engine.tickForTesting()
+        XCTAssertEqual(store.mainSaveCount, 0)
+        XCTAssertNil(store.persisted.lastInactiveMigrationToken)
+    }
+
     func testPrepareUpdateRejectsUnhealthyService() throws {
         let store = FakeProtectedStateStore()
         let enforcer = FakeProtectionEnforcer()

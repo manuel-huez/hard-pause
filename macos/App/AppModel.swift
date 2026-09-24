@@ -447,6 +447,7 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(for: .milliseconds(25))
         }
         var liveUpdate = false
+        var activeLegacyUpdate = false
         if serviceAvailability == .ready {
             await refresh()
             guard let snapshot else {
@@ -461,16 +462,25 @@ final class AppModel: ObservableObject {
                 || appleStatus.phase != .inactive
             {
                 guard needsServiceUpdate,
-                    ProtectedServiceContract.liveServiceHandoffEnabled,
                     let installedVersion = Int(snapshot.protection.serviceVersion),
-                    installedVersion >= 8,
-                    [.inactive, .active, .waitingForFullUnlock].contains(appleStatus.phase),
-                    await probeBrowserWorkerReadiness()
+                    snapshot.protection.isEnforcing,
+                    snapshot.protection.issues.isEmpty
                 else {
                     errorMessage = "Protection can update after all plans end or the browser worker is ready."
                     return
                 }
-                liveUpdate = true
+                if installedVersion == 2 && appleStatus.phase == .inactive {
+                    activeLegacyUpdate = true
+                } else if installedVersion >= 8,
+                    ProtectedServiceContract.liveServiceHandoffEnabled,
+                    [.inactive, .active, .waitingForFullUnlock].contains(appleStatus.phase),
+                    await probeBrowserWorkerReadiness()
+                {
+                    liveUpdate = true
+                } else {
+                    errorMessage = "Protection can update after all plans end or the browser worker is ready."
+                    return
+                }
             }
         }
         do {
@@ -478,7 +488,11 @@ final class AppModel: ObservableObject {
                 _ = try await service.requestManagedUpdate(bundlePath: Bundle.main.bundleURL.path)
                 lastServiceUpdateRequest = Date()
             } else {
-                try await ServiceInstaller.install(updateExisting: needsServiceUpdate, liveUpdate: liveUpdate)
+                try await ServiceInstaller.install(
+                    updateExisting: needsServiceUpdate,
+                    liveUpdate: liveUpdate,
+                    activeLegacyUpdate: activeLegacyUpdate
+                )
             }
             await refresh()
             await refreshSetup()
