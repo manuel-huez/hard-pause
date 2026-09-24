@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
     private var lastBrowserWorkerProbe = Date.distantPast
     private var browserWorkerProbeGeneration = 0
     private var lastServiceUpdateRequest = Date.distantPast
+    private var serviceUpdateRetryInterval: TimeInterval = 300
     private var isRequestingServiceUpdate = false
     @Published private(set) var adultDatabaseStatus = "Loading local adult website list…"
 
@@ -529,9 +530,8 @@ final class AppModel: ObservableObject {
             !isRequestingServiceUpdate, !isInstallingService, !isBusy, !hasPendingMutation,
             snapshot?.protection.isEnforcing == true,
             snapshot?.protection.issues.isEmpty == true,
-            Date().timeIntervalSince(lastServiceUpdateRequest) >= 300
+            Date().timeIntervalSince(lastServiceUpdateRequest) >= serviceUpdateRetryInterval
         else { return }
-        lastServiceUpdateRequest = Date()
         guard let status = try? await service.updateInstallationStatus(),
             status.serviceVersion == snapshot?.protection.serviceVersion,
             let bundleBuildText = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
@@ -553,9 +553,13 @@ final class AppModel: ObservableObject {
         if hasActiveBlock {
             guard await probeBrowserWorkerReadiness() else { return }
         }
+        lastServiceUpdateRequest = Date()
         do {
             _ = try await service.requestManagedUpdate(bundlePath: Bundle.main.bundleURL.path)
+            serviceUpdateRetryInterval = 300
         } catch {
+            serviceUpdateRetryInterval = 30
+            NSLog("Hard Pause automatic service update request failed: %@", error.localizedDescription)
             errorMessage = "Protection could not start its update. Use Update protection to try again."
         }
     }

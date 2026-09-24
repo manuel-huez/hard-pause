@@ -153,7 +153,7 @@ final class LockRepositoryTests: XCTestCase {
         XCTAssertNil(decoded.fullUnlockDelay)
         XCTAssertNil(decoded.fixedDuration)
 
-        decoded.normalize()
+        try decoded.normalize()
         XCTAssertEqual(decoded.fullUnlockDelay, 14_400)
     }
 

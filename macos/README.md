@@ -109,7 +109,7 @@ is required.
 ## Development checks
 
 Run `scripts/check-native.sh` from the repository root for native checks, or
-`swift test --package-path core` for shared lifecycle and storage tests. These
+`cargo test --manifest-path core/rust/Cargo.toml --locked` for portable policy tests. These
 checks do not install protection. Real service, reboot, browser, and Screen Time
 checks remain separate.
 

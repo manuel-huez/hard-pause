@@ -218,10 +218,10 @@ final class ProtectedServiceClient: ProtectedServiceServing {
                     let reply = try ProtectedServiceCodec.decode(
                         ProtectedServiceUpdateReply.self, from: data
                     )
-                    if let ticket = reply.ticket {
-                        box.finish(.success(ticket))
-                    } else if let error = reply.error {
+                    if let error = reply.error {
                         box.finish(.failure(ProtectedServiceClientError.service(error.message)))
+                    } else if let ticket = reply.ticket {
+                        box.finish(.success(ticket))
                     } else {
                         box.finish(.failure(ProtectedServiceClientError.invalidReply))
                     }
@@ -259,10 +259,10 @@ final class ProtectedServiceClient: ProtectedServiceServing {
                     let reply = try ProtectedServiceCodec.decode(
                         ProtectedServiceUpdateInstallationReply.self, from: data
                     )
-                    if let status = reply.status {
-                        box.finish(.success(status))
-                    } else if let error = reply.error {
+                    if let error = reply.error {
                         box.finish(.failure(ProtectedServiceClientError.service(error.message)))
+                    } else if let status = reply.status {
+                        box.finish(.success(status))
                     } else {
                         box.finish(.failure(ProtectedServiceClientError.invalidReply))
                     }

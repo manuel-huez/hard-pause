@@ -1,0 +1,19 @@
+[package]
+name = "hard-pause-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hard_pause_core"
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+aes-gcm = "0.10"
+base64 = "0.22"
+hkdf = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+unicode-normalization = "0.1.25"
+unicode-segmentation = "1.13.3"
+idna = "0.5.0"

@@ -413,7 +413,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
             savesCandidate: saveRequired,
             hasRelaxation: candidateRestrictions != stagedRestrictions
         )
-        let stages = plan.orderedStages
+        let stages = try plan.orderedStages
         let needsPrecommitApply = stages.contains(.applyTightening)
         var stagedOutcome = EnforcementOutcome.success
         var intentWasSaved = false

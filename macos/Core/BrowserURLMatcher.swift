@@ -16,8 +16,18 @@ enum BrowserURLMatcher {
         _ url: URL, rules: [ProtectedRules], adultDomains: AdultDomainDatabase? = nil, hasAdultRating: Bool = false
     ) -> Bool {
         guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
-            let host = url.host, let normalizedHost = DomainRule.normalize(host)
+            let host = url.host,
+            rules.contains(where: {
+                !$0.allBlockedDomains.isEmpty || !$0.blockedURLPatterns.isEmpty || $0.blocksAdultWebsites
+            })
         else { return false }
+        let normalizedHost: String
+        do {
+            guard let value = try ProtectedPolicy.normalizeDomainChecked(host) else { return false }
+            normalizedHost = value
+        } catch {
+            return true  // Do not allow a URL during an unexpected shared-core failure.
+        }
         return rules.contains { rule in
             (rule.blocksAdultWebsites && (hasAdultRating || adultDomains?.contains(normalizedHost) == true))
                 || rule.allBlockedDomains.contains(where: {

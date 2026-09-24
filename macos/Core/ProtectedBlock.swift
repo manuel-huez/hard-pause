@@ -2,11 +2,7 @@ import Foundation
 
 enum ProtectedBlockLimits {
     static let maximumBlocks = 128
-    static let maximumDomains = 10_000
-    static let maximumApplications = 1_000
-    static let maximumNameLength = 120
     static let maximumRequirementLength = 16_384
-    static let maximumURLPatternLength = 4_096
     static let serviceStatusReplyReserve = 64 * 1_024
     static let minimumDelay: TimeInterval = 60
     static let maximumDelay: TimeInterval = 366 * 24 * 60 * 60
@@ -32,13 +28,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
     var allBlockedDomains: [String] { blockedDomains + blockedAdultDomains }
 
     func includesAllRules(in previous: ProtectedRules) -> Bool {
-        Set(previous.blockedDomains).isSubset(of: Set(blockedDomains))
-            && Set(previous.blockedURLPatterns).isSubset(of: Set(blockedURLPatterns))
-            && Set(previous.blockedApplications).isSubset(of: Set(blockedApplications))
-            && Set(previous.blockedAdultDomains).isSubset(of: Set(blockedAdultDomains))
-            && (!previous.blocksAdultWebsites || blocksAdultWebsites)
-            && (previous.blockedAdultDomains.isEmpty
-                || adultRulesVersion == previous.adultRulesVersion)
+        ProtectedPolicy.includesAllRules(self, in: previous)
     }
 
     func adding(
@@ -47,24 +37,9 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         applications: [ProtectedApplication] = [],
         adultWebsites: Bool = false
     ) -> ProtectedRules {
-        let patterns = blockedURLPatterns + urlPatterns
-        let networkDomains = urlPatterns.flatMap { URLPatternRule.networkDomains(from: $0) }
-        var seenDomains = Set<String>()
-        let allDomains = (blockedDomains + domains + networkDomains).filter {
-            seenDomains.insert($0).inserted
-        }
-        var seenApplications = Set<String>()
-        let allApplications = (blockedApplications + applications).filter {
-            seenApplications.insert($0.id).inserted
-        }
-        var seenPatterns = Set<String>()
-        return ProtectedRules(
-            blockedDomains: allDomains,
-            blockedApplications: allApplications,
-            blockedAdultDomains: blockedAdultDomains,
-            adultRulesVersion: adultRulesVersion,
-            blockedURLPatterns: patterns.filter { seenPatterns.insert($0).inserted },
-            blocksAdultWebsites: blocksAdultWebsites || adultWebsites
+        ProtectedPolicy.addRules(
+            self, domains: domains, urlPatterns: urlPatterns,
+            applications: applications, adultWebsites: adultWebsites
         )
     }
 
@@ -75,22 +50,15 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         blockedURLPatterns: [String] = [],
         blocksAdultWebsites: Bool = false
     ) {
-        self.blocksAdultWebsites = blocksAdultWebsites
-        var seenDomains = Set<String>()
-        let networkDomains = blockedURLPatterns.flatMap { URLPatternRule.networkDomains(from: $0) }
-        self.blockedDomains = (blockedDomains + networkDomains).compactMap(DomainRule.normalize).filter {
-            seenDomains.insert($0).inserted
-        }
-        var seenApplications = Set<String>()
-        self.blockedApplications = blockedApplications.filter {
-            seenApplications.insert($0.id).inserted
-        }
-        blockedAdultDomains = blocksStarterAdultSites ? StarterAdultRules.domains : []
-        adultRulesVersion = blocksStarterAdultSites ? StarterAdultRules.version : nil
-        var seenPatterns = Set<String>()
-        self.blockedURLPatterns = blockedURLPatterns.compactMap(URLPatternRule.normalize).filter {
-            seenPatterns.insert($0).inserted
-        }
+        self = ProtectedPolicy.normalizeRules(
+            ProtectedRules(
+                blockedDomains: blockedDomains,
+                blockedApplications: blockedApplications,
+                blockedAdultDomains: blocksStarterAdultSites ? StarterAdultRules.domains : [],
+                adultRulesVersion: blocksStarterAdultSites ? StarterAdultRules.version : nil,
+                blockedURLPatterns: blockedURLPatterns,
+                blocksAdultWebsites: blocksAdultWebsites
+            ))
     }
 
     init(
@@ -148,63 +116,9 @@ struct ProtectedRules: Codable, Equatable, Sendable {
     }
 
     func validateForPersistence(allowLegacyApplicationIdentity: Bool = false) throws {
-        guard
-            blockedDomains.count + blockedAdultDomains.count + blockedURLPatterns.count
-                <= ProtectedBlockLimits.maximumDomains,
-            blockedApplications.count <= ProtectedBlockLimits.maximumApplications
-        else {
-            throw ProtectedStateError.invalid("The block has too many rules.")
-        }
-        guard
-            !blockedDomains.isEmpty || !blockedAdultDomains.isEmpty
-                || !blockedApplications.isEmpty || !blockedURLPatterns.isEmpty || blocksAdultWebsites
-        else {
-            throw ProtectedStateError.invalid("Add at least one website or application.")
-        }
-        let domains = blockedDomains + blockedAdultDomains
-        guard domains.allSatisfy({ DomainRule.normalize($0) == $0 && $0.count <= 253 }),
-            Set(blockedDomains).count == blockedDomains.count,
-            Set(blockedAdultDomains).count == blockedAdultDomains.count
-        else {
-            throw ProtectedStateError.invalid("The block contains an invalid or duplicate domain.")
-        }
-        guard
-            blockedURLPatterns.allSatisfy({
-                $0.count <= ProtectedBlockLimits.maximumURLPatternLength
-                    && URLPatternRule.normalize($0) == $0
-            }), Set(blockedURLPatterns).count == blockedURLPatterns.count
-        else {
-            throw ProtectedStateError.invalid("The block contains an invalid or duplicate URL pattern.")
-        }
-        guard
-            (blockedAdultDomains.isEmpty && adultRulesVersion == nil)
-                || (!blockedAdultDomains.isEmpty && adultRulesVersion != nil)
-        else {
-            throw ProtectedStateError.invalid("The adult website rules are inconsistent.")
-        }
-        guard Set(blockedApplications.map(\.id)).count == blockedApplications.count else {
-            throw ProtectedStateError.invalid("The block contains a duplicate application.")
-        }
-        for application in blockedApplications {
-            guard !application.bundleIdentifier.isEmpty,
-                application.bundleIdentifier.count <= 512,
-                !application.displayName.isEmpty,
-                application.displayName.count <= 512
-            else {
-                throw ProtectedStateError.invalid("The block contains an invalid application.")
-            }
-            if let requirement = application.designatedRequirement {
-                guard !requirement.isEmpty,
-                    requirement.count <= ProtectedBlockLimits.maximumRequirementLength
-                else {
-                    throw ProtectedStateError.invalid("An application identity is invalid.")
-                }
-            } else if !allowLegacyApplicationIdentity {
-                throw ProtectedStateError.invalid(
-                    "Choose the application again so Hard Pause can save its signed identity."
-                )
-            }
-        }
+        try ProtectedPolicy.validateRules(
+            self, allowLegacyApplicationIdentity: allowLegacyApplicationIdentity
+        )
     }
 }
 
@@ -261,20 +175,9 @@ struct ProtectedBlockDraft: Codable, Equatable, Sendable {
     }
 
     func validatedForMutation() throws -> ProtectedBlockDraft {
-        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanName.isEmpty, cleanName.count <= ProtectedBlockLimits.maximumNameLength else {
-            throw ProtectedStateError.invalid("Enter a block name with 120 characters or fewer.")
-        }
-        try rules.validateForPersistence(allowLegacyApplicationIdentity: false)
-        try Self.validateDuration(breakDelay, label: "break delay")
-        try Self.validateDuration(fullUnlockDelay, label: "full unlock delay")
-        try Self.validateDuration(breakDuration, label: "break duration")
-        if let elapsedDuration {
-            try Self.validateDuration(elapsedDuration, label: "fixed duration")
-        }
-        guard protectionMode.allowsBreaks || elapsedDuration == nil else {
-            throw ProtectedStateError.invalid("A Hard Pause plan cannot end automatically.")
-        }
+        let cleanName = try ProtectedPolicy.validateDraft(
+            self, mutation: true, allowLegacyApplicationIdentity: false
+        )
         return ProtectedBlockDraft(
             name: cleanName,
             rules: rules,
@@ -287,29 +190,10 @@ struct ProtectedBlockDraft: Codable, Equatable, Sendable {
     }
 
     func validateForPersistence(allowLegacyApplicationIdentity: Bool = false) throws {
-        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard cleanName == name, !name.isEmpty, name.count <= ProtectedBlockLimits.maximumNameLength else {
-            throw ProtectedStateError.invalid("A saved block name is invalid.")
-        }
-        try rules.validateForPersistence(allowLegacyApplicationIdentity: allowLegacyApplicationIdentity)
-        try Self.validateDuration(breakDelay, label: "break delay")
-        try Self.validateDuration(fullUnlockDelay, label: "full unlock delay")
-        try Self.validateDuration(breakDuration, label: "break duration")
-        if let elapsedDuration {
-            try Self.validateDuration(elapsedDuration, label: "fixed duration")
-        }
-        guard protectionMode.allowsBreaks || elapsedDuration == nil else {
-            throw ProtectedStateError.invalid("A saved Hard Pause plan cannot end automatically.")
-        }
-    }
-
-    private static func validateDuration(_ duration: TimeInterval, label: String) throws {
-        guard duration.isFinite,
-            duration >= ProtectedBlockLimits.minimumDelay,
-            duration <= ProtectedBlockLimits.maximumDelay
-        else {
-            throw ProtectedStateError.invalid("The \(label) is outside the supported range.")
-        }
+        _ = try ProtectedPolicy.validateDraft(
+            self, mutation: false,
+            allowLegacyApplicationIdentity: allowLegacyApplicationIdentity
+        )
     }
 }
 
@@ -341,11 +225,6 @@ struct ProtectedActivation: Codable, Equatable, Sendable {
         anchorBootIdentifier = reading.bootIdentifier
         pendingRequest = nil
         breakEndsAtElapsed = nil
-    }
-
-    var restrictionsAreActive: Bool {
-        guard let breakEndsAtElapsed else { return true }
-        return accumulatedElapsed >= breakEndsAtElapsed
     }
 
     mutating func addRules(from draft: ProtectedBlockDraft) {
@@ -517,6 +396,8 @@ struct ProtectedActivation: Codable, Equatable, Sendable {
             return .breakAlreadyActive
         case .noPendingBreakRequest:
             return .noPendingBreakRequest
+        case .coreUnavailable:
+            return .invalid("The protection core is unavailable.")
         }
     }
 }
@@ -650,6 +531,22 @@ struct ProtectedLiveUpdateCompletion: Codable, Equatable, Sendable {
 
 struct ProtectedState: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 2
+
+    private struct RestrictionInput: Encodable {
+        struct Block: Encodable {
+            struct Activation: Encodable {
+                let accumulatedElapsed: TimeInterval
+                let breakEndsAtElapsed: TimeInterval?
+                let rules: ProtectedRules
+            }
+
+            let id: UUID
+            let activation: Activation?
+        }
+
+        let blocks: [Block]
+        let includingBreaks: Bool
+    }
 
     let schemaVersion: Int
     private(set) var blocks: [ProtectedBlockRecord]
@@ -806,14 +703,39 @@ struct ProtectedState: Codable, Equatable, Sendable {
     }
 
     private func restrictions(includingBreaks: Bool) -> EffectiveRestrictions {
+        let input = RestrictionInput(
+            blocks: blocks.map { block in
+                RestrictionInput.Block(
+                    id: block.id,
+                    activation: block.activation.map {
+                        RestrictionInput.Block.Activation(
+                            accumulatedElapsed: $0.accumulatedElapsed,
+                            breakEndsAtElapsed: $0.breakEndsAtElapsed,
+                            rules: $0.frozenDraft.rules
+                        )
+                    }
+                )
+            },
+            includingBreaks: includingBreaks
+        )
+        if let result: EffectiveRestrictions = try? RustCoreBridge.call("restrictions.compose", input) {
+            return EffectiveRestrictions(
+                blockedDomains: result.blockedDomains.sorted(),
+                blockedApplications: result.blockedApplications.sorted {
+                    $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                },
+                contributingBlockIDs: result.contributingBlockIDs.sorted { $0.uuidString < $1.uuidString },
+                blockedURLPatterns: result.blockedURLPatterns.sorted()
+            )
+        }
+
+        // A core failure must keep every active block's rules in force, including breaks.
         var domains = Set<String>()
         var urlPatterns = Set<String>()
         var applications: [String: ProtectedApplication] = [:]
         var contributingBlocks = Set<UUID>()
         for block in blocks {
-            guard let activation = block.activation,
-                includingBreaks || activation.restrictionsAreActive
-            else { continue }
+            guard let activation = block.activation else { continue }
             contributingBlocks.insert(block.id)
             domains.formUnion(activation.frozenDraft.rules.allBlockedDomains)
             urlPatterns.formUnion(activation.frozenDraft.rules.blockedURLPatterns)

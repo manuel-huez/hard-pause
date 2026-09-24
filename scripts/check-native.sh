@@ -1,9 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if ! command -v cargo >/dev/null 2>&1; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
 bash scripts/check-swift-deprecations.sh
-xcrun swift-format lint --strict --recursive core/Sources core/Tests ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
-swift test --package-path core
+xcrun swift-format lint --strict --recursive core/apple ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/BrowserWorker macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
+cargo fmt --manifest-path core/rust/Cargo.toml --check
+cargo clippy --manifest-path core/rust/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path core/rust/Cargo.toml --locked
 xcodegen generate --spec ios/project.yml
 xcodegen generate --spec macos/project.yml
 python3 scripts/check-project-settings.py

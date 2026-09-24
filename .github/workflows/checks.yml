@@ -9,6 +9,29 @@ concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  deprecations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: bash scripts/check-swift-deprecations.sh
+  rust-core:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo test --manifest-path core/rust/Cargo.toml --locked
+      - if: matrix.os == 'ubuntu-latest'
+        run: |
+          rustup target add aarch64-linux-android
+          cargo check --manifest-path core/rust/Cargo.toml --locked --target aarch64-linux-android
   website:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -41,12 +64,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check deprecated Keychain APIs
-        run: bash scripts/check-swift-deprecations.sh
       - name: Check Swift formatting
-        run: xcrun swift-format lint --strict --recursive core/Sources core/Tests ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/BrowserWorker macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
-      - name: Test shared Apple core
-        run: swift test --package-path core
+        run: xcrun swift-format lint --strict --recursive core/apple ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/BrowserWorker macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
+      - name: Check portable core
+        run: |
+          cargo fmt --manifest-path core/rust/Cargo.toml --check
+          cargo clippy --manifest-path core/rust/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path core/rust/Cargo.toml --locked
+      - name: Install Apple Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
       - name: Generate native projects
         run: |
           brew install xcodegen

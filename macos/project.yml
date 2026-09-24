@@ -12,6 +12,8 @@ settings:
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
     CURRENT_PROJECT_VERSION: 4
     MARKETING_VERSION: 0.2.0
+    LIBRARY_SEARCH_PATHS: $(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)
+    OTHER_LDFLAGS: $(inherited) -lhard_pause_core
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
@@ -23,7 +25,7 @@ targets:
     sources:
       - App
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
       - path: ../data/adult-domains
         type: folder
         buildPhase: resources
@@ -69,6 +71,7 @@ targets:
         SUAllowsAutomaticUpdates: true
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
@@ -81,6 +84,10 @@ targets:
         embed: false
       - sdk: Security.framework
       - package: Sparkle
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
     postBuildScripts:
       - name: Bundle production service
         script: |
@@ -115,7 +122,7 @@ targets:
     sources:
       - BrowserWorker
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
       - App/BrowserWorkerIPC.swift
       - App/BrowserWorkerClient.swift
       - App/BrowserProtection.swift
@@ -153,10 +160,15 @@ targets:
         NSAppleEventsUsageDescription: Hard Pause Browser Worker checks browser tabs and redirects blocked pages.
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.browser-worker
         ENABLE_HARDENED_RUNTIME: YES
     dependencies:
       - sdk: Security.framework
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
   HardPauseService:
     type: tool
     platform: macOS
@@ -164,7 +176,7 @@ targets:
     sources:
       - Service
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/Service/SystemKeychainBridge.h
@@ -175,6 +187,10 @@ targets:
     dependencies:
       - sdk: Security.framework
       - sdk: libbsm.tbd
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
   HardPauseCLI:
     type: tool
     platform: macOS
@@ -182,20 +198,25 @@ targets:
     sources:
       - CLI
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
         PRODUCT_NAME: hard-pause
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.cli
         GENERATE_INFOPLIST_FILE: YES
         ENABLE_HARDENED_RUNTIME: YES
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
   HardPauseTests:
     type: bundle.unit-test
     platform: macOS
     sources:
       - Tests
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
       - App/AppModel.swift
       - App/AppleProtectionModel.swift
       - App/AppleScreenTimeAutomation.swift
@@ -211,10 +232,15 @@ targets:
       - App/BrowserWorkerClient.swift
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.tests
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - sdk: Security.framework
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
   HardPauseServiceTests:
     type: bundle.unit-test
     platform: macOS
@@ -223,7 +249,7 @@ targets:
         excludes:
           - main.swift
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
       - ServiceTests
     settings:
       base:
@@ -233,6 +259,10 @@ targets:
     dependencies:
       - sdk: Security.framework
       - sdk: libbsm.tbd
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
 schemes:
   HardPause:
     build:

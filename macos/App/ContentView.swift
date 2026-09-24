@@ -1587,19 +1587,28 @@ private struct BlockEditorView: View {
     private func addDomain() -> Bool {
         let input = domainInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return true }
-        if let domain = URLPatternRule.exactDomain(from: input) {
+        let website: ClassifiedWebsite
+        do {
+            guard let classified = try classifyWebsite(input) else {
+                validationMessage =
+                    "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
+                return false
+            }
+            website = classified
+        } catch {
+            validationMessage = "Website rules are temporarily unavailable. Try again."
+            return false
+        }
+        switch website {
+        case .domain(let domain, let wildcard):
             if !domains.contains(domain) {
                 domains.append(domain)
-                if let wildcard = URLPatternRule.normalize("*.\(domain)"), !urlPatterns.contains(wildcard) {
+                if let wildcard, !urlPatterns.contains(wildcard) {
                     urlPatterns.append(wildcard)
                 }
             }
-        } else if let pattern = URLPatternRule.normalize(input) {
+        case .pattern(let pattern):
             if !urlPatterns.contains(pattern) { urlPatterns.append(pattern) }
-        } else {
-            validationMessage =
-                "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
-            return false
         }
         domainInput = ""
         validationMessage = nil
@@ -1611,30 +1620,51 @@ private struct BlockEditorView: View {
         guard let block else { return false }
         let input = domainInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return true }
-        if let domain = URLPatternRule.exactDomain(from: input) {
+        let website: ClassifiedWebsite
+        do {
+            guard let classified = try classifyWebsite(input) else {
+                validationMessage =
+                    "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
+                return false
+            }
+            website = classified
+        } catch {
+            validationMessage = "Website rules are temporarily unavailable. Try again."
+            return false
+        }
+        switch website {
+        case .domain(let domain, let wildcard):
             if !block.draft.rules.blockedDomains.contains(domain), !addedDomains.contains(domain) {
                 addedDomains.append(domain)
             }
-            let wildcard = "*.\(domain)"
-            if URLPatternRule.normalize(wildcard) != nil,
+            if let wildcard,
                 !block.draft.rules.blockedURLPatterns.contains(wildcard),
                 !addedURLPatterns.contains(wildcard)
             {
                 addedURLPatterns.append(wildcard)
             }
-        } else if let pattern = URLPatternRule.normalize(input) {
+        case .pattern(let pattern):
             if !block.draft.rules.blockedURLPatterns.contains(pattern),
                 !addedURLPatterns.contains(pattern)
             {
                 addedURLPatterns.append(pattern)
             }
-        } else {
-            validationMessage = "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
-            return false
         }
         domainInput = ""
         validationMessage = nil
         return true
+    }
+
+    private enum ClassifiedWebsite {
+        case domain(String, wildcard: String?)
+        case pattern(String)
+    }
+
+    private func classifyWebsite(_ input: String) throws -> ClassifiedWebsite? {
+        if let domain = try URLPatternRule.exactDomainChecked(from: input) {
+            return .domain(domain, wildcard: try URLPatternRule.normalizeChecked("*.\(domain)"))
+        }
+        return try URLPatternRule.normalizeChecked(input).map(ClassifiedWebsite.pattern)
     }
 
     private func commitPendingWebsite() -> Bool {

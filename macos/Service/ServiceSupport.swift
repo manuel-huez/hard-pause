@@ -469,7 +469,7 @@ final class PrivilegedServiceUpdateTrigger: @unchecked Sendable {
         )
         try runChecked(
             "/usr/bin/codesign",
-            ["--verify", "--strict", "--deep", "--all-architectures", "-R", appRequirement, bundle.path]
+            ["--verify", "--strict", "--deep", "--all-architectures", "-R=\(appRequirement)", bundle.path]
         )
         let info = try signedInfo(at: bundle.appendingPathComponent("Contents/Info.plist"))
         guard info.identifier == "org.hardpause.app",
@@ -482,15 +482,15 @@ final class PrivilegedServiceUpdateTrigger: @unchecked Sendable {
         try runChecked(
             "/usr/bin/codesign",
             [
-                "--verify", "--strict", "--all-architectures", "-R",
-                "(\(requirements[1])) and identifier \"org.hardpause.cli\"", cli.path,
+                "--verify", "--strict", "--all-architectures",
+                "-R=(\(requirements[1])) and identifier \"org.hardpause.cli\"", cli.path,
             ]
         )
         try runChecked(
             "/usr/bin/codesign",
             [
-                "--verify", "--strict", "--deep", "--all-architectures", "-R",
-                "(\(requirements[2])) and identifier \"org.hardpause.browser-worker\"", worker.path,
+                "--verify", "--strict", "--deep", "--all-architectures",
+                "-R=(\(requirements[2])) and identifier \"org.hardpause.browser-worker\"", worker.path,
             ]
         )
         guard
@@ -780,7 +780,38 @@ enum ServiceStateDigest {
 }
 
 extension EffectiveRestrictions {
+    private struct CoreSet: Encodable {
+        let blockedDomains: [String]
+        let blockedApplications: [ProtectedApplication]
+        let contributingIds: [UUID]
+        let blockedUrlPatterns: [String]
+
+        init(_ value: EffectiveRestrictions) {
+            blockedDomains = value.blockedDomains
+            blockedApplications = value.blockedApplications
+            contributingIds = value.contributingBlockIDs
+            blockedUrlPatterns = value.blockedURLPatterns
+        }
+    }
+
+    private struct CoreUnion: Encodable {
+        let current: CoreSet
+        let candidate: CoreSet
+    }
+
     func union(_ other: EffectiveRestrictions) -> EffectiveRestrictions {
+        if let core: EffectiveRestrictions = try? RustCoreBridge.call(
+            "restrictions.union", CoreUnion(current: CoreSet(self), candidate: CoreSet(other))
+        ) {
+            return EffectiveRestrictions(
+                blockedDomains: core.blockedDomains.sorted(),
+                blockedApplications: core.blockedApplications.sorted { $0.id < $1.id },
+                contributingBlockIDs: core.contributingBlockIDs.sorted { $0.uuidString < $1.uuidString },
+                blockedURLPatterns: core.blockedURLPatterns.sorted()
+            )
+        }
+
+        // Keep both sets of rules if the shared core cannot compute the union.
         var applications = Dictionary(uniqueKeysWithValues: blockedApplications.map { ($0.id, $0) })
         for application in other.blockedApplications { applications[application.id] = application }
         return EffectiveRestrictions(

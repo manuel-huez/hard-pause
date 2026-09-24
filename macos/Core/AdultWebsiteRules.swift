@@ -6,6 +6,8 @@ struct AdultDomainDatabase: Sendable {
     static let maximumBytes = PortableDomainList.maximumBytes
     let domains: Set<String>
     let skippedEntries: Int
+    private let upstream: PortableDomainList
+    private let supplement: PortableDomainList?
 
     init(data: Data, supplementData: Data? = nil, minimumCount: Int = 1_000) throws {
         let upstream: PortableDomainList
@@ -18,26 +20,29 @@ struct AdultDomainDatabase: Sendable {
             throw AdultDatabaseError.invalidData
         }
         var mergedDomains = upstream.domains
+        var supplement: PortableDomainList?
         if let supplementData {
             do {
-                let supplement = try PortableDomainList(
+                let parsed = try PortableDomainList(
                     data: supplementData,
                     format: .hardPauseSupplement(category: "adult")
                 )
-                mergedDomains.formUnion(supplement.domains)
+                mergedDomains.formUnion(parsed.domains)
+                supplement = parsed
             } catch {
                 throw AdultDatabaseError.invalidData
             }
         }
+        self.upstream = upstream
+        self.supplement = supplement
         domains = mergedDomains
         skippedEntries = upstream.skippedEntries
     }
 
     func contains(_ host: String) -> Bool {
-        PortableDomainList.contains(
-            canonicalASCIIHost: DomainRule.browserHost(host),
-            in: domains
-        )
+        let canonicalHost = DomainRule.browserHost(host)
+        return upstream.contains(canonicalASCIIHost: canonicalHost)
+            || supplement?.contains(canonicalASCIIHost: canonicalHost) == true
     }
 }
 

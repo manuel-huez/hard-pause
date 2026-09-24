@@ -82,6 +82,7 @@ jobs:
           SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
         run: |
           set -euo pipefail
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
           brew install xcodegen
           xcodegen generate --spec macos/project.yml
           xcodebuild -quiet archive \

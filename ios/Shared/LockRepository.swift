@@ -157,7 +157,7 @@ struct LockRepository {
                             savesCandidate: true,
                             hasRelaxation: false
                         )
-                        for stage in plan.orderedStages {
+                        for stage in try plan.orderedStages {
                             switch stage {
                             case .saveIntent:
                                 try writeIntent(

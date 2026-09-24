@@ -16,6 +16,7 @@ macos_major="${macos_major%%.*}"
 
 artifact_dir="$repo_root/build/handoff-local-artifacts"
 mkdir -p "$artifact_dir" "$repo_root/build"
+export HARD_PAUSE_RUST_TARGET_DIR="$repo_root/build/rust-target"
 build_root=$(/usr/bin/mktemp -d "$repo_root/build/handoff-local.XXXXXX")
 fixture_hosts_file="$build_root/hosts"
 /bin/cp /etc/hosts "$fixture_hosts_file"
@@ -85,20 +86,23 @@ fi
 [[ -n "$signing_identity" && "$signing_identity" != *$'\n'* ]] \
     || fail "set HARD_PAUSE_SIGN_IDENTITY to one Apple Development identity"
 sparkle_public_key=$(/usr/bin/openssl rand -base64 32 | tr -d '\n')
+fixture_keychain_run_id=$(/usr/bin/openssl rand -hex 8)
 echo "Using local Apple Development signing identity."
 
 copy_source() {
     mkdir -p "$1"
     /usr/bin/rsync -a --delete \
         --exclude .git --exclude .codedb --exclude build --exclude dist --exclude node_modules \
+        --exclude /core/rust/target/ \
         "$repo_root/" "$1/"
-    python3 - "$1/macos" "$fixture_hosts_file" <<'PY'
+    python3 - "$1/macos" "$fixture_hosts_file" "$fixture_keychain_run_id" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 root = Path(sys.argv[1])
 fixture_hosts_file = sys.argv[2]
+keychain_run_id = sys.argv[3]
 replacements = (
     ('/Library/Application Support/HardPause', '/Library/Application Support/HardPauseHandoffFixture'),
     ('/Library/PrivilegedHelperTools/HardPause', '/Library/PrivilegedHelperTools/HardPauseHandoffFixture'),
@@ -107,6 +111,9 @@ replacements = (
     ('END HARD PAUSE', 'END HARD PAUSE FIXTURE'),
     (r'org\.hardpause\.', r'org\.hardpause\.fixture\.'),
     ('org.hardpause.', 'org.hardpause.fixture.'),
+    ('org.hardpause.fixture.protected-state', f'org.hardpause.fixture.{keychain_run_id}.protected-state'),
+    ('org.hardpause.fixture.apple-lockdown-state', f'org.hardpause.fixture.{keychain_run_id}.apple-lockdown-state'),
+    ('org.hardpause.fixture.apple-lockdown', f'org.hardpause.fixture.{keychain_run_id}.apple-lockdown'),
 )
 for path in root.rglob('*'):
     if not path.is_file() or path.suffix not in {'.swift', '.sh', '.plist', '.yml'}:
@@ -224,7 +231,10 @@ assert_same_requirement() {
 
 echo "Building the temporary v8 live-handoff primary with the test-only gate enabled."
 live_primary_source="$build_root/source-live-primary"
+live_successor_source="$build_root/source-live-successor"
 copy_source "$live_primary_source"
+mkdir -p "$live_successor_source"
+/usr/bin/rsync -a --delete "$live_primary_source/" "$live_successor_source/"
 patch_source_once "$live_primary_source/macos/Core/ProtectedServiceIPC.swift" \
     'static let liveServiceHandoffEnabled = false' \
     'static let liveServiceHandoffEnabled = true'
@@ -232,8 +242,6 @@ build_app "$live_primary_source" "$build_root/derived-live-primary" 8
 live_primary_app=$BUILT_APP
 
 echo "Building the gate-enabled v8 successor with a higher signed app build number."
-live_successor_source="$build_root/source-live-successor"
-copy_source "$live_successor_source"
 patch_source_once "$live_successor_source/macos/Core/ProtectedServiceIPC.swift" \
     'static let liveServiceHandoffEnabled = false' \
     'static let liveServiceHandoffEnabled = true'
@@ -448,7 +456,31 @@ stop_watcher() {
         watch_pid=""
     fi
 }
-trap 'stop_watcher; stop_sudo_keepalive' EXIT
+fixture_exit() {
+    local status=$?
+    trap - EXIT
+    stop_watcher
+    if [[ "$status" -ne 0 && -x "$installed_cli" ]]; then
+        echo "The fixture stopped; completing its normal full unlock before removal."
+        if [[ -n "${active_block_id:-}" ]]; then
+            "$installed_cli" end "$active_block_id" >"$artifact_dir/failure-full-unlock.json" 2>&1 || true
+        fi
+        for _ in {1..90}; do
+            if "$installed_cli" can-uninstall >/dev/null 2>&1; then
+                if sudo -n "$installed_uninstaller"; then
+                    echo "Inactive fixture removed after failure."
+                else
+                    echo "The inactive fixture needs normal manual removal." >&2
+                fi
+                break
+            fi
+            /bin/sleep 1
+        done
+    fi
+    stop_sudo_keepalive
+    exit "$status"
+}
+trap fixture_exit EXIT
 sudo -n /usr/bin/python3 "$observer" "$fixture_hosts_file" watch "$watch_stop" "$watch_log" &
 watch_pid=$!
 
@@ -512,18 +544,42 @@ echo "Injected rollback passed: the previous v8 primary resumed with active rule
 echo "Requesting the successful v8 active handoff from the signed successor app."
 /usr/bin/open -n -a "$live_successor_app"
 successor_sha=$(shasum -a 256 "$successor_service" | awk '{ print $1 }')
+update_result() {
+    sudo -n /bin/sh -c 'for result in "$1"/*.result; do
+        if [ -f "$result" ]; then /bin/cat "$result"; fi
+    done' sh "$support_dir/service-updates"
+}
+capture_update_stderr() {
+    sudo -n /bin/sh -c 'for log in "$1"/*/stderr.log; do
+        if [ -f "$log" ]; then /usr/bin/tail -n 50 "$log"; fi
+    done' sh "$support_dir/service-updates" \
+        | /usr/bin/tee "$artifact_dir/update-installer.stderr" >/dev/null || true
+}
 updated=0
-for _ in {1..180}; do
+for attempt in {1..180}; do
     if [[ -f "$helper_dir/hard-pause-service" \
         && $(shasum -a 256 "$helper_dir/hard-pause-service" | awk '{ print $1 }') == "$successor_sha" ]]; then
         updated=1
         break
     fi
+    if (( attempt % 5 == 0 )); then
+        result=$(update_result) || fail "cannot read the service update result"
+        if [[ -n "$result" && "$result" != success ]]; then
+            printf '%s\n' "$result" >"$artifact_dir/update-result.txt"
+            capture_update_stderr
+            fail "the service update failed: $result"
+        fi
+    fi
     /bin/sleep 1
 done
 if [[ "$updated" -ne 1 ]]; then
+    update_result >"$artifact_dir/update-result.txt" || true
+    capture_update_stderr
     sudo -n /bin/ls -la "$support_dir/service-updates" 2>&1 \
         | /usr/bin/tee "$artifact_dir/update-stage.txt" >/dev/null || true
+    /usr/bin/log show --last 5m --style compact \
+        --predicate 'process == "HardPause" AND eventMessage CONTAINS "automatic service update"' \
+        >"$artifact_dir/update-app.log" 2>&1 || true
     fail "the app did not complete its no-password service update"
 fi
 run_cli list >"$artifact_dir/after-successful-handoff.json"

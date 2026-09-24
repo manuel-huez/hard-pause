@@ -52,13 +52,13 @@ still need signed-device tests. Mac setup does not prove iPhone protection.
 
 ## Development
 
-Use Node.js 22.13+, Xcode, and XcodeGen. CI uses Xcode 26.6. Native signing and
+Use Node.js 22.13+, Rust, Xcode, and XcodeGen. CI uses Xcode 26.6. Native signing and
 capability requirements are in the platform guides.
 
 ```sh
 npm ci
 npm run check
-swift test --package-path core
+cargo test --manifest-path core/rust/Cargo.toml --locked
 ```
 
 For browser checks, run `npx playwright install chromium` then
