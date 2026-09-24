@@ -62,6 +62,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
+        LSMultipleInstancesProhibited: true
         NSPrincipalClass: NSApplication
         NSAppleEventsUsageDescription: Hard Pause checks browser tab addresses and redirects blocked pages to a local pause page.
         SUFeedURL: https://github.com/manuel-huez/hard-pause/releases/latest/download/appcast.xml

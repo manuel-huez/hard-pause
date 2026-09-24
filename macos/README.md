@@ -41,11 +41,11 @@ Public distribution needs Developer ID signing and Apple notarization. The
 installer rejects unsigned apps. Use certificate signing for local builds to keep
 permissions stable across updates.
 
-For a local test update, run `scripts/build-macos-local-update.sh BUILD_NUMBER`
-from the repository root. Use a number above the installed app build, then open
-the signed app printed by the script. This uses the same development identity
-and does not need a GitHub release or notarization. A service with handoff
-support can install the newer local build without another administrator prompt.
+For a signed local build, run `scripts/build-macos-local-update.sh BUILD_NUMBER`
+from the repository root with a number above the installed app build. The
+archive is for validation; opening it beside the installed app does not
+replace that app. Use the installed app's update flow for a full update. A
+service with handoff support can update without another administrator prompt.
 The installed v2 service still needs its first migration after all blocks end.
 
 ## Local installation
