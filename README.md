@@ -1,5 +1,7 @@
 # Hard Pause
 
+<p align="center"><img src="web/mascot/first-frame.svg" alt="Hard Pause mascot" width="220"></p>
+
 **Choose what to block. Set the wait. Give yourself time before access returns.**
 
 Hard Pause is a local app for iPhone, iPad, and Mac that blocks selected apps and
@@ -7,11 +9,12 @@ websites. Named plans let you keep separate commitments, each with its own rules
 and waiting periods. The apps use native SwiftUI controls and a shared animated
 mascot.
 
+[Visit the Hard Pause website](https://manuel-huez.github.io/hard-pause/).
+
 **In development.** Requires iOS 26+ or macOS 26+. Physical-device enforcement and
 the Mac Screen Time setup flow still need validation. An early
 [Mac download](https://github.com/manuel-huez/hard-pause/releases/latest) is development signed
-and not notarized. See the [validation record](docs/apple-validation.md) before
-using real blocks.
+and not notarized.
 
 ## Two ways to pause
 
@@ -26,13 +29,12 @@ using real blocks.
 
 ## Start here
 
-| I want to…                       | Guide                                        |
-| -------------------------------- | -------------------------------------------- |
-| Download or build the Mac app    | [macOS guide](macos/README.md)               |
-| Build for iPhone or iPad         | [iOS guide](ios/README.md)                   |
-| Understand the protection limits | [Design and security boundaries](DESIGN.md)  |
-| Check what has been tested       | [Apple validation](docs/apple-validation.md) |
-| Work on the shared lifecycle     | [Shared Apple core](core/README.md)          |
+| I want to…                       | Guide                                       |
+| -------------------------------- | ------------------------------------------- |
+| Download or build the Mac app    | [macOS guide](macos/README.md)              |
+| Build for iPhone or iPad         | [iOS guide](ios/README.md)                  |
+| Understand the protection limits | [Design and security boundaries](DESIGN.md) |
+| Work on the shared lifecycle     | [Shared Apple core](core/README.md)         |
 
 ### What each platform protects
 
@@ -50,14 +52,13 @@ still need signed-device tests. Mac setup does not prove iPhone protection.
 
 ## Development
 
-Use Node.js 22.13+, Xcode, and XcodeGen. CI uses Xcode 26.6; newer local checks are
-recorded in the [validation record](docs/apple-validation.md). Native signing and
+Use Node.js 22.13+, Rust, Xcode, and XcodeGen. CI uses Xcode 26.6. Native signing and
 capability requirements are in the platform guides.
 
 ```sh
 npm ci
 npm run check
-swift test --package-path core
+cargo test --manifest-path core/rust/Cargo.toml --locked
 ```
 
 For browser checks, run `npx playwright install chromium` then
@@ -70,9 +71,6 @@ These checks do not install the Mac service or enable real blocks.
 | [macos](macos/) | Mac app, root service, command-line client           |
 | [core](core/)   | Shared lifecycle, elapsed clock, and storage helpers |
 | [web](web/)     | Product website and shared mascot renderer           |
-
-The [website](https://manuel-huez.github.io/hard-pause/) provides product
-information; it does not enforce blocks. GitHub Pages publishes it from `main`.
 
 The source has no general license grant. The bundled mascot has its own license
 and attribution notices in `web/mascot/`.

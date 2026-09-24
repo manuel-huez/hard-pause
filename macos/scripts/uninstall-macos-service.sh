@@ -13,11 +13,13 @@ else
 fi
 
 label="org.hardpause.service"
+browser_worker_label="org.hardpause.browser-worker"
 support_dir="/Library/Application Support/HardPause"
 helper_dir="/Library/PrivilegedHelperTools/HardPause"
 service_destination="${helper_dir}/hard-pause-service"
 cli_destination="${helper_dir}/hard-pause"
 plist_destination="/Library/LaunchDaemons/${label}.plist"
+standby_plist_destination="/Library/LaunchDaemons/${label}.standby.plist"
 enrollment_destination="${support_dir}/enrollment-v1.json"
 
 fail() {
@@ -55,6 +57,7 @@ if [[ "${mode}" == dry-run ]]; then
     cat <<EOF
 Would ask the authenticated service to confirm that all blocks are inactive.
 Would stop only system/${label}.
+Would stop the enrolled user's browser worker after protection is confirmed inactive.
 Would check the durable state again while the service is stopped.
 Would run the installed service's owned hosts/PF cleanup.
 Would remove only Hard Pause's launchd, service, CLI, enrollment, state, backup, and log files.
@@ -66,6 +69,8 @@ fi
     || fail "the service binary is missing; reinstall it before removal"
 [[ -f "${plist_destination}" && ! -L "${plist_destination}" ]] \
     || fail "the launch daemon property list is missing or unsafe"
+[[ ! -e "${standby_plist_destination}" && ! -L "${standby_plist_destination}" ]] \
+    || fail "a live-update standby is present; finish or recover that update before removal"
 
 if [[ "${mode}" == normal ]]; then
     [[ -f "${enrollment_destination}" && ! -L "${enrollment_destination}" ]] \
@@ -88,6 +93,10 @@ if [[ "${mode}" == normal ]]; then
         fail "protection changed before the service stopped; the service was restarted and no files were removed"
     fi
 else
+    for worker_plist in /Library/LaunchAgents/org.hardpause.browser-worker*.plist; do
+        [[ ! -e "${worker_plist}" && ! -L "${worker_plist}" ]] \
+            || fail "browser worker is installed; recovery cannot verify that stopping it is safe"
+    done
     echo "Explicit recovery selected. Protected state will be removed after owned-rule cleanup." >&2
     if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
         /bin/launchctl bootout "system/${label}" >/dev/null 2>&1 \
@@ -102,6 +111,24 @@ if ! "${service_destination}" --recovery-cleanup; then
     fi
     fail "owned hosts or PF rules could not be removed; installed files were kept for inspection"
 fi
+
+for worker_plist in /Library/LaunchAgents/org.hardpause.browser-worker*.plist; do
+    [[ -e "${worker_plist}" || -L "${worker_plist}" ]] || continue
+    [[ -f "${worker_plist}" && ! -L "${worker_plist}" ]] \
+        || fail "the browser worker launch agent path is unsafe"
+    [[ "$(/usr/bin/stat -f '%u' "${worker_plist}")" == 0 ]] \
+        || fail "the browser worker launch agent is not root-owned"
+    worker_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "${worker_plist}" 2>/dev/null) \
+        || fail "the browser worker launch agent label is unreadable"
+    [[ "${worker_label}" == "${browser_worker_label}" \
+        || "${worker_label}" =~ ^org\.hardpause\.browser-worker\.v[0-9]+$ ]] \
+        || fail "the browser worker launch agent label is invalid"
+    if /bin/launchctl print "gui/${enrolled_uid}/${worker_label}" >/dev/null 2>&1; then
+        /bin/launchctl bootout "gui/${enrolled_uid}/${worker_label}" \
+            || fail "the browser worker could not be stopped; installed files were kept"
+    fi
+    /bin/rm -f -- "${worker_plist}"
+done
 
 /bin/rm -f -- "${plist_destination}" "${service_destination}" "${cli_destination}"
 /bin/rm -rf -- "${support_dir}"

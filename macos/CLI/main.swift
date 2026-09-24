@@ -102,6 +102,45 @@ private final class ProtectedServiceCLIClient {
         return try perform { service, reply in service.cancelUpdate(payload, withReply: reply) }
     }
 
+    func finalizeInactiveMigration(_ request: ProtectedLiveUpdateRequest) throws -> ProtectedServiceSnapshot {
+        let payload = try ProtectedServiceCodec.encode(request)
+        return try perform { service, reply in
+            service.finalizeInactiveMigration(payload, withReply: reply)
+        }
+    }
+
+    func beginLiveUpdate(_ request: ProtectedLiveUpdateBeginRequest) throws -> ProtectedLiveUpdateStatus {
+        let payload = try ProtectedServiceCodec.encode(request)
+        return try performLive { service, reply in service.beginLiveUpdate(payload, withReply: reply) }
+    }
+
+    func inspectLiveUpdate(_ request: ProtectedLiveUpdateRequest) throws -> ProtectedLiveUpdateStatus {
+        let payload = try ProtectedServiceCodec.encode(request)
+        return try performLive { service, reply in service.inspectLiveUpdate(payload, withReply: reply) }
+    }
+
+    func cancelLiveUpdate(_ request: ProtectedLiveUpdateRequest) throws -> ProtectedLiveUpdateStatus {
+        let payload = try ProtectedServiceCodec.encode(request)
+        return try performLive { service, reply in service.cancelLiveUpdate(payload, withReply: reply) }
+    }
+
+    func finalizeLiveUpdate(_ request: ProtectedLiveUpdateRequest) throws -> ProtectedLiveUpdateStatus {
+        let payload = try ProtectedServiceCodec.encode(request)
+        return try performLive { service, reply in service.finalizeLiveUpdate(payload, withReply: reply) }
+    }
+
+    func standbyReadiness(_ request: ProtectedLiveUpdateRequest) throws -> ProtectedLiveUpdateStatus {
+        try performStandby(request) { service, payload, reply in
+            service.readiness(payload, withReply: reply)
+        }
+    }
+
+    func retireStandby(_ request: ProtectedLiveUpdateRequest) throws -> ProtectedLiveUpdateStatus {
+        try performStandby(request) { service, payload, reply in
+            service.retire(payload, withReply: reply)
+        }
+    }
+
     func appleLockdownStatus() throws -> AppleLockdownSnapshot {
         let reply = try performApple { service, callback in
             service.appleLockdownStatus(withReply: callback)
@@ -193,6 +232,70 @@ private final class ProtectedServiceCLIClient {
         guard let result = box.result else { throw CLIError.invalidReply }
         return try result.get()
     }
+
+    private func performLive(
+        _ operation: (ProtectedServiceXPC, @escaping (NSData) -> Void) -> Void
+    ) throws -> ProtectedLiveUpdateStatus {
+        let box = CLIReplyBox<ProtectedLiveUpdateStatus>()
+        let completed = DispatchSemaphore(value: 0)
+        let finish: @Sendable (Result<ProtectedLiveUpdateStatus, Error>) -> Void = { result in
+            if box.finish(result) { completed.signal() }
+        }
+        guard
+            let service = connection.remoteObjectProxyWithErrorHandler({ error in
+                finish(.failure(CLIError.connection(error.localizedDescription)))
+            }) as? ProtectedServiceXPC
+        else {
+            throw CLIError.connection("The Hard Pause service interface is unavailable.")
+        }
+        operation(service) { data in
+            finish(Self.decodeLiveStatus(data))
+        }
+        guard completed.wait(timeout: .now() + 5) == .success else { throw CLIError.timedOut }
+        guard let result = box.result else { throw CLIError.invalidReply }
+        return try result.get()
+    }
+
+    private func performStandby(
+        _ request: ProtectedLiveUpdateRequest,
+        _ operation: (ProtectedStandbyXPC, NSData, @escaping (NSData) -> Void) -> Void
+    ) throws -> ProtectedLiveUpdateStatus {
+        let standby = NSXPCConnection(
+            machServiceName: ProtectedServiceContract.standbyMachServiceName,
+            options: .privileged
+        )
+        standby.remoteObjectInterface = NSXPCInterface(with: ProtectedStandbyXPC.self)
+        standby.activate()
+        defer { standby.invalidate() }
+        let payload = try ProtectedServiceCodec.encode(request)
+        let box = CLIReplyBox<ProtectedLiveUpdateStatus>()
+        let completed = DispatchSemaphore(value: 0)
+        let finish: @Sendable (Result<ProtectedLiveUpdateStatus, Error>) -> Void = { result in
+            if box.finish(result) { completed.signal() }
+        }
+        guard
+            let service = standby.remoteObjectProxyWithErrorHandler({ error in
+                finish(.failure(CLIError.connection(error.localizedDescription)))
+            }) as? ProtectedStandbyXPC
+        else {
+            throw CLIError.connection("The standby service interface is unavailable.")
+        }
+        operation(service, payload) { data in finish(Self.decodeLiveStatus(data)) }
+        guard completed.wait(timeout: .now() + 5) == .success else { throw CLIError.timedOut }
+        guard let result = box.result else { throw CLIError.invalidReply }
+        return try result.get()
+    }
+
+    private static func decodeLiveStatus(_ data: NSData) -> Result<ProtectedLiveUpdateStatus, Error> {
+        do {
+            let reply = try ProtectedServiceCodec.decode(ProtectedLiveUpdateReply.self, from: data)
+            if let status = reply.status { return .success(status) }
+            if let error = reply.error { return .failure(CLIError.service(error.message)) }
+            return .failure(CLIError.invalidReply)
+        } catch {
+            return .failure(error)
+        }
+    }
 }
 
 private func usage() -> String {
@@ -207,6 +310,13 @@ private func usage() -> String {
       hard-pause end <block-id>
       hard-pause prepare-update <token>
       hard-pause cancel-update <token>
+      hard-pause begin-live-update <token> <staged-service-path>
+      hard-pause inspect-live-update <token>
+      hard-pause standby-readiness <token>
+      hard-pause finalize-live-update <token>
+      hard-pause cancel-live-update <token>
+      hard-pause retire-standby <token>
+      hard-pause finalize-inactive-migration <token>
       hard-pause can-uninstall
       hard-pause agent-guidance
 
@@ -266,6 +376,13 @@ private func writeSnapshot(_ snapshot: ProtectedServiceSnapshot) throws {
     FileHandle.standardOutput.write(Data("\n".utf8))
 }
 
+private func writeLiveStatus(_ status: ProtectedLiveUpdateStatus) throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    FileHandle.standardOutput.write(try encoder.encode(status))
+    FileHandle.standardOutput.write(Data("\n".utf8))
+}
+
 private func activeBlockNames(in snapshot: ProtectedServiceSnapshot) -> [String] {
     snapshot.blocks.compactMap { block in
         if case .inactive = block.phase { return nil }
@@ -291,6 +408,33 @@ private func run() throws {
     }
 
     let client = ProtectedServiceCLIClient()
+    if command == "begin-live-update" {
+        guard arguments.count == 3 else { throw CLIError.usage(usage()) }
+        try writeLiveStatus(
+            client.beginLiveUpdate(
+                ProtectedLiveUpdateBeginRequest(
+                    token: try identifier(arguments[1]),
+                    successorPath: arguments[2]
+                )))
+        return
+    }
+    if [
+        "inspect-live-update", "standby-readiness", "finalize-live-update",
+        "cancel-live-update", "retire-standby",
+    ].contains(command) {
+        guard arguments.count == 2 else { throw CLIError.usage(usage()) }
+        let request = ProtectedLiveUpdateRequest(token: try identifier(arguments[1]))
+        let status: ProtectedLiveUpdateStatus
+        switch command {
+        case "inspect-live-update": status = try client.inspectLiveUpdate(request)
+        case "standby-readiness": status = try client.standbyReadiness(request)
+        case "finalize-live-update": status = try client.finalizeLiveUpdate(request)
+        case "cancel-live-update": status = try client.cancelLiveUpdate(request)
+        default: status = try client.retireStandby(request)
+        }
+        try writeLiveStatus(status)
+        return
+    }
     let snapshot: ProtectedServiceSnapshot
     switch command {
     case "list":
@@ -322,6 +466,11 @@ private func run() throws {
         case "prepare-update": snapshot = try client.prepareUpdate(request)
         default: snapshot = try client.cancelUpdate(request)
         }
+    case "finalize-inactive-migration":
+        guard arguments.count == 2 else { throw CLIError.usage(usage()) }
+        snapshot = try client.finalizeInactiveMigration(
+            ProtectedLiveUpdateRequest(token: try identifier(arguments[1]))
+        )
     case "can-uninstall":
         guard arguments.count == 1 else { throw CLIError.usage(usage()) }
         let current = try client.list()

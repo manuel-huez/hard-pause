@@ -4,15 +4,19 @@
 set -euo pipefail
 
 label="org.hardpause.service"
+browser_worker_label="org.hardpause.browser-worker"
 support_dir="/Library/Application Support/HardPause"
 helper_dir="/Library/PrivilegedHelperTools/HardPause"
+browser_worker_root="${helper_dir}/BrowserWorker"
 service_destination="${helper_dir}/hard-pause-service"
 cli_destination="${helper_dir}/hard-pause"
 uninstaller_destination="${helper_dir}/hard-pause-uninstall"
 plist_destination="/Library/LaunchDaemons/${label}.plist"
+browser_worker_plist_destination="/Library/LaunchAgents/${browser_worker_label}.plist"
 enrollment_destination="${support_dir}/enrollment-v1.json"
 guidance_destination="${helper_dir}/AGENTS.md"
 state_guidance_destination="${support_dir}/AGENTS.md"
+installed_build_destination="${support_dir}/installed-build-v1"
 
 fail() {
     echo "hard-pause installer: $*" >&2
@@ -21,10 +25,12 @@ fail() {
 
 usage() {
     cat >&2 <<'EOF'
-Usage: sudo install-macos-service.sh [--update | --reenroll]
+Usage: sudo install-macos-service.sh [--update | --live-update | --reenroll]
 
 --update replaces the installed service and CLI while preserving the enrolled
 user and approved code requirements. Every block must be inactive.
+--live-update transfers an active v8 service to a signed successor while the
+browser worker and overlapping service enforcement remain available.
 --reenroll replaces the enrolled user and pinned GUI/CLI code requirements.
 For an existing installation, it also requires every block to be inactive.
 EOF
@@ -33,10 +39,12 @@ EOF
 
 reenroll=0
 update_existing=0
+live_update=0
 case "${1:-}" in
     "") ;;
     --reenroll) reenroll=1 ;;
     --update) update_existing=1 ;;
+    --live-update) live_update=1 ;;
     *) usage ;;
 esac
 [[ $# -le 1 ]] || usage
@@ -49,11 +57,16 @@ cli_source="${script_dir}/hard-pause"
 plist_source="${script_dir}/${label}.plist"
 uninstaller_source="${script_dir}/uninstall-macos-service.sh"
 guidance_source="${script_dir}/AGENTS.md"
+browser_worker_source="${script_dir}/HardPauseBrowserWorker.app"
 
 [[ "${app_bundle}" == *.app ]] || fail "the installer must run from HardPause.app/Contents/Resources"
 for source in "${service_source}" "${cli_source}" "${plist_source}" "${uninstaller_source}" "${guidance_source}"; do
     [[ -f "${source}" && ! -L "${source}" ]] || fail "missing or unsafe bundled file: ${source}"
 done
+[[ -d "${browser_worker_source}" && ! -L "${browser_worker_source}" ]] \
+    || fail "missing or unsafe bundled browser worker"
+[[ -f "${browser_worker_source}/Contents/MacOS/HardPauseBrowserWorker" ]] \
+    || fail "the bundled browser worker executable is missing"
 [[ $(/usr/bin/stat -f '%z' "${guidance_source}") -le 16384 ]] || fail "the bundled agent guidance is too large"
 /usr/bin/plutil -lint "${plist_source}" >/dev/null
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :Label' "${plist_source}")" == "${label}" ]] \
@@ -81,11 +94,11 @@ if [[ -e "${enrollment_destination}" ]]; then
         || fail "the existing enrollment is not root-owned"
     managed_install=1
 fi
-if [[ ${update_existing} -eq 1 && ${managed_install} -ne 1 ]]; then
-    fail "--update requires an existing managed enrollment"
+if [[ $((update_existing + live_update)) -eq 1 && ${managed_install} -ne 1 ]]; then
+    fail "updating requires an existing managed enrollment"
 fi
-if [[ ${managed_install} -eq 1 && ${reenroll} -ne 1 && ${update_existing} -ne 1 ]]; then
-    fail "an enrollment already exists; use --update to update code or --reenroll to replace it"
+if [[ ${managed_install} -eq 1 && ${reenroll} -ne 1 && ${update_existing} -ne 1 && ${live_update} -ne 1 ]]; then
+    fail "an enrollment already exists; use an update mode or --reenroll"
 fi
 if [[ ${managed_install} -eq 1 ]]; then
     /bin/cat "${guidance_source}" >&2
@@ -104,7 +117,7 @@ if [[ ${managed_install} -eq 1 ]]; then
         || fail "the enrolled user cannot be read from the existing enrollment"
     [[ "${existing_enrolled_uid}" =~ ^[0-9]+$ && "${existing_enrolled_uid}" -gt 0 ]] \
         || fail "the existing enrollment contains an invalid user"
-    if [[ ${update_existing} -eq 1 ]]; then
+    if [[ ${update_existing} -eq 1 || ${live_update} -eq 1 ]]; then
         [[ "${existing_enrolled_uid}" == "${sudo_uid}" ]] \
             || fail "the existing enrollment belongs to a different user"
     fi
@@ -147,15 +160,25 @@ validate_destination() {
 
 validate_parent /Library/PrivilegedHelperTools
 validate_parent /Library/LaunchDaemons
+validate_parent /Library/LaunchAgents
 for destination in "${service_destination}" "${cli_destination}" "${uninstaller_destination}" "${plist_destination}" "${guidance_destination}" "${state_guidance_destination}"; do
     validate_destination "${destination}"
 done
+validate_destination "${browser_worker_plist_destination}"
 
 stage=$(/usr/bin/mktemp -d "/tmp/hard-pause-install.XXXXXX")
 /bin/chmod 0700 "${stage}"
 rollback_armed=0
 previous_service_loaded=0
 preserve_stage=0
+live_stage=""
+live_started=0
+live_old_stopped=0
+live_finalization_started=0
+live_success=0
+inactive_migration=0
+migration_finalization_started=0
+migration_stage=""
 update_gate_cleanup_needed=0
 update_gate_token=""
 update_gate_token_path="${stage}/update-gate-token"
@@ -235,14 +258,34 @@ release_update_gate() {
 finish_install() {
     local installer_exit_code=$?
     trap - EXIT
-    if [[ ${installer_exit_code} -ne 0 && ${rollback_armed} -eq 1 ]]; then
+    if [[ ${live_update} -eq 1 ]]; then
+        if [[ ${installer_exit_code} -ne 0 && ${live_started} -eq 1 && ${live_finalization_started} -eq 0 ]]; then
+            recover_live_update || preserve_stage=1
+        elif [[ ${installer_exit_code} -ne 0 && ${live_finalization_started} -eq 1 ]]; then
+            preserve_stage=1
+            echo "hard-pause installer: finalization may have committed; do not restore the old service." >&2
+        fi
+        if [[ ( ${live_success} -eq 1 || ${live_started} -eq 0 ) \
+            && ${preserve_stage} -eq 0 && -n "${live_stage}" ]]; then
+            /bin/rm -rf -- "${live_stage}"
+        elif [[ -n "${live_stage}" ]]; then
+            echo "hard-pause installer: update evidence retained at ${live_stage}." >&2
+        fi
+    elif [[ ${installer_exit_code} -ne 0 && ${migration_finalization_started} -eq 1 ]]; then
+        preserve_stage=1
+        echo "hard-pause installer: inactive migration may have committed; do not restore v2." >&2
+        echo "hard-pause installer: recovery evidence is retained at ${migration_stage}." >&2
+    elif [[ ${installer_exit_code} -ne 0 && ${rollback_armed} -eq 1 ]]; then
         rollback_install
     fi
-    if [[ ${installer_exit_code} -ne 0 && ${update_gate_cleanup_needed} -eq 1 ]]; then
+    if [[ ${live_update} -eq 0 && ${installer_exit_code} -ne 0 && ${update_gate_cleanup_needed} -eq 1 ]]; then
         release_update_gate || true
     fi
     if [[ ${preserve_stage} -eq 0 ]]; then
         /bin/rm -rf -- "${stage}"
+        if [[ -n "${migration_stage}" ]]; then
+            /bin/rm -rf -- "${migration_stage}"
+        fi
     fi
     exit "${installer_exit_code}"
 }
@@ -311,6 +354,81 @@ verify_staged_requirement() {
     fail "the staged ${role} does not satisfy any enrolled code requirement"
 }
 
+run_enrolled_cli() {
+    local cli=$1
+    local output=$2
+    shift 2
+    /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
+        "${cli}" "$@" >"${output}" 2>"${output}.stderr"
+}
+
+verify_live_status() {
+    local output=$1
+    local expected_phase=$2
+    local expected_enforcing=${3:-true}
+    local phase enforcing issues generation state_digest apple_digest successor_digest
+    phase=$(/usr/bin/plutil -extract phase raw -expect string -o - "${output}" 2>/dev/null) \
+        || fail "the live-update phase is unreadable"
+    [[ "${phase}" == "${expected_phase}" ]] || fail "unexpected live-update phase: ${phase}"
+    enforcing=$(/usr/bin/plutil -extract isEnforcing raw -expect bool -o - "${output}" 2>/dev/null) \
+        || fail "the live-update enforcement status is unreadable"
+    [[ "${enforcing}" == "${expected_enforcing}" ]] \
+        || fail "live-update enforcement status does not match ${expected_phase}"
+    issues=$(/usr/bin/plutil -extract issues raw -expect array -o - "${output}" 2>/dev/null) \
+        || fail "the live-update issue list is unreadable"
+    [[ "${issues}" == 0 ]] || fail "live-update protection reports issues"
+    generation=$(/usr/bin/plutil -extract generation raw -expect string -o - "${output}" 2>/dev/null) \
+        || fail "the live-update generation is unreadable"
+    state_digest=$(/usr/bin/plutil -extract stateDigest raw -expect string -o - "${output}" 2>/dev/null) \
+        || fail "the live-update state digest is unreadable"
+    apple_digest=$(/usr/bin/plutil -extract appleStateDigest raw -expect string -o - "${output}" 2>/dev/null) \
+        || fail "the live-update Apple-state digest is unreadable"
+    successor_digest=$(/usr/bin/plutil -extract successorDigest raw -expect string -o - "${output}" 2>/dev/null) \
+        || fail "the live-update successor digest is unreadable"
+    [[ "${generation}" =~ ^[0-9A-Fa-f-]{36}$ \
+        && "${state_digest}" =~ ^[0-9a-f]{64}$ \
+        && "${apple_digest}" =~ ^[0-9a-f]{64}$ \
+        && "${successor_digest}" =~ ^[0-9a-f]{64}$ ]] \
+        || fail "the live-update status contains invalid identifiers"
+    if [[ -z "${live_generation:-}" ]]; then
+        live_generation=${generation}
+        live_state_digest=${state_digest}
+        live_apple_digest=${apple_digest}
+        live_successor_digest=${successor_digest}
+    else
+        [[ "${generation}" == "${live_generation}" \
+            && ( "${expected_phase}" == finalized || "${state_digest}" == "${live_state_digest}" ) \
+            && ( "${expected_phase}" == finalized || "${apple_digest}" == "${live_apple_digest}" ) \
+            && "${successor_digest}" == "${live_successor_digest}" ]] \
+            || fail "the live-update status changed generation or protected state"
+    fi
+}
+
+probe_installed_browser_worker() {
+    local worker_plist worker_label worker_executable
+    for worker_plist in /Library/LaunchAgents/org.hardpause.browser-worker*.plist; do
+        [[ -e "${worker_plist}" ]] || continue
+        [[ -f "${worker_plist}" && ! -L "${worker_plist}" \
+            && "$(/usr/bin/stat -f '%u' "${worker_plist}")" == 0 ]] || continue
+        worker_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "${worker_plist}" 2>/dev/null) \
+            || continue
+        [[ "${worker_label}" == org.hardpause.browser-worker \
+            || "${worker_label}" =~ ^org\.hardpause\.browser-worker\.v[0-9]+$ ]] || continue
+        worker_executable=$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' \
+            "${worker_plist}" 2>/dev/null) || continue
+        [[ "${worker_executable}" == "${browser_worker_root}"/*/Contents/MacOS/HardPauseBrowserWorker \
+            && -x "${worker_executable}" && ! -L "${worker_executable}" \
+            && "$(/usr/bin/stat -f '%u' "${worker_executable}")" == 0 ]] || continue
+        /bin/launchctl print "gui/${sudo_uid}/${worker_label}" >/dev/null 2>&1 || continue
+        if /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
+            "${worker_executable}" --probe "${worker_label}" \
+            >"${stage}/browser-worker-probe.json" 2>"${stage}/browser-worker-probe.stderr"; then
+            return 0
+        fi
+    done
+    fail "no installed browser worker is ready to maintain active browser rules"
+}
+
 verify_existing_inactive_blocks() {
     local snapshot=$1
     [[ -x "${cli_destination}" && ! -L "${cli_destination}" ]] \
@@ -322,6 +440,14 @@ verify_existing_inactive_blocks() {
         "${cli_destination}" list >"${existing_health}" 2>"${stage}/${snapshot}.stderr" \
         || fail "the installed CLI could not authenticate and list protected state; update stopped"
     verify_inactive_snapshot "${existing_health}"
+    installed_service_version=$(/usr/bin/plutil -extract protection.serviceVersion raw -expect string -o - \
+        "${existing_health}.plist" 2>/dev/null) \
+        || fail "the installed service version is unreadable"
+    [[ "${installed_service_version}" =~ ^[0-9]+$ ]] \
+        || fail "the installed service version is invalid"
+    if [[ ${update_existing} -eq 1 && ${installed_service_version} -lt 8 ]]; then
+        inactive_migration=1
+    fi
     if [[ ${reenroll} -eq 1 ]]; then
         /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
             "${cli_destination}" can-uninstall >"${stage}/existing-can-uninstall.txt" \
@@ -331,7 +457,33 @@ verify_existing_inactive_blocks() {
 }
 
 if [[ ${managed_install} -eq 1 ]]; then
-    verify_existing_inactive_blocks "existing-health-check.json"
+    if [[ ${live_update} -eq 1 ]]; then
+        [[ -x "${cli_destination}" && ! -L "${cli_destination}" ]] \
+            || fail "live update requires the installed CLI"
+        /bin/launchctl print "system/${label}" >/dev/null 2>&1 \
+            || fail "live update requires the installed service"
+        /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
+            "${cli_destination}" list >"${stage}/existing-health-check.json" \
+            2>"${stage}/existing-health-check.stderr" \
+            || fail "the installed service health check failed"
+        /usr/bin/sed -E 's/:[[:space:]]*null([,}])/: ""\1/g' \
+            "${stage}/existing-health-check.json" >"${stage}/existing-health-check.plist"
+        installed_service_version=$(/usr/bin/plutil -extract protection.serviceVersion raw -expect string -o - \
+            "${stage}/existing-health-check.plist" 2>/dev/null) \
+            || fail "the installed service version is unreadable"
+        [[ "${installed_service_version}" =~ ^[0-9]+$ && "${installed_service_version}" -ge 8 ]] \
+            || fail "live update requires an installed handoff-capable service"
+        is_enforcing=$(/usr/bin/plutil -extract protection.isEnforcing raw -expect bool -o - \
+            "${stage}/existing-health-check.plist" 2>/dev/null) \
+            || fail "the installed protection status is unreadable"
+        [[ "${is_enforcing}" == true ]] || fail "the installed service is not enforcing"
+        issue_count=$(/usr/bin/plutil -extract protection.issues raw -expect array -o - \
+            "${stage}/existing-health-check.plist" 2>/dev/null) \
+            || fail "the installed protection issue list is unreadable"
+        [[ "${issue_count}" == 0 ]] || fail "the installed service reports protection issues"
+    else
+        verify_existing_inactive_blocks "existing-health-check.json"
+    fi
 fi
 
 /usr/bin/install -m 0755 "${service_source}" "${stage}/hard-pause-service"
@@ -339,12 +491,56 @@ fi
 /usr/bin/install -m 0755 "${uninstaller_source}" "${stage}/hard-pause-uninstall"
 /usr/bin/install -m 0644 "${plist_source}" "${stage}/${label}.plist"
 /usr/bin/install -m 0644 "${guidance_source}" "${stage}/AGENTS.md"
+/usr/bin/ditto "${browser_worker_source}" "${stage}/HardPauseBrowserWorker.app"
+browser_worker_build=$(
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' \
+        "${stage}/HardPauseBrowserWorker.app/Contents/Info.plist"
+) || fail "the browser worker build version is unreadable"
+browser_worker_bundle_id=$(
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+        "${stage}/HardPauseBrowserWorker.app/Contents/Info.plist"
+) || fail "the browser worker bundle identifier is unreadable"
+[[ "${browser_worker_bundle_id}" == "${browser_worker_label}" ]] \
+    || fail "the browser worker bundle identifier is invalid"
+[[ "${browser_worker_build}" =~ ^[0-9]+$ ]] \
+    || fail "the browser worker build version is invalid"
+browser_worker_job_label="${browser_worker_label}.v${browser_worker_build}"
+browser_worker_plist_destination="/Library/LaunchAgents/${browser_worker_job_label}.plist"
+validate_destination "${browser_worker_plist_destination}"
+browser_worker_destination="${browser_worker_root}/HardPauseBrowserWorker-${browser_worker_build}.app"
+browser_worker_executable="${browser_worker_destination}/Contents/MacOS/HardPauseBrowserWorker"
 
 # Preserve build signatures and their stable identities; installation must not
 # replace certificate signatures with per-build ad-hoc hashes.
 /usr/bin/codesign --verify --strict "${stage}/hard-pause-service"
 /usr/bin/codesign --verify --strict "${stage}/hard-pause"
+/usr/bin/codesign --verify --strict --deep "${stage}/HardPauseBrowserWorker.app"
 /usr/bin/codesign --verify --strict "${app_bundle}"
+if [[ ${managed_install} -eq 1 ]]; then
+    validate_parent "${support_dir}"
+    [[ "$(/usr/bin/stat -f '%Lp' "${support_dir}")" == 700 ]] \
+        || fail "the protected support directory has unsafe permissions"
+fi
+app_build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' \
+    "${app_bundle}/Contents/Info.plist") || fail "the signed app build is unreadable"
+[[ "${app_build}" =~ ^[1-9][0-9]{0,9}$ ]] || fail "the signed app build is invalid"
+installed_build=""
+if [[ -e "${installed_build_destination}" || -L "${installed_build_destination}" ]]; then
+    [[ -f "${installed_build_destination}" && ! -L "${installed_build_destination}" \
+        && "$(/usr/bin/stat -f '%u' "${installed_build_destination}")" == 0 \
+        && "$(/usr/bin/stat -f '%Lp' "${installed_build_destination}")" == 600 ]] \
+        || fail "the installed build record is unsafe"
+    installed_build=$(<"${installed_build_destination}")
+    [[ "${installed_build}" =~ ^[1-9][0-9]{0,9}$ ]] \
+        || fail "the installed build record is invalid"
+fi
+if [[ ${live_update} -eq 1 ]]; then
+    [[ -n "${installed_build}" && "${app_build}" -gt "${installed_build}" ]] \
+        || fail "a live update requires a newer signed app build"
+elif [[ ${update_existing} -eq 1 && -n "${installed_build}" ]]; then
+    [[ "${app_build}" -ge "${installed_build}" ]] \
+        || fail "the signed app build is older than the installed build"
+fi
 
 extract_requirement() {
     local path=$1
@@ -361,20 +557,42 @@ extract_requirement() {
 
 gui_requirement=$(extract_requirement "${app_bundle}")
 cli_requirement=$(extract_requirement "${stage}/hard-pause")
-if [[ ${update_existing} -eq 1 ]]; then
+browser_worker_requirement=$(extract_requirement "${stage}/HardPauseBrowserWorker.app")
+enrollment_stage="${stage}/enrollment-v1.json"
+if [[ ${update_existing} -eq 1 || ${live_update} -eq 1 ]]; then
     verify_staged_requirement "GUI" "${app_bundle}"
     verify_staged_requirement "CLI" "${stage}/hard-pause"
+    /bin/cp -p "${enrollment_destination}" "${enrollment_stage}"
+    browser_worker_enrolled=0
+    for requirement in "${existing_requirements[@]}"; do
+        if /usr/bin/codesign --verify --strict -R="${requirement}" \
+            "${stage}/HardPauseBrowserWorker.app" >/dev/null 2>&1; then
+            browser_worker_enrolled=1
+            break
+        fi
+    done
+    if [[ ${live_update} -eq 1 && ${browser_worker_enrolled} -eq 0 ]]; then
+        fail "live update requires an already enrolled browser worker"
+    fi
+    if [[ ${browser_worker_enrolled} -eq 0 ]]; then
+        [[ ${#existing_requirements[@]} -lt 8 ]] \
+            || fail "the existing enrollment has no room for the browser worker"
+        /usr/bin/plutil -convert xml1 "${enrollment_stage}"
+        /usr/bin/plutil -insert "approvedClientRequirements.${#existing_requirements[@]}" \
+            -string "${browser_worker_requirement}" "${enrollment_stage}"
+        /usr/bin/plutil -convert json "${enrollment_stage}"
+    fi
 else
-    enrollment_stage="${stage}/enrollment-v1.json"
     /usr/bin/plutil -create xml1 "${enrollment_stage}"
     /usr/bin/plutil -insert schemaVersion -integer 1 "${enrollment_stage}"
     /usr/bin/plutil -insert enrolledUID -integer "${sudo_uid}" "${enrollment_stage}"
     /usr/bin/plutil -insert approvedClientRequirements -array "${enrollment_stage}"
     /usr/bin/plutil -insert approvedClientRequirements.0 -string "${gui_requirement}" "${enrollment_stage}"
     /usr/bin/plutil -insert approvedClientRequirements.1 -string "${cli_requirement}" "${enrollment_stage}"
+    /usr/bin/plutil -insert approvedClientRequirements.2 -string "${browser_worker_requirement}" "${enrollment_stage}"
     /usr/bin/plutil -convert json "${enrollment_stage}"
-    /bin/chmod 0600 "${enrollment_stage}"
 fi
+/bin/chmod 0600 "${enrollment_stage}"
 
 /usr/bin/install -d -m 0700 "${stage}/rollback"
 for index in "${!managed_destinations[@]}"; do
@@ -385,16 +603,216 @@ for index in "${!managed_destinations[@]}"; do
     fi
 done
 
+recover_live_update() {
+    set +e
+    local recovered=1
+    if [[ ${live_old_stopped} -eq 1 ]]; then
+        if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
+            /bin/launchctl bootout "system/${label}" >/dev/null 2>&1 || recovered=0
+        fi
+        if [[ ${recovered} -eq 1 ]]; then
+            /bin/cp -p "${live_stage}/old/hard-pause-service" "${service_destination}" || recovered=0
+            /bin/cp -p "${live_stage}/old/hard-pause" "${cli_destination}" || recovered=0
+            /bin/cp -p "${live_stage}/old/${label}.plist" "${plist_destination}" || recovered=0
+            /bin/cp -p "${live_stage}/old/hard-pause-uninstall" "${uninstaller_destination}" || recovered=0
+            /bin/cp -p "${live_stage}/old/helper-AGENTS.md" "${guidance_destination}" || recovered=0
+            /bin/cp -p "${live_stage}/old/state-AGENTS.md" "${state_guidance_destination}" || recovered=0
+        fi
+        if [[ ${recovered} -eq 1 ]]; then
+            /bin/launchctl bootstrap system "${plist_destination}" >/dev/null 2>&1 \
+                && /bin/launchctl enable "system/${label}" >/dev/null 2>&1 \
+                && /bin/launchctl kickstart -k "system/${label}" >/dev/null 2>&1 \
+                || recovered=0
+        fi
+    fi
+    if [[ ${recovered} -eq 1 ]]; then
+        run_enrolled_cli "${cli_destination}" "${live_stage}/cancel-live-update.json" \
+            cancel-live-update "${live_token}" || recovered=0
+    fi
+    if [[ ${recovered} -eq 1 ]]; then
+        run_enrolled_cli "${cli_destination}" "${live_stage}/restored-health.json" list \
+            || recovered=0
+    fi
+    if [[ ${recovered} -eq 1 ]]; then
+        /usr/bin/sed -E 's/:[[:space:]]*null([,}])/: ""\1/g' \
+            "${live_stage}/restored-health.json" >"${live_stage}/restored-health.plist"
+        local enforcing issues
+        enforcing=$(/usr/bin/plutil -extract protection.isEnforcing raw -expect bool -o - \
+            "${live_stage}/restored-health.plist" 2>/dev/null) || recovered=0
+        issues=$(/usr/bin/plutil -extract protection.issues raw -expect array -o - \
+            "${live_stage}/restored-health.plist" 2>/dev/null) || recovered=0
+        [[ "${enforcing:-}" == true && "${issues:-}" == 0 ]] || recovered=0
+    fi
+    if [[ ${recovered} -eq 1 && -e "${standby_plist_destination:-}" ]]; then
+        if /bin/launchctl print "system/${label}.standby" >/dev/null 2>&1; then
+            run_enrolled_cli "${cli_destination}" "${live_stage}/cancelled-standby.json" \
+                retire-standby "${live_token}" || recovered=0
+            if [[ ${recovered} -eq 1 ]]; then
+                /bin/launchctl bootout "system/${label}.standby" >/dev/null 2>&1 || recovered=0
+            fi
+        fi
+        if [[ ${recovered} -eq 1 ]]; then
+            /bin/rm -f -- "${standby_plist_destination}" || recovered=0
+        fi
+    fi
+    if [[ ${recovered} -eq 1 ]]; then
+        echo "hard-pause installer: the prior service resumed; the live update was cancelled." >&2
+        return 0
+    fi
+    echo "hard-pause installer: automatic recovery is incomplete; standby and protected state were retained." >&2
+    return 1
+}
+
+run_live_update() {
+    probe_installed_browser_worker
+    validate_parent "${helper_dir}"
+    live_stage=$(/usr/bin/mktemp -d "${helper_dir}/live-update.XXXXXXXX") \
+        || fail "could not create a durable live-update stage"
+    /bin/chmod 0700 "${live_stage}"
+    /usr/bin/install -d -o root -g wheel -m 0700 "${live_stage}/old" "${live_stage}/new"
+    /bin/cp -p "${service_destination}" "${live_stage}/old/hard-pause-service"
+    /bin/cp -p "${cli_destination}" "${live_stage}/old/hard-pause"
+    /bin/cp -p "${uninstaller_destination}" "${live_stage}/old/hard-pause-uninstall"
+    /bin/cp -p "${plist_destination}" "${live_stage}/old/${label}.plist"
+    /bin/cp -p "${guidance_destination}" "${live_stage}/old/helper-AGENTS.md"
+    /bin/cp -p "${state_guidance_destination}" "${live_stage}/old/state-AGENTS.md"
+    /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause-service" \
+        "${live_stage}/new/hard-pause-service"
+    /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause" \
+        "${live_stage}/new/hard-pause"
+    /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause-uninstall" \
+        "${live_stage}/new/hard-pause-uninstall"
+    /usr/bin/install -o root -g wheel -m 0644 "${stage}/AGENTS.md" \
+        "${live_stage}/new/AGENTS.md"
+    live_token=$(/usr/bin/uuidgen) || fail "could not create a live-update token"
+    /usr/bin/printf '%s\n' "${live_token}" >"${live_stage}/token"
+    /bin/chmod 0600 "${live_stage}/token"
+    standby_plist_destination="/Library/LaunchDaemons/${label}.standby.plist"
+    [[ ! -e "${standby_plist_destination}" && ! -L "${standby_plist_destination}" ]] \
+        || fail "a standby service is already registered; inspect the previous update"
+
+    local standby_plist="${live_stage}/new/${label}.standby.plist"
+    /usr/bin/plutil -create xml1 "${standby_plist}"
+    /usr/libexec/PlistBuddy -c "Add :Label string ${label}.standby" "${standby_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :ProgramArguments array' "${standby_plist}"
+    /usr/libexec/PlistBuddy -c "Add :ProgramArguments:0 string ${live_stage}/new/hard-pause-service" \
+        "${standby_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :ProgramArguments:1 string --standby' "${standby_plist}"
+    /usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string ${live_token}" "${standby_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :MachServices dict' "${standby_plist}"
+    /usr/libexec/PlistBuddy -c "Add :MachServices:${label}.standby bool true" "${standby_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :KeepAlive bool true' "${standby_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :RunAtLoad bool true' "${standby_plist}"
+    /usr/bin/plutil -lint "${standby_plist}" >/dev/null
+
+    local public_plist="${live_stage}/new/${label}.plist"
+    /bin/cp -p "${stage}/${label}.plist" "${public_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :ProgramArguments:1 string --live-update-primary' "${public_plist}"
+    /usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string ${live_token}" "${public_plist}"
+    /usr/bin/plutil -lint "${public_plist}" >/dev/null
+
+    live_started=1
+    run_enrolled_cli "${cli_source}" "${live_stage}/begin.json" \
+        begin-live-update "${live_token}" "${live_stage}/new/hard-pause-service" \
+        || fail "the running service did not freeze for live update"
+    verify_live_status "${live_stage}/begin.json" frozen
+    /usr/bin/install -o root -g wheel -m 0644 "${standby_plist}" "${standby_plist_destination}"
+    /bin/launchctl bootstrap system "${standby_plist_destination}" \
+        || fail "the standby service could not start"
+    /bin/launchctl enable "system/${label}.standby" \
+        || fail "the standby service could not be enabled"
+    /bin/launchctl kickstart -k "system/${label}.standby" \
+        || fail "the standby service could not run"
+    run_enrolled_cli "${cli_source}" "${live_stage}/standby.json" \
+        standby-readiness "${live_token}" || fail "standby did not report readiness"
+    verify_live_status "${live_stage}/standby.json" standby_ready
+    run_enrolled_cli "${cli_source}" "${live_stage}/old-frozen.json" \
+        inspect-live-update "${live_token}" || fail "the old service lost its update gate"
+    verify_live_status "${live_stage}/old-frozen.json" frozen
+    probe_installed_browser_worker
+
+    live_old_stopped=1
+    /bin/launchctl bootout "system/${label}" \
+        || fail "the old service could not release its public endpoint"
+    /usr/bin/install -o root -g wheel -m 0755 "${live_stage}/new/hard-pause-service" \
+        "${service_destination}"
+    /usr/bin/install -o root -g wheel -m 0755 "${live_stage}/new/hard-pause" \
+        "${cli_destination}"
+    /usr/bin/install -o root -g wheel -m 0755 "${live_stage}/new/hard-pause-uninstall" \
+        "${uninstaller_destination}"
+    /usr/bin/install -o root -g wheel -m 0644 "${public_plist}" "${plist_destination}"
+    /usr/bin/install -o root -g wheel -m 0644 "${live_stage}/new/AGENTS.md" "${guidance_destination}"
+    /usr/bin/install -o root -g wheel -m 0600 "${live_stage}/new/AGENTS.md" "${state_guidance_destination}"
+    /bin/launchctl bootstrap system "${plist_destination}" \
+        || fail "the new public service could not start"
+    /bin/launchctl enable "system/${label}" \
+        || fail "the new public service could not be enabled"
+    /bin/launchctl kickstart -k "system/${label}" \
+        || fail "the new public service could not run"
+    run_enrolled_cli "${cli_destination}" "${live_stage}/new-read-only.json" \
+        inspect-live-update "${live_token}" || fail "the new public service is not ready"
+    verify_live_status "${live_stage}/new-read-only.json" standby_ready
+    probe_installed_browser_worker
+
+    # A timeout after this call may mean the new service already owns state.
+    # Recovery must not start the old service once finalization was attempted.
+    live_finalization_started=1
+    run_enrolled_cli "${cli_destination}" "${live_stage}/finalized.json" \
+        finalize-live-update "${live_token}" || fail "live-update finalization needs inspection"
+    verify_live_status "${live_stage}/finalized.json" finalized
+    run_enrolled_cli "${cli_destination}" "${live_stage}/final-health.json" list \
+        || fail "the finalized service did not answer its health check"
+    /usr/bin/sed -E 's/:[[:space:]]*null([,}])/: ""\1/g' \
+        "${live_stage}/final-health.json" >"${live_stage}/final-health.plist"
+    [[ "$(/usr/bin/plutil -extract protection.isEnforcing raw -expect bool -o - \
+        "${live_stage}/final-health.plist")" == true ]] \
+        || fail "the finalized service is not enforcing"
+    [[ "$(/usr/bin/plutil -extract protection.issues raw -expect array -o - \
+        "${live_stage}/final-health.plist")" == 0 ]] \
+        || fail "the finalized service reports protection issues"
+    probe_installed_browser_worker
+    run_enrolled_cli "${cli_destination}" "${live_stage}/retired-standby.json" \
+        retire-standby "${live_token}" || fail "the standby could not release its separate rules"
+    verify_live_status "${live_stage}/retired-standby.json" finalized false
+    /bin/launchctl bootout "system/${label}.standby" \
+        || fail "the redundant standby could not be removed"
+    /bin/rm -f -- "${standby_plist_destination}"
+}
+
+if [[ ${live_update} -eq 0 ]]; then
 if [[ ${update_existing} -eq 1 ]]; then
-    update_gate_token=$(/usr/bin/uuidgen) || fail "could not create an update gate token"
-    /usr/bin/printf '%s\n' "${update_gate_token}" >"${update_gate_token_path}"
-    /bin/chmod 0600 "${update_gate_token_path}"
-    update_gate_cleanup_needed=1
-    /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
-        "${cli_source}" prepare-update "${update_gate_token}" \
-        >"${stage}/update-gate-health-check.json" 2>"${stage}/update-gate-health-check.stderr" \
-        || fail "the installed service could not prepare safely for the update"
-    verify_inactive_snapshot "${stage}/update-gate-health-check.json"
+    if [[ ${inactive_migration} -eq 1 ]]; then
+        run_enrolled_cli "${cli_destination}" "${stage}/existing-can-uninstall.json" can-uninstall \
+            || fail "the installed service reports protection that prevents migration"
+        migration_stage=$(/usr/bin/mktemp -d "${helper_dir}/inactive-migration.XXXXXXXX") \
+            || fail "could not create a durable migration stage"
+        /bin/chmod 0700 "${migration_stage}"
+        migration_token=$(/usr/bin/uuidgen) || fail "could not create a migration token"
+        /usr/bin/printf '%s\n' "${migration_token}" >"${migration_stage}/token"
+        /bin/chmod 0600 "${migration_stage}/token"
+        /bin/cp -p "${stage}/${label}.plist" "${stage}/${label}.migration.plist"
+        /usr/libexec/PlistBuddy -c 'Add :ProgramArguments:1 string --inactive-migration' \
+            "${stage}/${label}.migration.plist"
+        /usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string ${migration_token}" \
+            "${stage}/${label}.migration.plist"
+        /usr/bin/plutil -lint "${stage}/${label}.migration.plist" >/dev/null
+        /bin/cp -pR "${stage}/rollback" "${migration_stage}/old-files"
+        for state_name in state-v2.json pending-state-v2.json apple-lockdown-state-v1.json; do
+            if [[ -e "${support_dir}/${state_name}" ]]; then
+                /bin/cp -p "${support_dir}/${state_name}" "${migration_stage}/${state_name}"
+            fi
+        done
+    else
+        update_gate_token=$(/usr/bin/uuidgen) || fail "could not create an update gate token"
+        /usr/bin/printf '%s\n' "${update_gate_token}" >"${update_gate_token_path}"
+        /bin/chmod 0600 "${update_gate_token_path}"
+        update_gate_cleanup_needed=1
+        /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
+            "${cli_source}" prepare-update "${update_gate_token}" \
+            >"${stage}/update-gate-health-check.json" 2>"${stage}/update-gate-health-check.stderr" \
+            || fail "the installed service could not prepare safely for the update"
+        verify_inactive_snapshot "${stage}/update-gate-health-check.json"
+    fi
 fi
 
 if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
@@ -405,6 +823,10 @@ if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
     previous_service_loaded=1
 fi
 rollback_armed=1
+if [[ ${inactive_migration} -eq 1 ]]; then
+    "${stage}/hard-pause-service" --verify-inactive-legacy-state \
+        || fail "durable state changed before migration; the old service will be restarted"
+fi
 if [[ ${managed_install} -eq 1 && ${reenroll} -eq 1 ]]; then
     "${service_destination}" --verify-uninstall-offline \
         || fail "durable protection changed before reenrollment; the previous service will be restarted"
@@ -427,10 +849,12 @@ fi
 /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause-service" "${service_destination}"
 /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause" "${cli_destination}"
 /usr/bin/install -o root -g wheel -m 0755 "${stage}/hard-pause-uninstall" "${uninstaller_destination}"
-/usr/bin/install -o root -g wheel -m 0644 "${stage}/${label}.plist" "${plist_destination}"
-if [[ ${update_existing} -eq 0 ]]; then
-    /usr/bin/install -o root -g wheel -m 0600 "${enrollment_stage}" "${enrollment_destination}"
+if [[ ${inactive_migration} -eq 1 ]]; then
+    /usr/bin/install -o root -g wheel -m 0644 "${stage}/${label}.migration.plist" "${plist_destination}"
+else
+    /usr/bin/install -o root -g wheel -m 0644 "${stage}/${label}.plist" "${plist_destination}"
 fi
+/usr/bin/install -o root -g wheel -m 0600 "${enrollment_stage}" "${enrollment_destination}"
 /usr/bin/install -o root -g wheel -m 0644 "${stage}/AGENTS.md" "${guidance_destination}"
 /usr/bin/install -o root -g wheel -m 0600 "${stage}/AGENTS.md" "${state_guidance_destination}"
 
@@ -441,12 +865,24 @@ fi
 /bin/launchctl kickstart -k "system/${label}" \
     || fail "launchd could not start ${label}"
 if [[ ${update_existing} -eq 1 ]]; then
-    rollback_armed=0
-    /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
-        "${cli_destination}" cancel-update "${update_gate_token}" >"${stage}/health-check.json" \
-        || fail "the installed service did not release its update gate"
-    verify_inactive_snapshot "${stage}/health-check.json"
-    update_gate_cleanup_needed=0
+    if [[ ${inactive_migration} -eq 1 ]]; then
+        run_enrolled_cli "${cli_destination}" "${stage}/migration-read-only.json" list \
+            || fail "the read-only migrated service is not available"
+        verify_inactive_snapshot "${stage}/migration-read-only.json"
+        rollback_armed=0
+        migration_finalization_started=1
+        run_enrolled_cli "${cli_destination}" "${stage}/migration-finalized.json" \
+            finalize-inactive-migration "${migration_token}" \
+            || fail "migration finalization needs inspection"
+        verify_inactive_snapshot "${stage}/migration-finalized.json"
+    else
+        rollback_armed=0
+        /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
+            "${cli_destination}" cancel-update "${update_gate_token}" >"${stage}/health-check.json" \
+            || fail "the installed service did not release its update gate"
+        verify_inactive_snapshot "${stage}/health-check.json"
+        update_gate_cleanup_needed=0
+    fi
 else
     /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
         "${cli_destination}" list >"${stage}/health-check.json" \
@@ -456,7 +892,149 @@ else
     fi
     rollback_armed=0
 fi
+fi
+
+install_browser_worker() {
+    if [[ -e "${browser_worker_root}" ]]; then
+        [[ -d "${browser_worker_root}" && ! -L "${browser_worker_root}" ]] \
+            || fail "the browser worker directory is unsafe"
+        [[ "$(/usr/bin/stat -f '%u' "${browser_worker_root}")" == 0 ]] \
+            || fail "the browser worker directory is not root-owned"
+    else
+        /usr/bin/install -d -o root -g wheel -m 0755 "${browser_worker_root}"
+    fi
+    /bin/chmod 0755 "${browser_worker_root}"
+    if [[ -e "${browser_worker_destination}" ]]; then
+        [[ -d "${browser_worker_destination}" && ! -L "${browser_worker_destination}" ]] \
+            || fail "the installed browser worker path is unsafe"
+        [[ "$(/usr/bin/stat -f '%u' "${browser_worker_destination}")" == 0 ]] \
+            || fail "the installed browser worker is not root-owned"
+        local staged_hash installed_hash
+        staged_hash=$(/usr/bin/codesign -dv --verbose=4 \
+            "${stage}/HardPauseBrowserWorker.app" 2>&1 | /usr/bin/sed -n 's/^CDHash=//p')
+        installed_hash=$(/usr/bin/codesign -dv --verbose=4 \
+            "${browser_worker_destination}" 2>&1 | /usr/bin/sed -n 's/^CDHash=//p')
+        [[ -n "${staged_hash}" && "${staged_hash}" == "${installed_hash}" ]] \
+            || fail "the installed browser worker build number has different signed code"
+    else
+        /usr/bin/ditto "${stage}/HardPauseBrowserWorker.app" "${browser_worker_destination}"
+        /usr/sbin/chown -R root:wheel "${browser_worker_destination}"
+    fi
+    /bin/chmod -R a+rX,go-w "${browser_worker_destination}"
+    [[ -x "${browser_worker_executable}" && ! -L "${browser_worker_executable}" ]] \
+        || fail "the installed browser worker executable is unsafe"
+    [[ "$(/usr/bin/stat -f '%u' "${browser_worker_executable}")" == 0 ]] \
+        || fail "the installed browser worker executable is not root-owned"
+    /usr/bin/codesign --verify --strict --deep -R="${browser_worker_requirement}" \
+        "${browser_worker_destination}" \
+        || fail "the installed browser worker signature is invalid"
+
+    local worker_plist="${stage}/${browser_worker_job_label}.plist"
+    /usr/bin/plutil -create xml1 "${worker_plist}"
+    /usr/libexec/PlistBuddy -c "Add :Label string ${browser_worker_job_label}" "${worker_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :ProgramArguments array' "${worker_plist}"
+    /usr/libexec/PlistBuddy -c "Add :ProgramArguments:0 string ${browser_worker_executable}" \
+        "${worker_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :ProgramArguments:1 string --serve' "${worker_plist}"
+    /usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string ${browser_worker_job_label}" \
+        "${worker_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :MachServices dict' "${worker_plist}"
+    /usr/libexec/PlistBuddy -c "Add :MachServices:${browser_worker_job_label} bool true" \
+        "${worker_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :KeepAlive bool true' "${worker_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :RunAtLoad bool true' "${worker_plist}"
+    /usr/libexec/PlistBuddy -c 'Add :ProcessType string Background' "${worker_plist}"
+    /usr/bin/plutil -lint "${worker_plist}" >/dev/null
+
+    local prior_plist="${stage}/prior-browser-worker.plist"
+    local had_prior_plist=0
+    local prior_loaded=0
+    if [[ -e "${browser_worker_plist_destination}" ]]; then
+        /bin/cp -p "${browser_worker_plist_destination}" "${prior_plist}"
+        had_prior_plist=1
+    fi
+    if /bin/launchctl print "gui/${sudo_uid}/${browser_worker_job_label}" >/dev/null 2>&1; then
+        [[ ${had_prior_plist} -eq 1 ]] \
+            || fail "an unrelated browser worker launchd job already exists"
+        if [[ ${live_update} -eq 1 ]]; then
+            /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
+                "${browser_worker_executable}" --probe "${browser_worker_job_label}" \
+                >/dev/null || fail "the existing browser worker is not ready during live update"
+            return 0
+        fi
+        /bin/launchctl bootout "gui/${sudo_uid}/${browser_worker_job_label}" \
+            || fail "the existing browser worker could not be stopped"
+        prior_loaded=1
+    fi
+    /usr/bin/install -o root -g wheel -m 0644 "${worker_plist}" \
+        "${browser_worker_plist_destination}"
+    if ! /bin/launchctl bootstrap "gui/${sudo_uid}" "${browser_worker_plist_destination}"; then
+        /bin/launchctl bootout "gui/${sudo_uid}/${browser_worker_job_label}" >/dev/null 2>&1 || true
+        if [[ ${had_prior_plist} -eq 1 ]]; then
+            /bin/cp -p "${prior_plist}" "${browser_worker_plist_destination}"
+            if [[ ${prior_loaded} -eq 1 ]]; then
+                /bin/launchctl bootstrap "gui/${sudo_uid}" "${browser_worker_plist_destination}" \
+                    || fail "the browser worker and its previous launchd job could not be started"
+            fi
+        else
+            /bin/rm -f -- "${browser_worker_plist_destination}"
+        fi
+        fail "the browser worker could not be started; the protection service remains installed"
+    fi
+
+    if ! /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
+        "${browser_worker_executable}" --probe "${browser_worker_job_label}" \
+        >"${stage}/new-browser-worker-probe.json" \
+        2>"${stage}/new-browser-worker-probe.stderr"; then
+        echo "hard-pause installer: the new browser worker needs setup before taking over." >&2
+        return 0
+    fi
+    local old_plist old_label old_executable
+    for old_plist in /Library/LaunchAgents/org.hardpause.browser-worker*.plist; do
+        [[ -e "${old_plist}" && "${old_plist}" != "${browser_worker_plist_destination}" ]] \
+            || continue
+        [[ -f "${old_plist}" && ! -L "${old_plist}" \
+            && "$(/usr/bin/stat -f '%u' "${old_plist}")" == 0 ]] || continue
+        old_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "${old_plist}" 2>/dev/null) \
+            || continue
+        [[ "${old_label}" == org.hardpause.browser-worker \
+            || "${old_label}" =~ ^org\.hardpause\.browser-worker\.v[0-9]+$ ]] || continue
+        /bin/launchctl print "gui/${sudo_uid}/${old_label}" >/dev/null 2>&1 || continue
+        old_executable=$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' \
+            "${old_plist}" 2>/dev/null) || continue
+        [[ "${old_executable}" == "${browser_worker_root}"/*/Contents/MacOS/HardPauseBrowserWorker \
+            && -x "${old_executable}" && ! -L "${old_executable}" \
+            && "$(/usr/bin/stat -f '%u' "${old_executable}")" == 0 ]] || continue
+        if /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
+            "${browser_worker_executable}" --migrate "${old_label}" "${browser_worker_job_label}" \
+            >"${stage}/migrate-${old_label}.json" 2>"${stage}/migrate-${old_label}.stderr"; then
+            if /bin/launchctl bootout "gui/${sudo_uid}/${old_label}"; then
+                /bin/rm -f -- "${old_plist}"
+            else
+                echo "hard-pause installer: keeping ${old_label} because it could not stop safely." >&2
+            fi
+        else
+            echo "hard-pause installer: keeping ${old_label} until its pause pages can move safely." >&2
+        fi
+    done
+}
+
+if [[ ${live_update} -eq 1 ]]; then
+    run_live_update
+fi
+install_browser_worker
+build_record_stage=$(/usr/bin/mktemp "${support_dir}/installed-build-v1.XXXXXXXX") \
+    || fail "the installed build record could not be staged"
+/bin/chmod 0600 "${build_record_stage}"
+/usr/bin/printf '%s\n' "${app_build}" >"${build_record_stage}"
+/bin/mv -f -- "${build_record_stage}" "${installed_build_destination}" \
+    || fail "the installed build record could not be committed"
+if [[ ${live_update} -eq 1 ]]; then
+    live_success=1
+    echo "Hard Pause transferred the running service with active protection preserved."
+fi
 
 echo "Hard Pause enrolled user ${sudo_user} (${sudo_uid}) and started ${label}."
 echo "Installed CLI: ${cli_destination}"
+echo "Browser worker: ${browser_worker_destination}"
 echo "Agent maintenance guidance: ${guidance_destination}"

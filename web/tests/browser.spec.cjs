@@ -55,10 +55,6 @@ test('production landing is honest, local, and contains no simulated controls', 
     'href',
     checksURL,
   );
-  await expect(page.getByRole('link', { name: 'Read the validation record' })).toHaveAttribute(
-    'href',
-    `${repositoryURL}/blob/main/docs/apple-validation.md`,
-  );
   await expect(page.locator('.product-illustration')).toHaveAttribute('role', 'img');
   await expect(
     page.locator('.product-illustration button, .product-illustration input'),

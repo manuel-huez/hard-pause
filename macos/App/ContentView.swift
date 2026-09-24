@@ -105,10 +105,8 @@ struct ContentView: View {
                         .background(LowLightBackground())
                         .navigationTitle((selection ?? .home).rawValue)
                         .toolbar {
-                            ToolbarItemGroup(placement: .primaryAction) {
-                                ServiceStatusLabel()
-                                    .lineLimit(1)
-                                if selection == .blocks {
+                            if selection == .blocks {
+                                ToolbarItem(placement: .primaryAction) {
                                     Button {
                                         editor = BlockEditorPresentation(block: nil)
                                     } label: {
@@ -119,7 +117,6 @@ struct ContentView: View {
                                     .mascotHoverTarget()
                                 }
                             }
-                            .sharedBackgroundVisibility(.visible)
                         }
                     }
                 }
@@ -216,7 +213,9 @@ private struct HomePane: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if !model.activeBlocks.isEmpty && !model.setupReady {
+                if !model.activeBlocks.isEmpty && !model.setupReady
+                    && !model.serviceUpdateIsOnlySetupGap
+                {
                     SetupIncompleteBanner(showSetup: showSetup)
                 }
 
@@ -251,27 +250,25 @@ private struct HomePane: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "lock.shield")
+                        .font(.system(size: 13))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Private on this Mac")
+                            .font(.caption.weight(.medium))
+                        Text("No account. No tracking. Checks stay on this Mac.")
+                            .font(.caption)
+                    }
+                }
+                .foregroundStyle(PauseTheme.muted)
+                .help(
+                    "Rules and protection state stay on this Mac. Adult website list updates contact a public provider. Browser checks read tab addresses only when page protection is active. Chrome and Safari RTA checks read rating tags only; Firefox cannot read RTA labels. Positive RTA detections are cached locally for 24 hours. No browsing history is uploaded."
+                )
+                .padding(.top, 12)
             }
             .frame(maxWidth: 680, alignment: .leading)
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .safeAreaInset(edge: .bottom, alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 9) {
-                Image(systemName: "lock.shield")
-                    .font(.system(size: 13))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Private on this Mac")
-                        .font(.caption.weight(.medium))
-                    Text("No account. No tracking. Checks stay on this Mac.")
-                        .font(.caption)
-                }
-            }
-            .foregroundStyle(PauseTheme.muted)
-            .help(
-                "Rules and protection state stay on this Mac. Adult website list updates contact a public provider. Browser checks read tab addresses only when page protection is active. Chrome and Safari RTA checks read rating tags only; Firefox cannot read RTA labels. Positive RTA detections are cached locally for 24 hours. No browsing history is uploaded."
-            )
-            .padding(24)
         }
     }
 }
@@ -1590,19 +1587,28 @@ private struct BlockEditorView: View {
     private func addDomain() -> Bool {
         let input = domainInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return true }
-        if let domain = URLPatternRule.exactDomain(from: input) {
+        let website: ClassifiedWebsite
+        do {
+            guard let classified = try classifyWebsite(input) else {
+                validationMessage =
+                    "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
+                return false
+            }
+            website = classified
+        } catch {
+            validationMessage = "Website rules are temporarily unavailable. Try again."
+            return false
+        }
+        switch website {
+        case .domain(let domain, let wildcard):
             if !domains.contains(domain) {
                 domains.append(domain)
-                if let wildcard = URLPatternRule.normalize("*.\(domain)"), !urlPatterns.contains(wildcard) {
+                if let wildcard, !urlPatterns.contains(wildcard) {
                     urlPatterns.append(wildcard)
                 }
             }
-        } else if let pattern = URLPatternRule.normalize(input) {
+        case .pattern(let pattern):
             if !urlPatterns.contains(pattern) { urlPatterns.append(pattern) }
-        } else {
-            validationMessage =
-                "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
-            return false
         }
         domainInput = ""
         validationMessage = nil
@@ -1614,30 +1620,51 @@ private struct BlockEditorView: View {
         guard let block else { return false }
         let input = domainInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return true }
-        if let domain = URLPatternRule.exactDomain(from: input) {
+        let website: ClassifiedWebsite
+        do {
+            guard let classified = try classifyWebsite(input) else {
+                validationMessage =
+                    "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
+                return false
+            }
+            website = classified
+        } catch {
+            validationMessage = "Website rules are temporarily unavailable. Try again."
+            return false
+        }
+        switch website {
+        case .domain(let domain, let wildcard):
             if !block.draft.rules.blockedDomains.contains(domain), !addedDomains.contains(domain) {
                 addedDomains.append(domain)
             }
-            let wildcard = "*.\(domain)"
-            if URLPatternRule.normalize(wildcard) != nil,
+            if let wildcard,
                 !block.draft.rules.blockedURLPatterns.contains(wildcard),
                 !addedURLPatterns.contains(wildcard)
             {
                 addedURLPatterns.append(wildcard)
             }
-        } else if let pattern = URLPatternRule.normalize(input) {
+        case .pattern(let pattern):
             if !block.draft.rules.blockedURLPatterns.contains(pattern),
                 !addedURLPatterns.contains(pattern)
             {
                 addedURLPatterns.append(pattern)
             }
-        } else {
-            validationMessage = "Enter a website or pattern such as example.com, example.com/page, or *.example.com."
-            return false
         }
         domainInput = ""
         validationMessage = nil
         return true
+    }
+
+    private enum ClassifiedWebsite {
+        case domain(String, wildcard: String?)
+        case pattern(String)
+    }
+
+    private func classifyWebsite(_ input: String) throws -> ClassifiedWebsite? {
+        if let domain = try URLPatternRule.exactDomainChecked(from: input) {
+            return .domain(domain, wildcard: try URLPatternRule.normalizeChecked("*.\(domain)"))
+        }
+        return try URLPatternRule.normalizeChecked(input).map(ClassifiedWebsite.pattern)
     }
 
     private func commitPendingWebsite() -> Bool {
@@ -2064,7 +2091,9 @@ private struct MandatorySetupView: View {
                 SetupActionCard(
                     eyebrow: "Step 1 of 3",
                     title: model.needsServiceUpdate ? "Update protection" : "Install protection",
-                    detail: "Hard Pause needs one macOS administrator approval to protect this Mac.",
+                    detail: model.serviceCanUpdateWithoutApproval
+                        ? "Hard Pause can update protection with the approval you gave during setup."
+                        : "Hard Pause needs one macOS administrator approval to protect this Mac.",
                     systemImage: "lock.shield",
                     actionTitle: model.needsServiceUpdate ? "Update protection" : "Install protection",
                     isBusy: model.isInstallingService,
@@ -2245,9 +2274,13 @@ private struct SetupChecklistView: View {
                 }
             }
             if !model.setupServiceReady {
-                Text("One macOS administrator approval is required.")
-                    .foregroundStyle(PauseTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    model.serviceCanUpdateWithoutApproval
+                        ? "Protection can update with your existing approval."
+                        : "One macOS administrator approval is required."
+                )
+                .foregroundStyle(PauseTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
                 if model.isInstallingService {
                     ProgressView("Installing protection…")
                 } else {
@@ -2315,7 +2348,11 @@ private struct ProtectionSettingsPane: View {
                 Text("Settings")
                     .font(PauseFont.display(26, relativeTo: .title))
                 Text(
-                    model.setupReady ? "Everything is ready on this Mac." : "Finish setup before starting a new plan."
+                    model.setupReady
+                        ? "Everything is ready on this Mac."
+                        : model.serviceUpdateIsOnlySetupGap
+                            ? "Your active plan is protected. Update protection before starting a new plan."
+                            : "Finish setup before starting a new plan."
                 )
                 .foregroundStyle(PauseTheme.muted)
 
@@ -2407,28 +2444,6 @@ private struct ProtectionSettingsPane: View {
 private struct ServiceSetupPanel: View {
     var body: some View {
         SetupChecklistView()
-    }
-}
-
-private struct ServiceStatusLabel: View {
-    @EnvironmentObject private var model: AppModel
-
-    var body: some View {
-        switch model.setupState {
-        case .checking:
-            Label("Checking setup", systemImage: "ellipsis.circle")
-                .foregroundStyle(PauseTheme.muted)
-        case .incomplete:
-            Label("Finish setup", systemImage: "exclamationmark.shield")
-                .foregroundStyle(PauseTheme.coral)
-        case .ready:
-            if let protection = model.snapshot?.protection,
-                !protection.issues.isEmpty || (!protection.isEnforcing && !model.activeBlocks.isEmpty)
-            {
-                Label("Protection needs attention", systemImage: "exclamationmark.shield")
-                    .foregroundStyle(.orange)
-            }
-        }
     }
 }
 

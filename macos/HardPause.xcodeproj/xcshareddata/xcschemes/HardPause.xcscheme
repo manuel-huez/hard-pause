@@ -29,6 +29,20 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7FB589CDA9AE77E8C589884D"
+               BuildableName = "HardPauseBrowserWorker.app"
+               BlueprintName = "HardPauseBrowserWorker"
+               ReferencedContainer = "container:HardPause.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "D44C5D0380BBD11EAC86E8DF"
                BuildableName = "hard-pause"
                BlueprintName = "HardPauseCLI"

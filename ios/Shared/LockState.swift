@@ -291,6 +291,7 @@ enum LockStateError: LocalizedError, Equatable {
     case requestAlreadyPending
     case breakAlreadyActive
     case noPendingBreakRequest
+    case coreUnavailable
     case noBlockingTarget
     case breaksUnavailableInHardPause
     case tooManyManualDomains
@@ -308,6 +309,8 @@ enum LockStateError: LocalizedError, Equatable {
             "A timeout is already active."
         case .noPendingBreakRequest:
             "There is no pending timeout request to cancel."
+        case .coreUnavailable:
+            "The protection core is unavailable."
         case .noBlockingTarget:
             "Choose at least one app or website, or enable adult website filtering."
         case .breaksUnavailableInHardPause:
@@ -420,10 +423,8 @@ enum LockStateMachine {
     ) throws {
         guard !state.isActive else { throw LockStateError.alreadyActive }
         var fixedPolicy = policy
-        try fixedPolicy.validateDurations()
-        fixedPolicy.normalize()
-        try fixedPolicy.validateManagedSettingsLimits()
-        guard fixedPolicy.hasBlockingTarget else { throw LockStateError.noBlockingTarget }
+        try fixedPolicy.normalize()
+        try fixedPolicy.validateActivationTargets()
 
         state.phase = .locked
         state.policy = fixedPolicy
@@ -694,6 +695,8 @@ enum LockStateMachine {
             return .breakAlreadyActive
         case .noPendingBreakRequest:
             return .noPendingBreakRequest
+        case .coreUnavailable:
+            return .coreUnavailable
         }
     }
 

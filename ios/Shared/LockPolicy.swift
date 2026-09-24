@@ -5,6 +5,46 @@ import ManagedSettings
 struct LockPolicy: Codable, Equatable {
     static let maximumManagedWebDomains = 50
 
+    private struct CoreValues: Encodable {
+        let protectionMode: ProtectionMode
+        let waitDuration: String
+        let fullUnlockDelay: String?
+        let breakDuration: String
+        let fixedDuration: String?
+        let preventsAppRemoval: Bool
+        let requiresAutomaticDateAndTime: Bool
+
+        init(_ policy: LockPolicy) {
+            protectionMode = policy.protectionMode
+            waitDuration = String(policy.waitDuration)
+            fullUnlockDelay = policy.fullUnlockDelay.map { String($0) }
+            breakDuration = String(policy.breakDuration)
+            fixedDuration = policy.fixedDuration.map { String($0) }
+            preventsAppRemoval = policy.preventsAppRemoval
+            requiresAutomaticDateAndTime = policy.requiresAutomaticDateAndTime
+        }
+    }
+
+    private struct NormalizedValues: Decodable {
+        let waitDuration: TimeInterval
+        let fullUnlockDelay: TimeInterval
+        let breakDuration: TimeInterval
+        let fixedDuration: TimeInterval?
+        let preventsAppRemoval: Bool
+        let requiresAutomaticDateAndTime: Bool
+    }
+
+    private struct TargetCounts: Encodable {
+        let manualDomains: Int
+        let selectedWebDomains: Int
+        let selectedApplications: Int
+        let selectedCategories: Int
+        let blocksAdultWebsites: Bool
+        let requireTarget: Bool
+    }
+
+    private struct EmptyResult: Decodable {}
+
     var protectionMode: ProtectionMode = .softLock
     var selection = FamilyActivitySelection()
     var manualDomains: [String] = []
@@ -53,7 +93,6 @@ struct LockPolicy: Codable, Equatable {
         )
 
         do {
-            try validateDurations()
             try validateStoredModeRequirements()
         } catch {
             throw DecodingError.dataCorruptedError(
@@ -90,32 +129,34 @@ struct LockPolicy: Codable, Equatable {
     }
 
     func validateDurations() throws {
-        let durations = [waitDuration, breakDuration, fullUnlockDelay, fixedDuration].compactMap { $0 }
-        guard durations.allSatisfy({ $0.isFinite && $0 >= 0 && $0 < Double(Int.max) / 2 }) else {
-            throw LockPolicyError.invalidDuration
-        }
-        guard protectionMode.allowsBreaks || fixedDuration == nil else {
-            throw LockPolicyError.fixedDurationUnavailableInLockdown
-        }
+        try validateCoreValues("ios.validate_durations")
     }
 
-    mutating func normalize() {
+    mutating func normalize() throws {
+        let values: NormalizedValues
+        do {
+            values = try RustCoreBridge.call("ios.normalize_policy", CoreValues(self))
+        } catch {
+            throw Self.corePolicyError(error)
+        }
         manualDomains = Self.normalizedDomains(manualDomains)
-        waitDuration = max(3_600, waitDuration)
-        fullUnlockDelay = max(3_600, fullUnlockDelay ?? waitDuration)
-        breakDuration = max(900, breakDuration)
-        if let fixedDuration {
-            self.fixedDuration = max(3_600, fixedDuration)
-        }
-        if protectionMode == .lockdown {
-            preventsAppRemoval = true
-            requiresAutomaticDateAndTime = true
-        }
+        waitDuration = values.waitDuration
+        fullUnlockDelay = values.fullUnlockDelay
+        breakDuration = values.breakDuration
+        fixedDuration = values.fixedDuration
+        preventsAppRemoval = values.preventsAppRemoval
+        requiresAutomaticDateAndTime = values.requiresAutomaticDateAndTime
     }
 
     private func validateStoredModeRequirements() throws {
-        guard protectionMode != .lockdown || (preventsAppRemoval && requiresAutomaticDateAndTime) else {
-            throw LockPolicyError.lockdownRequiresDeviceProtection
+        try validateCoreValues("ios.validate_stored_policy")
+    }
+
+    private func validateCoreValues(_ operation: String) throws {
+        do {
+            let _: EmptyResult = try RustCoreBridge.call(operation, CoreValues(self))
+        } catch {
+            throw Self.corePolicyError(error)
         }
     }
 
@@ -127,11 +168,47 @@ struct LockPolicy: Codable, Equatable {
     }
 
     static func validateManagedSettingsDomainCounts(manual: Int, selected: Int) throws {
-        guard manual <= maximumManagedWebDomains else {
-            throw LockStateError.tooManyManualDomains
+        try validateTargets(
+            TargetCounts(
+                manualDomains: manual, selectedWebDomains: selected, selectedApplications: 0,
+                selectedCategories: 0, blocksAdultWebsites: false, requireTarget: false
+            ))
+    }
+
+    func validateActivationTargets() throws {
+        try Self.validateTargets(
+            TargetCounts(
+                manualDomains: manualDomains.count,
+                selectedWebDomains: selection.webDomainTokens.count,
+                selectedApplications: selection.applicationTokens.count,
+                selectedCategories: selection.categoryTokens.count,
+                blocksAdultWebsites: blocksAdultWebsites,
+                requireTarget: true
+            ))
+    }
+
+    private static func validateTargets(_ counts: TargetCounts) throws {
+        do {
+            let _: EmptyResult = try RustCoreBridge.call("ios.validate_targets", counts)
+        } catch RustCoreBridge.Failure.rejected(let code) {
+            switch code {
+            case "too_many_manual_domains": throw LockStateError.tooManyManualDomains
+            case "too_many_selected_domains": throw LockStateError.tooManySelectedWebDomains
+            case "no_blocking_target": throw LockStateError.noBlockingTarget
+            default: throw LockStateError.coreUnavailable
+            }
+        } catch {
+            throw LockStateError.coreUnavailable
         }
-        guard selected <= maximumManagedWebDomains else {
-            throw LockStateError.tooManySelectedWebDomains
+    }
+
+    private static func corePolicyError(_ error: Error) -> LockPolicyError {
+        guard case RustCoreBridge.Failure.rejected(let code) = error else { return .coreUnavailable }
+        switch code {
+        case "invalid_duration": return .invalidDuration
+        case "fixed_duration_unavailable": return .fixedDurationUnavailableInLockdown
+        case "device_protection_required": return .lockdownRequiresDeviceProtection
+        default: return .coreUnavailable
         }
     }
 
@@ -181,6 +258,7 @@ enum LockPolicyError: LocalizedError, Equatable {
     case invalidDuration
     case fixedDurationUnavailableInLockdown
     case lockdownRequiresDeviceProtection
+    case coreUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -190,6 +268,8 @@ enum LockPolicyError: LocalizedError, Equatable {
             "Hard Pause cannot end automatically. Request a full unlock and complete its wait."
         case .lockdownRequiresDeviceProtection:
             "Hard Pause must prevent app deletion and require automatic date and time."
+        case .coreUnavailable:
+            "The protection core is unavailable."
         }
     }
 }

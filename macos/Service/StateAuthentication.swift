@@ -1,6 +1,13 @@
 import CryptoKit
 import Foundation
+import LocalAuthentication
 import Security
+
+func noninteractiveKeychainContext() -> LAContext {
+    let context = LAContext()
+    context.interactionNotAllowed = true
+    return context
+}
 
 protocol StateAuthenticationKeyStoring: AnyObject {
     func existingKey() throws -> Data?
@@ -109,7 +116,7 @@ final class SystemKeychainStateAuthenticationKeys: StateAuthenticationKeyStoring
         query[kSecMatchSearchList as String] = [keychain]
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         query[kSecReturnData as String] = true
-        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        query[kSecUseAuthenticationContext as String] = noninteractiveKeychainContext()
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
@@ -139,13 +146,13 @@ final class SystemKeychainStateAuthenticationKeys: StateAuthenticationKeyStoring
     }
 
     private func systemKeychain() throws -> SecKeychain {
-        var keychain: SecKeychain?
-        guard SecKeychainCopyDomainDefault(.system, &keychain) == errSecSuccess,
+        var keychain: Unmanaged<SecKeychain>?
+        guard HPCopySystemKeychain(&keychain) == errSecSuccess,
             let keychain
         else {
             throw ServiceRuntimeError.unreadableState("the system keychain is unavailable")
         }
-        return keychain
+        return keychain.takeRetainedValue()
     }
 }
 

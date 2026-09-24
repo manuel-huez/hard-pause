@@ -10,8 +10,10 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: Apple Development
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
-    CURRENT_PROJECT_VERSION: 3
-    MARKETING_VERSION: 0.1.1
+    CURRENT_PROJECT_VERSION: 4
+    MARKETING_VERSION: 0.2.0
+    LIBRARY_SEARCH_PATHS: $(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)
+    OTHER_LDFLAGS: $(inherited) -lhard_pause_core
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
@@ -23,7 +25,7 @@ targets:
     sources:
       - App
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
       - path: ../data/adult-domains
         type: folder
         buildPhase: resources
@@ -65,10 +67,11 @@ targets:
         SUFeedURL: https://github.com/manuel-huez/hard-pause/releases/latest/download/appcast.xml
         SUPublicEDKey: $(SPARKLE_EDDSA_PUBLIC_KEY)
         SUEnableAutomaticChecks: true
-        SUAutomaticallyUpdate: false
-        SUAllowsAutomaticUpdates: false
+        SUAutomaticallyUpdate: true
+        SUAllowsAutomaticUpdates: true
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
@@ -77,8 +80,14 @@ targets:
         embed: false
       - target: HardPauseCLI
         embed: false
+      - target: HardPauseBrowserWorker
+        embed: false
       - sdk: Security.framework
       - package: Sparkle
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
     postBuildScripts:
       - name: Bundle production service
         script: |
@@ -90,6 +99,7 @@ targets:
           /usr/bin/install -m 0644 "${SRCROOT}/scripts/org.hardpause.service.plist" "$resources/org.hardpause.service.plist"
           /usr/bin/install -m 0755 "${BUILT_PRODUCTS_DIR}/hard-pause-service" "$resources/hard-pause-service"
           /usr/bin/install -m 0755 "${BUILT_PRODUCTS_DIR}/hard-pause" "$resources/hard-pause"
+          /usr/bin/ditto "${BUILT_PRODUCTS_DIR}/HardPauseBrowserWorker.app" "$resources/HardPauseBrowserWorker.app"
         inputFiles:
           - $(SRCROOT)/scripts/install-macos-service.sh
           - $(SRCROOT)/scripts/uninstall-macos-service.sh
@@ -97,6 +107,7 @@ targets:
           - $(SRCROOT)/scripts/org.hardpause.service.plist
           - $(BUILT_PRODUCTS_DIR)/hard-pause-service
           - $(BUILT_PRODUCTS_DIR)/hard-pause
+          - $(BUILT_PRODUCTS_DIR)/HardPauseBrowserWorker.app
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/install-macos-service.sh
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/uninstall-macos-service.sh
@@ -104,6 +115,61 @@ targets:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/org.hardpause.service.plist
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hard-pause-service
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hard-pause
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/HardPauseBrowserWorker.app
+  HardPauseBrowserWorker:
+    type: application
+    platform: macOS
+    sources:
+      - BrowserWorker
+      - Core
+      - ../core/apple
+      - App/BrowserWorkerIPC.swift
+      - App/BrowserWorkerClient.swift
+      - App/BrowserProtection.swift
+      - App/FirefoxBrowserProtection.swift
+      - App/LocalPausePageServer.swift
+      - App/AdultWebsiteDatabase.swift
+      - App/AdultRatingStore.swift
+      - App/ProtectedServiceClient.swift
+      - App/SetupReadiness.swift
+      - path: ../data/adult-domains
+        type: folder
+        buildPhase: resources
+      - path: ../web/mascot
+        type: folder
+        buildPhase: resources
+      - path: ../ios/App/Resources/Fonts/Recursive.ttf
+        buildPhase: resources
+      - path: Resources/BlockedPage
+        type: folder
+        buildPhase: resources
+      - path: Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    entitlements:
+      path: App/HardPause.entitlements
+      properties:
+        com.apple.security.network.client: true
+        com.apple.security.automation.apple-events: true
+    info:
+      path: BrowserWorker/Info.plist
+      properties:
+        CFBundleDisplayName: Hard Pause Browser Worker
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSUIElement: true
+        NSAppleEventsUsageDescription: Hard Pause Browser Worker checks browser tabs and redirects blocked pages.
+    settings:
+      base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
+        PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.browser-worker
+        ENABLE_HARDENED_RUNTIME: YES
+    dependencies:
+      - sdk: Security.framework
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
   HardPauseService:
     type: tool
     platform: macOS
@@ -111,9 +177,10 @@ targets:
     sources:
       - Service
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/Service/SystemKeychainBridge.h
         PRODUCT_NAME: hard-pause-service
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.service
         GENERATE_INFOPLIST_FILE: YES
@@ -121,6 +188,10 @@ targets:
     dependencies:
       - sdk: Security.framework
       - sdk: libbsm.tbd
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
   HardPauseCLI:
     type: tool
     platform: macOS
@@ -128,20 +199,25 @@ targets:
     sources:
       - CLI
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
         PRODUCT_NAME: hard-pause
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.cli
         GENERATE_INFOPLIST_FILE: YES
         ENABLE_HARDENED_RUNTIME: YES
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
   HardPauseTests:
     type: bundle.unit-test
     platform: macOS
     sources:
       - Tests
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
       - App/AppModel.swift
       - App/AppleProtectionModel.swift
       - App/AppleScreenTimeAutomation.swift
@@ -153,12 +229,19 @@ targets:
       - App/LocalPausePageServer.swift
       - App/FirefoxBrowserProtection.swift
       - App/ProtectedServiceClient.swift
+      - App/BrowserWorkerIPC.swift
+      - App/BrowserWorkerClient.swift
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.tests
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - sdk: Security.framework
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
   HardPauseServiceTests:
     type: bundle.unit-test
     platform: macOS
@@ -167,15 +250,20 @@ targets:
         excludes:
           - main.swift
       - Core
-      - ../core/Sources/PauseCore
+      - ../core/apple
       - ServiceTests
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/Service/SystemKeychainBridge.h
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.service-tests
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - sdk: Security.framework
       - sdk: libbsm.tbd
+    preBuildScripts:
+      - name: Build portable core
+        script: '"${SRCROOT}/../scripts/build-rust-core.sh"'
+        basedOnDependencyAnalysis: false
 schemes:
   HardPause:
     build:
@@ -183,6 +271,7 @@ schemes:
         HardPause: all
         HardPauseService: all
         HardPauseCLI: all
+        HardPauseBrowserWorker: all
         HardPauseTests: [test]
         HardPauseServiceTests: [test]
     test:

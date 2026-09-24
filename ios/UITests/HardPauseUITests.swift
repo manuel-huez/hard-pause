@@ -1,15 +1,13 @@
 import XCTest
 
+@MainActor
 final class HardPauseUITests: XCTestCase {
     private var app: XCUIApplication!
 
-    override func setUpWithError() throws {
+    func testNavigationAndPlanCommitmentFlow() throws {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launch()
-    }
-
-    func testNavigationAndPlanCommitmentFlow() throws {
         XCTAssertTrue(element("home.screen").waitForExistence(timeout: 10))
         attachScreenshot("01-home")
 

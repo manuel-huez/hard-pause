@@ -491,6 +491,19 @@ final class ProtectedBlockTests: XCTestCase {
         XCTAssertFalse(DomainRule.isLiteralIPAddress("example.com"))
     }
 
+    func testUnicodeRulesPreserveComposedStoredHosts() throws {
+        XCTAssertEqual(DomainRule.normalize("e\u{301}.example"), "é.example")
+        XCTAssertEqual(DomainRule.normalize("क\u{93F}.example"), "कि.example")
+        XCTAssertEqual(DomainRule.normalize("क्ष.example"), "क्ष.example")
+        XCTAssertEqual(URLPatternRule.normalize("e\u{301}.example/read"), "é.example/read")
+        let rules = ProtectedRules(
+            blockedDomains: ["e\u{301}.example", "क\u{93F}.example"],
+            blockedApplications: [], blocksStarterAdultSites: false
+        )
+        XCTAssertEqual(rules.blockedDomains, ["é.example", "कि.example"])
+        try rules.validateForPersistence()
+    }
+
     func testURLPatternNormalizationAndExactDomainClassification() {
         XCTAssertEqual(
             URLPatternRule.normalize(" HTTPS://*.Example.COM:0443/r/Focus/ "),

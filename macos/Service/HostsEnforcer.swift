@@ -67,11 +67,23 @@ final class POSIXManagedTextFile: ManagedTextFile {
 final class HostsEnforcer: HostsRuleEnforcing {
     static let beginMarker = "# BEGIN HARD PAUSE — exact domains managed by org.hardpause.service"
     static let endMarker = "# END HARD PAUSE"
+    static let standbyBeginMarker = "# BEGIN HARD PAUSE STANDBY — org.hardpause.service.standby"
+    static let standbyEndMarker = "# END HARD PAUSE STANDBY"
 
     private let file: ManagedTextFile
+    private let beginMarker: String
+    private let endMarker: String
+    private let lockPath: String?
 
-    init(file: ManagedTextFile = POSIXManagedTextFile(path: "/etc/hosts")) {
+    init(
+        file: ManagedTextFile = POSIXManagedTextFile(path: "/etc/hosts"),
+        standby: Bool = false,
+        lockPath: String? = nil
+    ) {
         self.file = file
+        beginMarker = standby ? Self.standbyBeginMarker : Self.beginMarker
+        endMarker = standby ? Self.standbyEndMarker : Self.endMarker
+        self.lockPath = lockPath
     }
 
     func apply(domains: [String]) throws {
@@ -79,15 +91,17 @@ final class HostsEnforcer: HostsRuleEnforcing {
         guard normalized.allSatisfy({ DomainRule.normalize($0) == $0 && !DomainRule.isLiteralIPAddress($0) }) else {
             throw ServiceRuntimeError.enforcementFailed("the hosts rules contain an invalid domain")
         }
-        let original = try file.read()
-        let next = try replacingOwnedSection(in: original, domains: normalized)
-        if next != original { try file.write(next) }
+        try withFileLock {
+            let original = try file.read()
+            let next = try replacingOwnedSection(in: original, domains: normalized)
+            if next != original { try file.write(next) }
+        }
     }
 
     func replacingOwnedSection(in original: String, domains: [String]) throws -> String {
         let lines = lineRecords(in: original)
-        let starts = lines.filter { $0.contents == Self.beginMarker }
-        let ends = lines.filter { $0.contents == Self.endMarker }
+        let starts = lines.filter { $0.contents == beginMarker }
+        let ends = lines.filter { $0.contents == endMarker }
         guard starts.count <= 1, ends.count <= 1, starts.count == ends.count else {
             throw ServiceRuntimeError.enforcementFailed("the Hard Pause hosts section is malformed")
         }
@@ -114,13 +128,33 @@ final class HostsEnforcer: HostsRuleEnforcing {
         let newline = original.contains("\r\n") ? "\r\n" : "\n"
         var result = unmanaged
         if !result.isEmpty, result.utf8.last != 0x0A { result += newline }
-        result += Self.beginMarker + newline
+        result += beginMarker + newline
         for domain in domains {
             result += "0.0.0.0\t\(domain)" + newline
             result += "::\t\(domain)" + newline
         }
-        result += Self.endMarker + newline
+        result += endMarker + newline
         return result
+    }
+
+    private func withFileLock<T>(_ operation: () throws -> T) throws -> T {
+        guard let lockPath else { return try operation() }
+        let descriptor = Darwin.open(lockPath, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else {
+            throw ServiceRuntimeError.enforcementFailed("the hosts update lock cannot be opened")
+        }
+        defer { _ = Darwin.close(descriptor) }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0,
+            (info.st_mode & S_IFMT) == S_IFREG,
+            info.st_uid == 0,
+            (info.st_mode & 0o077) == 0,
+            flock(descriptor, LOCK_EX) == 0
+        else {
+            throw ServiceRuntimeError.enforcementFailed("the hosts update lock is unsafe")
+        }
+        defer { _ = flock(descriptor, LOCK_UN) }
+        return try operation()
     }
 
     private func conflictingDomains(

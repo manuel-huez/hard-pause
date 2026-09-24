@@ -7,46 +7,48 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		05A68068ECEBCAC4A3F28C82 /* PauseCoreTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */; };
 		08FFB58B3ACF5B5FA04E6951 /* DurableFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285ABCF6E41AA44319B8430F /* DurableFile.swift */; };
 		09F511CE02D84AD37B9FEBA3 /* LocalLockRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A008C517931E1E076FDC3B /* LocalLockRuntimeTests.swift */; };
 		0BE4BEDEFF67BC13E0661B17 /* LockRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */; };
-		0C193A523AD9EC8FB97CBCDD /* PauseCoreTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */; };
+		0F12615AB16218BFDFC527FB /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A4FC08496D994254ECE9462 /* PauseCoreEncryptedState.swift */; };
+		11BDBCF75D3CF2D2E1F8F20D /* PauseCoreTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AA7A6802352F273F496F22 /* PauseCoreTransaction.swift */; };
 		15882B1EAC69D5394188450B /* MonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5EBDDB6622AC007FEF770DE /* MonitorExtension.swift */; };
+		175BF2D401799A7DD0D0E44B /* PauseCoreLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D50C7A2FC896F14DC362D0B /* PauseCoreLifecycle.swift */; };
+		1C21117AF15B2E62BF67926D /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F053871C47C023B55C3FED2 /* ProtectionMode.swift */; };
 		1C247D7DE72B2FBCA29AF2E7 /* CaretTrackingTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25EB73AE3867B9515138D2FB /* CaretTrackingTextField.swift */; };
-		1CEF28B0B65069E5A03E9306 /* PauseCoreClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D48D4E251122EB63A61006B /* PauseCoreClock.swift */; };
 		2122FE5DF0FC454ACBD5F937 /* HardPauseUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933BAA2EF1306A5A6B1B9D26 /* HardPauseUITests.swift */; };
+		26A09E6F39476B6DB6E8C208 /* PauseCoreClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6BA651CE289C1605C0EE30 /* PauseCoreClock.swift */; };
 		2BB8843CB98286FD8D5DD05A /* HardPauseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515D0ACE76FFE733C3585779 /* HardPauseApp.swift */; };
 		2BBF1480F99880525D265134 /* DurableFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 285ABCF6E41AA44319B8430F /* DurableFile.swift */; };
 		2CF1148B33492738B17151DF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA4D5CA5AE6189C76FC02A0 /* Theme.swift */; };
-		300BBB05A065F0024975F62F /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20CEC851791C27571D4516A /* ProtectionMode.swift */; };
+		2FD5CAD49F046D1B9AFBA400 /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A4FC08496D994254ECE9462 /* PauseCoreEncryptedState.swift */; };
+		2FED88305B0FB1FAFE47579E /* PauseCoreLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D50C7A2FC896F14DC362D0B /* PauseCoreLifecycle.swift */; };
 		32D13D9D7C65E981C70DDF74 /* TransitionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */; };
 		35917CB15157942FA738C5AC /* HardPauseConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */; };
 		36CED3C87A874D940813BB16 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */; };
-		3747FD356BAC24D68054EE12 /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4376EAB4E128DF91945EF54B /* PauseCoreEncryptedState.swift */; };
-		3D2DE7724B5796631DEBCE0E /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20CEC851791C27571D4516A /* ProtectionMode.swift */; };
 		4311D599FEA14F19E3D06821 /* HardPauseShieldAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		44492E6359DADDF5382C9208 /* HardPauseMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 840F73B7C5B3F4C84ADFEC56 /* HardPauseMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		493068EBA96467F2C3A0BB4F /* TransitionScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */; };
 		4B363C26D9A6AE78326A4F13 /* Recursive.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2CE17F29AD01F549AA33E8E9 /* Recursive.ttf */; };
+		50A6C03FE7E9C337CBA1CECE /* RustCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B7846E8C5ED015AB260DFED /* RustCoreBridge.swift */; };
 		52F7BE80DF7B856DE54AFDBB /* ShieldConfigurationExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788D947594861B25ED6E2C50 /* ShieldConfigurationExtension.swift */; };
 		54BDD9EBE63C38B528E3AD35 /* HardPauseConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */; };
 		562D18A508E6E79331381769 /* ShieldActionExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1664575DC09CCFD8AAD978B /* ShieldActionExtension.swift */; };
 		5A4BB56C2C86220DD91D9329 /* LockControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28AC9F0F91D97372B71A98E4 /* LockControllerTests.swift */; };
 		6246D0CF5C032BF211580CCC /* LocalLockRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */; };
-		65B25494262C2EAF5D7CFE31 /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4376EAB4E128DF91945EF54B /* PauseCoreEncryptedState.swift */; };
 		6AC7096D3804023D7F5CB208 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
 		721AE788979CAF819E52C674 /* HardPauseShieldConfiguration.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
-		849669699B688F2000A3FFCE /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */; };
+		879A8D04508C21B1CF70C5B8 /* RustCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B7846E8C5ED015AB260DFED /* RustCoreBridge.swift */; };
 		879E0F59B4F4EF178FC1A82E /* LockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 169BE56FCC1F31BF78B525F7 /* LockController.swift */; };
+		91C4E4BF9293756A81CEE5D3 /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151676180561720E647D2B92 /* PortableDomainList.swift */; };
 		9211C7DB3783D248F9D20228 /* LockRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */; };
 		9845BA0305034D133204BB5B /* ElapsedTimeClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */; };
 		992A85BF48CA1727F9DED7C2 /* LockPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */; };
 		A3978E065B3B6A33ECC11550 /* RecoveryPolicyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */; };
 		A6733A799BAAD2210B781175 /* Recursive-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 17DE3530A2D72DA8C4CD96D9 /* Recursive-OFL.txt */; };
 		A6B43742FBE37C05BDE23758 /* LockState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E1A76313E0BDB9BFDDF309 /* LockState.swift */; };
-		B20753AFDD1C4F79B7275B9A /* PauseCoreLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */; };
+		B36761B5D3C728E05D28A0ED /* PauseCoreClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6BA651CE289C1605C0EE30 /* PauseCoreClock.swift */; };
 		B461D97F352CF31A563AD660 /* RestrictionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7CB51F47AB1556A21548EC /* RestrictionService.swift */; };
 		B57A742A108423B864247D77 /* PlanEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656B1E745EB256213A841286 /* PlanEditorView.swift */; };
 		C2D8CB6D4D56CDD7B05920BE /* LockPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32265F3554157D2DDB850E43 /* LockPolicyTests.swift */; };
@@ -55,17 +57,17 @@
 		CC7FACC790C664A2196E70A6 /* LockStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202A992C4E1FAC8B85C957E3 /* LockStateMachineTests.swift */; };
 		CEA721A0A1D4E16B6D4B7055 /* RestrictionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7CB51F47AB1556A21548EC /* RestrictionService.swift */; };
 		CF72361A025DAEC35E4BB233 /* LocalLockRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */; };
+		CF8DBBAB7A9766A8294FC685 /* PauseCoreTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AA7A6802352F273F496F22 /* PauseCoreTransaction.swift */; };
 		D3D7A72B2174BF0E9492796B /* LockRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87CAB440108158A54D87EC78 /* LockRepositoryTests.swift */; };
 		D75116F320B1014A1492F768 /* RecoveryPolicyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */; };
 		DF59F01E02982422ABE6CEC3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */; };
 		E46DBE81B297964737C6F871 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 315F783C01EA2244855E02A1 /* RootView.swift */; };
+		E7809A1A4B4D93255E2D7F3D /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151676180561720E647D2B92 /* PortableDomainList.swift */; };
 		E8D2730C4FC6D0B0F128E865 /* TransitionSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD9C8C5AECAADA4E0F2C1BE /* TransitionSchedulerTests.swift */; };
 		EDE7740226BB1ED5FBF3A71F /* LockPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */; };
 		EF73AA9EAB3E85826E1E0EEA /* mascot in Resources */ = {isa = PBXBuildFile; fileRef = 404D8B647D1426A483797A07 /* mascot */; };
-		F7BC647A89553C257867BB24 /* PauseCoreClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D48D4E251122EB63A61006B /* PauseCoreClock.swift */; };
+		F4EDB466929B9FD6EAE7EAC6 /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F053871C47C023B55C3FED2 /* ProtectionMode.swift */; };
 		F883C2DD801A5D5DF2B4BED4 /* PauseSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 615B07EC5F0D1E32181EDABE /* PauseSeed.swift */; };
-		FB7AAF525EBCAE97577CD449 /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */; };
-		FDC8A44030450D923FDFD9B4 /* PauseCoreLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -126,9 +128,10 @@
 		09DEF718DDF7B4CBBA7F4F0F /* HardPauseShieldAction.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HardPauseShieldAction.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0FB078B8B65DD4BE0D82DF77 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		14AC45CCB50BCA7E5A52D3B4 /* ShieldAction.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldAction.entitlements; sourceTree = "<group>"; };
+		151676180561720E647D2B92 /* PortableDomainList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortableDomainList.swift; sourceTree = "<group>"; };
 		169BE56FCC1F31BF78B525F7 /* LockController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockController.swift; sourceTree = "<group>"; };
 		17DE3530A2D72DA8C4CD96D9 /* Recursive-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Recursive-OFL.txt"; sourceTree = "<group>"; };
-		1D48D4E251122EB63A61006B /* PauseCoreClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreClock.swift; sourceTree = "<group>"; };
+		1A4FC08496D994254ECE9462 /* PauseCoreEncryptedState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreEncryptedState.swift; sourceTree = "<group>"; };
 		202A992C4E1FAC8B85C957E3 /* LockStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockStateMachineTests.swift; sourceTree = "<group>"; };
 		25EB73AE3867B9515138D2FB /* CaretTrackingTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaretTrackingTextField.swift; sourceTree = "<group>"; };
 		285ABCF6E41AA44319B8430F /* DurableFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurableFile.swift; sourceTree = "<group>"; };
@@ -139,37 +142,37 @@
 		32265F3554157D2DDB850E43 /* LockPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockPolicyTests.swift; sourceTree = "<group>"; };
 		32C95D6B54F8FFFE9739BADB /* HardPause.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HardPause.entitlements; sourceTree = "<group>"; };
 		3E69A8C97E46C7522E142093 /* RecoveryPolicyRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPolicyRepository.swift; sourceTree = "<group>"; };
+		3F053871C47C023B55C3FED2 /* ProtectionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectionMode.swift; sourceTree = "<group>"; };
 		404D8B647D1426A483797A07 /* mascot */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mascot; path = ../web/mascot; sourceTree = SOURCE_ROOT; };
-		4376EAB4E128DF91945EF54B /* PauseCoreEncryptedState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreEncryptedState.swift; sourceTree = "<group>"; };
-		49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortableDomainList.swift; sourceTree = "<group>"; };
 		515D0ACE76FFE733C3585779 /* HardPauseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseApp.swift; sourceTree = "<group>"; };
 		53F6A70917DC6FF66B52CEEA /* LockPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockPolicy.swift; sourceTree = "<group>"; };
 		54D7F1EC5493997D86A5A8FB /* TransitionScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitionScheduler.swift; sourceTree = "<group>"; };
-		56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreTransaction.swift; sourceTree = "<group>"; };
 		615B07EC5F0D1E32181EDABE /* PauseSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseSeed.swift; sourceTree = "<group>"; };
 		656B1E745EB256213A841286 /* PlanEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanEditorView.swift; sourceTree = "<group>"; };
 		66E09A917BA6D23FE3E35CA4 /* HardPause.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HardPause.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6B7846E8C5ED015AB260DFED /* RustCoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustCoreBridge.swift; sourceTree = "<group>"; };
 		6BE2740E51E2BCBA4E9D9F30 /* HardPauseConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseConstants.swift; sourceTree = "<group>"; };
 		6DA4D5CA5AE6189C76FC02A0 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		788D947594861B25ED6E2C50 /* ShieldConfigurationExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShieldConfigurationExtension.swift; sourceTree = "<group>"; };
 		7E7CB51F47AB1556A21548EC /* RestrictionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestrictionService.swift; sourceTree = "<group>"; };
+		7F6BA651CE289C1605C0EE30 /* PauseCoreClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreClock.swift; sourceTree = "<group>"; };
 		840F73B7C5B3F4C84ADFEC56 /* HardPauseMonitor.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HardPauseMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		87AA7A6802352F273F496F22 /* PauseCoreTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreTransaction.swift; sourceTree = "<group>"; };
 		87CAB440108158A54D87EC78 /* LockRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockRepositoryTests.swift; sourceTree = "<group>"; };
 		8AD9C8C5AECAADA4E0F2C1BE /* TransitionSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitionSchedulerTests.swift; sourceTree = "<group>"; };
 		8D1F7AB916998334664871DB /* HardPauseTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HardPauseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8D50C7A2FC896F14DC362D0B /* PauseCoreLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreLifecycle.swift; sourceTree = "<group>"; };
 		8E82DCC88160BFFBB2B8E428 /* LocalLockRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLockRuntime.swift; sourceTree = "<group>"; };
 		933BAA2EF1306A5A6B1B9D26 /* HardPauseUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardPauseUITests.swift; sourceTree = "<group>"; };
 		9D54959695EE4B7D0D254B40 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9E541EEDF35767C89D0E2229 /* ElapsedTimeClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElapsedTimeClock.swift; sourceTree = "<group>"; };
 		A0B6FDAD335C6BAA3626B83A /* HardPauseUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HardPauseUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A154F829E6584D17D410F5E1 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		A20CEC851791C27571D4516A /* ProtectionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectionMode.swift; sourceTree = "<group>"; };
 		A5A008C517931E1E076FDC3B /* LocalLockRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLockRuntimeTests.swift; sourceTree = "<group>"; };
 		A5EBDDB6622AC007FEF770DE /* MonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorExtension.swift; sourceTree = "<group>"; };
 		B1664575DC09CCFD8AAD978B /* ShieldActionExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShieldActionExtension.swift; sourceTree = "<group>"; };
 		C8E31C62B594831083E5ED18 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CC180345D481C61E5696F730 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreLifecycle.swift; sourceTree = "<group>"; };
 		D4E1A76313E0BDB9BFDDF309 /* LockState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockState.swift; sourceTree = "<group>"; };
 		D629F5FD8CF0BAFB6D6D3802 /* LockRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockRepository.swift; sourceTree = "<group>"; };
 		E962F6F72B004A5444D58B89 /* HardPauseShieldConfiguration.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HardPauseShieldConfiguration.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -210,20 +213,6 @@
 			path = Extensions/ShieldAction;
 			sourceTree = "<group>";
 		};
-		559111ED91606875614431FE /* PauseCore */ = {
-			isa = PBXGroup;
-			children = (
-				1D48D4E251122EB63A61006B /* PauseCoreClock.swift */,
-				4376EAB4E128DF91945EF54B /* PauseCoreEncryptedState.swift */,
-				D0A5E7A3A5E5CD6F89628B4F /* PauseCoreLifecycle.swift */,
-				56C327E762C8ACC4777128AC /* PauseCoreTransaction.swift */,
-				49FC9E4731EF886DA9419C09 /* PortableDomainList.swift */,
-				A20CEC851791C27571D4516A /* ProtectionMode.swift */,
-			);
-			name = PauseCore;
-			path = ../core/Sources/PauseCore;
-			sourceTree = "<group>";
-		};
 		5D783D3DCF10B50043FF1F12 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
@@ -237,12 +226,27 @@
 			path = Tests;
 			sourceTree = "<group>";
 		};
+		7CA90E9CB52B68ED7323B4A0 /* apple */ = {
+			isa = PBXGroup;
+			children = (
+				7F6BA651CE289C1605C0EE30 /* PauseCoreClock.swift */,
+				1A4FC08496D994254ECE9462 /* PauseCoreEncryptedState.swift */,
+				8D50C7A2FC896F14DC362D0B /* PauseCoreLifecycle.swift */,
+				87AA7A6802352F273F496F22 /* PauseCoreTransaction.swift */,
+				151676180561720E647D2B92 /* PortableDomainList.swift */,
+				3F053871C47C023B55C3FED2 /* ProtectionMode.swift */,
+				6B7846E8C5ED015AB260DFED /* RustCoreBridge.swift */,
+			);
+			name = apple;
+			path = ../core/apple;
+			sourceTree = "<group>";
+		};
 		8CBC5D0E04A593DFB1F08231 = {
 			isa = PBXGroup;
 			children = (
 				DAF2478B078ECFC2342C28E9 /* App */,
+				7CA90E9CB52B68ED7323B4A0 /* apple */,
 				E50A3347081D86BDA7123877 /* Monitor */,
-				559111ED91606875614431FE /* PauseCore */,
 				BB64F0CE409913EE67F6E000 /* Resources */,
 				C6AFF93F17E3FA51A7152C74 /* Shared */,
 				3BE35859BCD921217BF13E64 /* ShieldAction */,
@@ -354,6 +358,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = F1BEA4BA0CE970999FD5082D /* Build configuration list for PBXNativeTarget "HardPause" */;
 			buildPhases = (
+				36EC93264FCCA783866AB95B /* Build portable core */,
 				EF28C6FD22CAF70B38131FBE /* Sources */,
 				848C9125F4749ABF2700E9ED /* Resources */,
 				06A2F49B3B0BCCC34B06A892 /* Embed Foundation Extensions */,
@@ -376,6 +381,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = AC065E7DFA6B980E36F16ED4 /* Build configuration list for PBXNativeTarget "HardPauseMonitor" */;
 			buildPhases = (
+				D1829015440BEB57A4FB1ED5 /* Build portable core */,
 				7602486BF4D1F4D26E3D0BD9 /* Sources */,
 				77A2EA110B58F16EC6817A75 /* Resources */,
 			);
@@ -534,6 +540,47 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		36EC93264FCCA783866AB95B /* Build portable core */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build portable core";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/../scripts/build-rust-core.sh\"";
+		};
+		D1829015440BEB57A4FB1ED5 /* Build portable core */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build portable core";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/../scripts/build-rust-core.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		5743ED843D16CEED3278E6F7 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -560,14 +607,15 @@
 				9211C7DB3783D248F9D20228 /* LockRepository.swift in Sources */,
 				C80ECB031082C50CD28DB3CB /* LockState.swift in Sources */,
 				15882B1EAC69D5394188450B /* MonitorExtension.swift in Sources */,
-				F7BC647A89553C257867BB24 /* PauseCoreClock.swift in Sources */,
-				3747FD356BAC24D68054EE12 /* PauseCoreEncryptedState.swift in Sources */,
-				FDC8A44030450D923FDFD9B4 /* PauseCoreLifecycle.swift in Sources */,
-				05A68068ECEBCAC4A3F28C82 /* PauseCoreTransaction.swift in Sources */,
-				849669699B688F2000A3FFCE /* PortableDomainList.swift in Sources */,
-				300BBB05A065F0024975F62F /* ProtectionMode.swift in Sources */,
+				B36761B5D3C728E05D28A0ED /* PauseCoreClock.swift in Sources */,
+				2FD5CAD49F046D1B9AFBA400 /* PauseCoreEncryptedState.swift in Sources */,
+				175BF2D401799A7DD0D0E44B /* PauseCoreLifecycle.swift in Sources */,
+				CF8DBBAB7A9766A8294FC685 /* PauseCoreTransaction.swift in Sources */,
+				E7809A1A4B4D93255E2D7F3D /* PortableDomainList.swift in Sources */,
+				1C21117AF15B2E62BF67926D /* ProtectionMode.swift in Sources */,
 				A3978E065B3B6A33ECC11550 /* RecoveryPolicyRepository.swift in Sources */,
 				CEA721A0A1D4E16B6D4B7055 /* RestrictionService.swift in Sources */,
+				50A6C03FE7E9C337CBA1CECE /* RustCoreBridge.swift in Sources */,
 				493068EBA96467F2C3A0BB4F /* TransitionScheduler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -610,17 +658,18 @@
 				EDE7740226BB1ED5FBF3A71F /* LockPolicy.swift in Sources */,
 				0BE4BEDEFF67BC13E0661B17 /* LockRepository.swift in Sources */,
 				A6B43742FBE37C05BDE23758 /* LockState.swift in Sources */,
-				1CEF28B0B65069E5A03E9306 /* PauseCoreClock.swift in Sources */,
-				65B25494262C2EAF5D7CFE31 /* PauseCoreEncryptedState.swift in Sources */,
-				B20753AFDD1C4F79B7275B9A /* PauseCoreLifecycle.swift in Sources */,
-				0C193A523AD9EC8FB97CBCDD /* PauseCoreTransaction.swift in Sources */,
+				26A09E6F39476B6DB6E8C208 /* PauseCoreClock.swift in Sources */,
+				0F12615AB16218BFDFC527FB /* PauseCoreEncryptedState.swift in Sources */,
+				2FED88305B0FB1FAFE47579E /* PauseCoreLifecycle.swift in Sources */,
+				11BDBCF75D3CF2D2E1F8F20D /* PauseCoreTransaction.swift in Sources */,
 				F883C2DD801A5D5DF2B4BED4 /* PauseSeed.swift in Sources */,
 				B57A742A108423B864247D77 /* PlanEditorView.swift in Sources */,
-				FB7AAF525EBCAE97577CD449 /* PortableDomainList.swift in Sources */,
-				3D2DE7724B5796631DEBCE0E /* ProtectionMode.swift in Sources */,
+				91C4E4BF9293756A81CEE5D3 /* PortableDomainList.swift in Sources */,
+				F4EDB466929B9FD6EAE7EAC6 /* ProtectionMode.swift in Sources */,
 				D75116F320B1014A1492F768 /* RecoveryPolicyRepository.swift in Sources */,
 				B461D97F352CF31A563AD660 /* RestrictionService.swift in Sources */,
 				E46DBE81B297964737C6F871 /* RootView.swift in Sources */,
+				879A8D04508C21B1CF70C5B8 /* RustCoreBridge.swift in Sources */,
 				2CF1148B33492738B17151DF /* Theme.swift in Sources */,
 				32D13D9D7C65E981C70DDF74 /* TransitionScheduler.swift in Sources */,
 			);
@@ -668,10 +717,13 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
+				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app.monitor;
 				PRODUCT_NAME = HardPauseMonitor;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/../core/rust/include/hard_pause_core.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -707,9 +759,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
+				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app;
 				PRODUCT_NAME = HardPause;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/../core/rust/include/hard_pause_core.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -877,10 +932,13 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
+				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app.monitor;
 				PRODUCT_NAME = HardPauseMonitor;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/../core/rust/include/hard_pause_core.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -915,9 +973,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
+				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.hardpause.app;
 				PRODUCT_NAME = HardPause;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/../core/rust/include/hard_pause_core.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

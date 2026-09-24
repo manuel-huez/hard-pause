@@ -26,6 +26,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
     private var lastApplicationScanContinuous: TimeInterval
     private var lastRetryContinuous: TimeInterval
     private var needsEnforcementRetry = false
+    private var readOnlyUntilFinalize: Bool
 
     private let checkpointInterval: TimeInterval = 30
     private let applicationScanInterval: TimeInterval = 2
@@ -34,24 +35,28 @@ final class ProtectedServiceEngine: @unchecked Sendable {
     init(
         stateStore: ProtectedStateStoring,
         enforcer: ProtectionEnforcing,
-        clock: ServiceClock = SystemServiceClock()
+        clock: ServiceClock = SystemServiceClock(),
+        preloadedState: ProtectedState? = nil
     ) throws {
         self.stateStore = stateStore
         self.enforcer = enforcer
         self.clock = clock
-        state = try stateStore.load()
+        state = try preloadedState ?? stateStore.load()
+        readOnlyUntilFinalize = preloadedState != nil
         let reading = clock.read()
         lastCheckpointContinuous = reading.continuousTime
         lastApplicationScanContinuous = reading.continuousTime
         lastRetryContinuous = reading.continuousTime
-        do {
-            try reconcileLocked(at: reading, forceCheckpoint: true)
-        } catch {
-            recordRuntimeIssue(
-                code: "state_checkpoint_failed",
-                message: error.localizedDescription,
-                blockIDs: currentSafetyProjection().restrictions.contributingBlockIDs
-            )
+        if state.liveUpdateGate == nil {
+            do {
+                try reconcileLocked(at: reading, forceCheckpoint: true)
+            } catch {
+                recordRuntimeIssue(
+                    code: "state_checkpoint_failed",
+                    message: error.localizedDescription,
+                    blockIDs: currentSafetyProjection().restrictions.contributingBlockIDs
+                )
+            }
         }
         applyCurrentRestrictionsLocked(at: reading.wallTime)
     }
@@ -81,8 +86,10 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         withLock {
             let reading = clock.read()
             do {
-                try resumePendingCommitLocked(at: reading)
-                try reconcileLocked(at: reading, forceCheckpoint: false)
+                if state.liveUpdateGate == nil {
+                    try resumePendingCommitLocked(at: reading)
+                    try reconcileLocked(at: reading, forceCheckpoint: false)
+                }
             } catch {
                 recordRuntimeIssue(
                     code: "state_checkpoint_failed",
@@ -153,7 +160,11 @@ final class ProtectedServiceEngine: @unchecked Sendable {
 
     func prepareUpdate(_ request: ProtectedBlockRequest) throws -> ProtectedServiceSnapshot {
         try withLock {
+            guard !readOnlyUntilFinalize else { throw ProtectedStateError.updateUnavailable }
             let reading = clock.read()
+            guard state.liveUpdateGate == nil else {
+                throw ProtectedStateError.updateInProgress
+            }
             try resumePendingCommitLocked(at: reading)
             try reconcileLocked(at: reading, forceCheckpoint: false)
             if state.updateGateToken == request.id {
@@ -188,7 +199,11 @@ final class ProtectedServiceEngine: @unchecked Sendable {
 
     func cancelUpdate(_ request: ProtectedBlockRequest) throws -> ProtectedServiceSnapshot {
         try withLock {
+            guard !readOnlyUntilFinalize else { throw ProtectedStateError.updateUnavailable }
             let reading = clock.read()
+            guard state.liveUpdateGate == nil else {
+                throw ProtectedStateError.updateInProgress
+            }
             try resumePendingCommitLocked(at: reading)
             guard state.updateGateToken != nil else {
                 return snapshotLocked(at: reading.wallTime)
@@ -207,13 +222,114 @@ final class ProtectedServiceEngine: @unchecked Sendable {
 
     func tickForTesting() { tick() }
 
+    func liveUpdateGate() -> ProtectedLiveUpdateGate? { withLock { state.liveUpdateGate } }
+
+    func currentStateDigest() throws -> String {
+        try withLock { try ServiceStateDigest.hash(state) }
+    }
+
+    func finalizeInactiveMigration(token: UUID) throws -> ProtectedServiceSnapshot {
+        try withLock {
+            guard readOnlyUntilFinalize,
+                state.liveUpdateGate == nil,
+                state.blocks.allSatisfy({ $0.activation == nil })
+            else { throw ProtectedStateError.updateUnavailable }
+            var candidate = state
+            candidate.completeInactiveMigration(token: token)
+            try stateStore.save(candidate)
+            state = candidate
+            readOnlyUntilFinalize = false
+            return snapshotLocked(at: clock.read().wallTime)
+        }
+    }
+
+    func beginLiveUpdate(_ gate: ProtectedLiveUpdateGate) throws {
+        try withLock {
+            guard !readOnlyUntilFinalize else { throw ProtectedStateError.updateUnavailable }
+            if let existing = state.liveUpdateGate {
+                guard existing == gate else { throw ProtectedStateError.updateInProgress }
+                return
+            }
+            let reading = clock.read()
+            try resumePendingCommitLocked(at: reading)
+            try reconcileLocked(at: reading, forceCheckpoint: true)
+            let health = snapshotLocked(at: reading.wallTime).protection
+            guard state.updateGateToken == nil,
+                pendingSafetyProjection == nil,
+                pendingCommitCandidate == nil,
+                !journalCleanupPending,
+                health.isEnforcing,
+                health.lastAppliedAt != nil,
+                health.issues.isEmpty
+            else { throw ProtectedStateError.updateUnavailable }
+            var candidate = state
+            try candidate.beginLiveUpdate(gate)
+            try commitLocked(
+                candidate,
+                at: reading,
+                saveRequired: true,
+                durableIntentRequiredBeforeTightening: true
+            )
+            applyCurrentRestrictionsLocked(at: reading.wallTime)
+            let status = snapshotLocked(at: reading.wallTime).protection
+            guard status.isEnforcing, status.lastAppliedAt != nil else {
+                throw ProtectedStateError.updateUnavailable
+            }
+        }
+    }
+
+    func endLiveUpdate(token: UUID, finalized: Bool) throws -> ProtectedServiceSnapshot {
+        try withLock {
+            guard state.liveUpdateGate?.token == token else {
+                throw ProtectedStateError.updateNotOwned
+            }
+            let reading = clock.read()
+            var candidate = state
+            try candidate.endLiveUpdate(token: token, finalized: finalized)
+            _ = candidate.advance(to: reading)
+            try commitLocked(
+                candidate,
+                at: reading,
+                saveRequired: true,
+                durableIntentRequiredBeforeTightening: false
+            )
+            readOnlyUntilFinalize = false
+            applyCurrentRestrictionsLocked(at: reading.wallTime)
+            return snapshotLocked(at: reading.wallTime)
+        }
+    }
+
+    func liveUpdateStatus(
+        appleStateDigest: String,
+        phase: ProtectedLiveUpdatePhase = .frozen
+    ) throws -> ProtectedLiveUpdateStatus {
+        try withLock {
+            guard let gate = state.liveUpdateGate else {
+                throw ProtectedStateError.updateUnavailable
+            }
+            let protection = snapshotLocked(at: clock.read().wallTime).protection
+            return ProtectedLiveUpdateStatus(
+                phase: phase,
+                generation: gate.generation,
+                stateDigest: try ServiceStateDigest.hash(state),
+                appleStateDigest: appleStateDigest,
+                successorDigest: gate.successorDigest,
+                isEnforcing: protection.isEnforcing && protection.lastAppliedAt != nil,
+                issues: protection.issues
+            )
+        }
+    }
+
     private func mutate(
         _ operation: (inout ProtectedState, ClockReading) throws -> Void
     ) throws -> ProtectedServiceSnapshot {
         try withLock {
             let reading = clock.read()
             try resumePendingCommitLocked(at: reading)
-            guard state.updateGateToken == nil else {
+            guard state.updateGateToken == nil,
+                state.liveUpdateGate == nil,
+                !readOnlyUntilFinalize
+            else {
                 throw ProtectedStateError.updateInProgress
             }
             try reconcileLocked(at: reading, forceCheckpoint: false)
@@ -233,8 +349,10 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         withLock {
             let reading = clock.read()
             do {
-                try resumePendingCommitLocked(at: reading)
-                try reconcileLocked(at: reading, forceCheckpoint: false)
+                if state.liveUpdateGate == nil {
+                    try resumePendingCommitLocked(at: reading)
+                    try reconcileLocked(at: reading, forceCheckpoint: false)
+                }
             } catch {
                 recordRuntimeIssue(
                     code: "state_checkpoint_failed",
@@ -295,7 +413,7 @@ final class ProtectedServiceEngine: @unchecked Sendable {
             savesCandidate: saveRequired,
             hasRelaxation: candidateRestrictions != stagedRestrictions
         )
-        let stages = plan.orderedStages
+        let stages = try plan.orderedStages
         let needsPrecommitApply = stages.contains(.applyTightening)
         var stagedOutcome = EnforcementOutcome.success
         var intentWasSaved = false
@@ -474,7 +592,11 @@ final class ProtectedServiceEngine: @unchecked Sendable {
 
     private func currentSafetyProjection() -> SafetyProjection {
         pendingSafetyProjection
-            ?? SafetyProjection(restrictions: state.effectiveRestrictions(), state: state)
+            ?? SafetyProjection(
+                restrictions: state.liveUpdateGate == nil
+                    ? state.effectiveRestrictions() : state.conservativeUpdateRestrictions(),
+                state: state
+            )
     }
 
     private func snapshotLocked(at date: Date) -> ProtectedServiceSnapshot {
@@ -509,5 +631,152 @@ final class ProtectedServiceEngine: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return try operation()
+    }
+}
+
+final class ProtectedStandbyEngine: @unchecked Sendable {
+    private let stateStore: ProtectedStateStoring
+    private let enforcer: ProtectionEnforcing
+    private let clock: ServiceClock
+    private let state: ProtectedState
+    private let gate: ProtectedLiveUpdateGate
+    private let appleStateDigest: String
+    private let lock = NSLock()
+    private let timerQueue = DispatchQueue(label: "org.hardpause.service.standby.timer")
+    private var timer: DispatchSourceTimer?
+    private var enforcementIssues: [ProtectionIssue] = []
+    private var applicationIssues: [ProtectionIssue] = []
+    private var lastAppliedAt: Date?
+    private var retired = false
+
+    init(
+        stateStore: ProtectedStateStoring,
+        state: ProtectedState,
+        appleStateDigest: String,
+        token: UUID,
+        runningDigest: String,
+        enforcer: ProtectionEnforcing,
+        clock: ServiceClock = SystemServiceClock()
+    ) throws {
+        guard let gate = state.liveUpdateGate,
+            gate.token == token,
+            gate.successorDigest == runningDigest
+        else { throw ProtectedStateError.updateNotOwned }
+        self.stateStore = stateStore
+        self.state = state
+        self.gate = gate
+        self.appleStateDigest = appleStateDigest
+        self.enforcer = enforcer
+        self.clock = clock
+        let now = clock.read().wallTime
+        let outcome = try enforcer.apply(state.conservativeUpdateRestrictions(), state: state, at: now)
+        enforcementIssues = outcome.issues.filter { !$0.code.hasPrefix("application_") }
+        applicationIssues = outcome.issues.filter { $0.code.hasPrefix("application_") }
+        lastAppliedAt = now
+    }
+
+    deinit { timer?.cancel() }
+
+    func start() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard timer == nil else { return }
+        let source = DispatchSource.makeTimerSource(queue: timerQueue)
+        source.schedule(deadline: .now() + 1, repeating: 2)
+        source.setEventHandler { [weak self] in self?.scan() }
+        timer = source
+        source.resume()
+    }
+
+    func readiness(token: UUID) throws -> ProtectedLiveUpdateStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        guard gate.token == token, !retired else { throw ProtectedStateError.updateNotOwned }
+        return ProtectedLiveUpdateStatus(
+            phase: .standbyReady,
+            generation: gate.generation,
+            stateDigest: try ServiceStateDigest.hash(state),
+            appleStateDigest: appleStateDigest,
+            successorDigest: gate.successorDigest,
+            isEnforcing: enforcementIssues.isEmpty && applicationIssues.isEmpty
+                && lastAppliedAt != nil,
+            issues: enforcementIssues + applicationIssues
+        )
+    }
+
+    func list() -> ProtectedServiceSnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        let issues = enforcementIssues + applicationIssues
+        return state.snapshot(
+            at: clock.read().wallTime,
+            protection: ProtectionStatus(
+                serviceVersion: ProtectedServiceContract.serviceVersion,
+                isEnforcing: !retired && issues.isEmpty && lastAppliedAt != nil,
+                lastAppliedAt: lastAppliedAt,
+                issues: issues,
+                recentApplicationClosures: []
+            )
+        )
+    }
+
+    func retire(token: UUID) throws -> ProtectedLiveUpdateStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        guard gate.token == token, !retired else { throw ProtectedStateError.updateNotOwned }
+        let current = try stateStore.loadReadOnly(requireCurrentFormat: true)
+        guard let completion = current.lastLiveUpdateCompletion,
+            current.liveUpdateGate == nil,
+            completion.token == gate.token,
+            completion.generation == gate.generation,
+            completion.successorDigest == gate.successorDigest,
+            completion.phase == .finalized || completion.phase == .cancelled
+        else { throw ProtectedStateError.updateUnavailable }
+        let outcome: EnforcementOutcome
+        do {
+            outcome = try enforcer.apply(
+                EffectiveRestrictions(
+                    blockedDomains: [],
+                    blockedApplications: [],
+                    contributingBlockIDs: []
+                ),
+                state: current,
+                at: clock.read().wallTime
+            )
+        } catch {
+            enforcementIssues = [
+                ProtectionIssue(
+                    code: "standby_retirement_failed",
+                    message: error.localizedDescription,
+                    blockIDs: state.conservativeUpdateRestrictions().contributingBlockIDs
+                )
+            ]
+            throw error
+        }
+        enforcementIssues = outcome.issues.filter { !$0.code.hasPrefix("application_") }
+        applicationIssues = outcome.issues.filter { $0.code.hasPrefix("application_") }
+        guard outcome.issues.isEmpty else { throw ProtectedStateError.updateUnavailable }
+        retired = true
+        return ProtectedLiveUpdateStatus(
+            phase: completion.phase,
+            generation: gate.generation,
+            stateDigest: try ServiceStateDigest.hash(current),
+            appleStateDigest: appleStateDigest,
+            successorDigest: gate.successorDigest,
+            isEnforcing: false,
+            issues: []
+        )
+    }
+
+    private func scan() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !retired else { return }
+        let outcome = enforcer.closeApplications(
+            state.conservativeUpdateRestrictions(),
+            state: state,
+            at: clock.read().wallTime
+        )
+        applicationIssues = outcome.issues
     }
 }

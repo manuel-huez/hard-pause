@@ -28,7 +28,7 @@ enum InstallerError: Error {
 enum ServiceInstaller {
     private static let worker = InstallerWorker()
 
-    static func install(updateExisting: Bool = false) async throws {
+    static func install(updateExisting: Bool = false, liveUpdate: Bool = false) async throws {
         guard let url = Bundle.main.url(forResource: "install-macos-service", withExtension: "sh") else {
             throw InstallerError.failed(
                 "The installer is missing from this app. Download a complete copy of Hard Pause.")
@@ -36,7 +36,7 @@ enum ServiceInstaller {
         let command =
             "/usr/bin/env SUDO_UID=\(getuid()) SUDO_USER=\(shellQuote(NSUserName())) /bin/bash \(shellQuote(url.path))"
         // Updates retain enrollment; they never grant new client permissions.
-        let invocation = command + (updateExisting ? " --update" : "")
+        let invocation = command + (liveUpdate ? " --live-update" : updateExisting ? " --update" : "")
         let script = "do shell script \(appleScriptQuote(invocation)) with administrator privileges"
         try await worker.run(script: script)
     }
