@@ -42,6 +42,10 @@ struct BrowserWorkerAccess: Codable, Equatable {
     let permission: String
 
     var ready: Bool {
+        !installed || permission == "granted" || (!running && permission == "previouslyGranted")
+    }
+
+    var verifiedForRetirement: Bool {
         !installed || permission == "granted"
     }
 }
@@ -66,6 +70,10 @@ struct BrowserWorkerReadiness: Codable, Equatable {
                     "com.google.Chrome", "com.apple.Safari", "org.mozilla.firefox",
                 ])
             && browserAccess.allSatisfy(\.ready)
+    }
+
+    var readyForRetirement: Bool {
+        readyForHandoff && browserAccess.allSatisfy(\.verifiedForRetirement)
     }
 
     func isFresh(at date: Date = Date()) -> Bool {

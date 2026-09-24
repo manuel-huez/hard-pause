@@ -459,8 +459,9 @@ probe_installed_browser_worker() {
             && -x "${worker_executable}" && ! -L "${worker_executable}" \
             && "$(/usr/bin/stat -f '%u' "${worker_executable}")" == 0 ]] || continue
         /bin/launchctl print "gui/${sudo_uid}/${worker_label}" >/dev/null 2>&1 || continue
-        if /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
-            "${worker_executable}" --probe "${worker_label}" \
+        if /bin/launchctl asuser "${sudo_uid}" \
+            "${stage}/HardPauseBrowserWorker.app/Contents/MacOS/HardPauseBrowserWorker" \
+            --probe-existing "${worker_label}" \
             >"${stage}/browser-worker-probe.json" 2>"${stage}/browser-worker-probe.stderr"; then
             return 0
         fi
@@ -1025,8 +1026,9 @@ install_browser_worker() {
         [[ ${had_prior_plist} -eq 1 ]] \
             || fail "an unrelated browser worker launchd job already exists"
         if [[ ${live_update} -eq 1 ]]; then
-            /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
-                "${browser_worker_executable}" --probe "${browser_worker_job_label}" \
+            /bin/launchctl asuser "${sudo_uid}" \
+                "${stage}/HardPauseBrowserWorker.app/Contents/MacOS/HardPauseBrowserWorker" \
+                --probe-existing "${browser_worker_job_label}" \
                 >/dev/null || fail "the existing browser worker is not ready during live update"
             return 0
         fi
