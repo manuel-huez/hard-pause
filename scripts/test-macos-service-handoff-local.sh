@@ -229,22 +229,16 @@ assert_same_requirement() {
     printf '%s: %s\n' "$name" "$before_requirement" >>"$artifact_dir/signing-proof.txt"
 }
 
-echo "Building the temporary v8 live-handoff primary with the test-only gate enabled."
+echo "Building the temporary v8 live-handoff primary."
 live_primary_source="$build_root/source-live-primary"
 live_successor_source="$build_root/source-live-successor"
 copy_source "$live_primary_source"
 mkdir -p "$live_successor_source"
 /usr/bin/rsync -a --delete "$live_primary_source/" "$live_successor_source/"
-patch_source_once "$live_primary_source/macos/Core/ProtectedServiceIPC.swift" \
-    'static let liveServiceHandoffEnabled = false' \
-    'static let liveServiceHandoffEnabled = true'
 build_app "$live_primary_source" "$build_root/derived-live-primary" 8
 live_primary_app=$BUILT_APP
 
 echo "Building the gate-enabled v8 successor with a higher signed app build number."
-patch_source_once "$live_successor_source/macos/Core/ProtectedServiceIPC.swift" \
-    'static let liveServiceHandoffEnabled = false' \
-    'static let liveServiceHandoffEnabled = true'
 patch_source_once "$live_successor_source/macos/Service/ServiceSupport.swift" \
     'org.hardpause.fixture.service.privileged-update' \
     'org.hardpause.fixture.service.privileged-update.successor'

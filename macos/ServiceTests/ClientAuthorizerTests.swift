@@ -94,7 +94,7 @@ final class ClientAuthorizerTests: XCTestCase {
         XCTAssertFalse(authorizer.updateCodeRequirement?.contains("org.hardpause.browser-worker") == true)
     }
 
-    func testPrivilegedUpdateModeFailsClosedForActiveProtectionUntilHandoffIsEnabled() throws {
+    func testPrivilegedUpdateModeUsesLiveHandoffForActiveProtection() throws {
         var state = ProtectedState()
         let block = try state.create(serviceTestDraft())
         try state.activate(
@@ -125,9 +125,7 @@ final class ClientAuthorizerTests: XCTestCase {
             authorizer: authorizer,
             runningDigest: String(repeating: "a", count: 64)
         )
-        XCTAssertThrowsError(try active.updateMode()) {
-            XCTAssertEqual($0 as? ProtectedStateError, .updateUnavailable)
-        }
+        XCTAssertEqual(try active.updateMode(), .live)
 
         let inactive = try PrivilegedServiceUpdateTrigger(
             engine: ProtectedServiceEngine(
