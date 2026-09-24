@@ -427,8 +427,29 @@ final class AppModel: ObservableObject {
             let loginStatus = Task.detached(priority: .utility) {
                 SMAppService.mainApp.status == .enabled
             }
+            if browserWorkerReadiness?.isFresh() != true,
+                !BrowserWorkerClient.installedMachServices().isEmpty
+            {
+                _ = await probeBrowserWorkerReadiness()
+            }
+            let browsers: [BrowserSetupState]
+            if let worker = browserWorkerReadiness, worker.isFresh(), worker.readyForHandoff {
+                browsers = worker.browserAccess.map { browser in
+                    BrowserSetupState(
+                        id: browser.identifier,
+                        name: BrowserProtection.browsers.first { $0.id == browser.identifier }?.name
+                            ?? browser.identifier,
+                        isInstalled: browser.installed,
+                        permission: !browser.installed
+                            ? .unavailable
+                            : browser.permission == "granted" ? .granted : .previouslyGranted
+                    )
+                }
+            } else {
+                browsers = await browserProtection.readiness()
+            }
             access = await SetupAccessState(
-                browsers: browserProtection.readiness(),
+                browsers: browsers,
                 startsAtLogin: loginStatus.value)
         }
         browserReadiness = access.browsers

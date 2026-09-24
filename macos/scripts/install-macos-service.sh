@@ -1052,13 +1052,18 @@ install_browser_worker() {
         fail "the browser worker could not be started; the protection service remains installed"
     fi
 
-    if ! /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
+    local remaining_probes=5
+    until /bin/launchctl asuser "${sudo_uid}" /usr/bin/sudo -u "#${sudo_uid}" \
         "${browser_worker_executable}" --probe "${browser_worker_job_label}" \
         >"${stage}/new-browser-worker-probe.json" \
-        2>"${stage}/new-browser-worker-probe.stderr"; then
-        echo "hard-pause installer: the new browser worker needs setup before taking over." >&2
-        return 0
-    fi
+        2>"${stage}/new-browser-worker-probe.stderr"; do
+        remaining_probes=$((remaining_probes - 1))
+        if [[ ${remaining_probes} -eq 0 ]]; then
+            echo "hard-pause installer: the new browser worker needs setup before taking over." >&2
+            return 0
+        fi
+        /bin/sleep 1
+    done
     local old_plist old_label old_executable
     for old_plist in /Library/LaunchAgents/org.hardpause.browser-worker*.plist; do
         [[ -e "${old_plist}" && "${old_plist}" != "${browser_worker_plist_destination}" ]] \
