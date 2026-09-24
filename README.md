@@ -4,17 +4,11 @@
 
 **Choose what to block. Set the wait. Give yourself time before access returns.**
 
-Hard Pause is a local app for iPhone, iPad, and Mac that blocks selected apps and
+[Hard Pause](https://manuel-huez.github.io/hard-pause/) is a local app for iPhone, iPad, and Mac that blocks selected apps and
 websites. Named plans let you keep separate commitments, each with its own rules
-and waiting periods. The apps use native SwiftUI controls and a shared animated
-mascot.
+and waiting periods.
 
-[Visit the Hard Pause website](https://manuel-huez.github.io/hard-pause/).
-
-**In development.** Requires iOS 26+ or macOS 26+. Physical-device enforcement and
-the Mac Screen Time setup flow still need validation. An early
-[Mac download](https://github.com/manuel-huez/hard-pause/releases/latest) is development signed
-and not notarized.
+**In development.** Requires iOS 26+ or macOS 26+.
 
 ## Two ways to pause
 
@@ -36,24 +30,7 @@ and not notarized.
 | Understand the protection limits | [Design and security boundaries](DESIGN.md) |
 | Work on the shared lifecycle     | [Shared Apple core](core/README.md)         |
 
-### What each platform protects
-
-**Mac:** a local root service manages plans and waiting periods, blocks exact
-host names and literal IP addresses, and closes selected signed apps. Browser
-controls cover page patterns, subdomains, and adult-site filtering. Closing apps
-can lose unsaved work. Administrators, VPNs, proxies, and encrypted DNS can bypass
-parts of this protection. The experimental Screen Time code flow is not yet
-verified on a real device.
-
-**iPhone and iPad:** Apple's Screen Time APIs shield selected apps and websites.
-Up to 16 plans can be active. App-removal and automatic-date protection are
-available, but permission changes, reboot behavior, and background transitions
-still need signed-device tests. Mac setup does not prove iPhone protection.
-
 ## Development
-
-Use Node.js 22.13+, Rust, Xcode, and XcodeGen. CI uses Xcode 26.6. Native signing and
-capability requirements are in the platform guides.
 
 ```sh
 npm ci
@@ -71,7 +48,3 @@ These checks do not install the Mac service or enable real blocks.
 | [macos](macos/) | Mac app, root service, command-line client           |
 | [core](core/)   | Shared lifecycle, elapsed clock, and storage helpers |
 | [web](web/)     | Product website and shared mascot renderer           |
-
-The source has no general license grant. The bundled mascot has its own license
-and attribution notices in `web/mascot/`.
-For maintenance that affects a commitment, read [AGENTS.md](AGENTS.md).
