@@ -1091,8 +1091,13 @@ install_browser_worker() {
 
 if [[ ${live_update} -eq 1 ]]; then
     run_live_update
+    # The installed worker already has browser access. A closed browser cannot
+    # prove that a replacement has inherited it, so keep that worker active.
+    browser_worker_message="Existing browser worker retained during active protection"
+else
+    install_browser_worker
+    browser_worker_message="${browser_worker_destination}"
 fi
-install_browser_worker
 build_record_stage=$(/usr/bin/mktemp "${support_dir}/installed-build-v1.XXXXXXXX") \
     || fail "the installed build record could not be staged"
 /bin/chmod 0600 "${build_record_stage}"
@@ -1106,6 +1111,6 @@ fi
 
 echo "Hard Pause enrolled user ${sudo_user} (${sudo_uid}) and started ${label}."
 echo "Installed CLI: ${cli_destination}"
-echo "Browser worker: ${browser_worker_destination}"
+echo "Browser worker: ${browser_worker_message}"
 echo "Agent maintenance guidance: ${guidance_destination}"
 install_complete=1

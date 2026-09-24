@@ -72,8 +72,10 @@ Other users or binaries cannot control the service.
 **Update protection** preserves saved plans and enrollment. The replacement
 clients must match the enrolled signing requirements. A service with handoff
 support can update during a later active block while the separate browser
-worker and old service keep enforcement on. The installed v2 service cannot do
-this; its first migration requires inactive protection.
+worker and old service keep enforcement on. Active updates retain the permitted
+browser worker, so closed browsers need not open for a permission check. The
+installed v2 service cannot do this; its first migration requires inactive
+protection.
 
 For an older service or a changed signing requirement, the installer's `--reenroll`
 path preserves saved plans only after live and offline checks confirm inactive
