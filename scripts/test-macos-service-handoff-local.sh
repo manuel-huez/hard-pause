@@ -105,6 +105,7 @@ replacements = (
     ('com.apple/hard-pause', 'com.apple/hard-pause-fixture'),
     ('BEGIN HARD PAUSE', 'BEGIN HARD PAUSE FIXTURE'),
     ('END HARD PAUSE', 'END HARD PAUSE FIXTURE'),
+    (r'org\.hardpause\.', r'org\.hardpause\.fixture\.'),
     ('org.hardpause.', 'org.hardpause.fixture.'),
 )
 for path in root.rglob('*'):
@@ -318,6 +319,19 @@ done
 
 echo "Installing the active v8 handoff primary."
 sudo -n "$live_primary_app/Contents/Resources/install-macos-service.sh"
+worker_executable="$helper_dir/BrowserWorker/HardPauseBrowserWorker-8.app/Contents/MacOS/HardPauseBrowserWorker"
+worker_label="org.hardpause.fixture.browser-worker.v8"
+worker_ready=0
+for _ in {1..20}; do
+    if "$worker_executable" --probe "$worker_label" \
+        >"$artifact_dir/initial-browser-worker.json" \
+        2>"$artifact_dir/initial-browser-worker.stderr"; then
+        worker_ready=1
+        break
+    fi
+    /bin/sleep 1
+done
+[[ "$worker_ready" -eq 1 ]] || fail "the initial browser worker is not ready"
 cat >"$build_root/active-request.json" <<JSON
 {
   "draft": {

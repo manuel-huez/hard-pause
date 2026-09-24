@@ -41,6 +41,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Check deprecated Keychain APIs
+        run: bash scripts/check-swift-deprecations.sh
       - name: Check Swift formatting
         run: xcrun swift-format lint --strict --recursive core/Sources core/Tests ios/App ios/Shared ios/Extensions ios/Tests ios/UITests macos/App macos/BrowserWorker macos/Core macos/Service macos/CLI macos/Tests macos/ServiceTests
       - name: Test shared Apple core
@@ -53,7 +55,7 @@ jobs:
           python3 scripts/check-project-settings.py
           python3 scripts/test_project_settings.py
       - name: Test macOS
-        run: xcodebuild -project macos/HardPause.xcodeproj -scheme HardPause -destination 'platform=macOS' -derivedDataPath build/macos -resultBundlePath build/macos-tests.xcresult CODE_SIGNING_ALLOWED=NO test
+        run: xcodebuild -project macos/HardPause.xcodeproj -scheme HardPause -destination 'platform=macOS' -derivedDataPath build/macos -resultBundlePath build/macos-tests.xcresult CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES test
       - name: Ensure iOS simulator runtime
         run: |
           if ! xcrun simctl list runtimes available | rg -q 'iOS 26'; then
@@ -63,9 +65,9 @@ jobs:
         shell: bash
         run: |
           device_id=$(python3 scripts/select-simulator.py)
-          xcodebuild -project ios/HardPause.xcodeproj -scheme HardPause -destination "platform=iOS Simulator,id=$device_id" -derivedDataPath build/ios -resultBundlePath build/ios-tests.xcresult CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+          xcodebuild -project ios/HardPause.xcodeproj -scheme HardPause -destination "platform=iOS Simulator,id=$device_id" -derivedDataPath build/ios -resultBundlePath build/ios-tests.xcresult CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- SWIFT_TREAT_WARNINGS_AS_ERRORS=YES test
       - name: Build iOS device app and extensions
-        run: xcodebuild -project ios/HardPause.xcodeproj -scheme HardPause -destination 'generic/platform=iOS' -derivedDataPath build/ios-device CODE_SIGNING_ALLOWED=NO build
+        run: xcodebuild -project ios/HardPause.xcodeproj -scheme HardPause -destination 'generic/platform=iOS' -derivedDataPath build/ios-device CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

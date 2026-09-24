@@ -328,6 +328,7 @@
 		FC088B286331BA6902A57E92 /* HostsEnforcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsEnforcer.swift; sourceTree = "<group>"; };
 		FCE19D586EC509EECAD2D8C2 /* SetupReadiness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupReadiness.swift; sourceTree = "<group>"; };
 		FD02DDCC7088EEA1DCF7169F /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
+		FD51CA7011A4B69A360F5AE2 /* SystemKeychainBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SystemKeychainBridge.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -630,6 +631,7 @@
 				28277D418288D8C500796009 /* ProtectedStateStore.swift */,
 				C07578D74BB9C3F153392F59 /* ServiceSupport.swift */,
 				DDC76340624380D7D5F0F92F /* StateAuthentication.swift */,
+				FD51CA7011A4B69A360F5AE2 /* SystemKeychainBridge.h */,
 			);
 			path = Service;
 			sourceTree = "<group>";
@@ -1146,6 +1148,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.service;
 				PRODUCT_NAME = "hard-pause-service";
 				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Service/SystemKeychainBridge.h";
 			};
 			name = Debug;
 		};
@@ -1306,6 +1309,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.hardpause.service-tests";
 				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Service/SystemKeychainBridge.h";
 			};
 			name = Debug;
 		};
@@ -1338,6 +1342,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.service;
 				PRODUCT_NAME = "hard-pause-service";
 				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Service/SystemKeychainBridge.h";
 			};
 			name = Release;
 		};
@@ -1388,6 +1393,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.hardpause.service-tests";
 				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Service/SystemKeychainBridge.h";
 			};
 			name = Release;
 		};

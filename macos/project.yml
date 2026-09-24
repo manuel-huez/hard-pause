@@ -167,6 +167,7 @@ targets:
       - ../core/Sources/PauseCore
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/Service/SystemKeychainBridge.h
         PRODUCT_NAME: hard-pause-service
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.service
         GENERATE_INFOPLIST_FILE: YES
@@ -226,6 +227,7 @@ targets:
       - ServiceTests
     settings:
       base:
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/Service/SystemKeychainBridge.h
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.service-tests
         GENERATE_INFOPLIST_FILE: YES
     dependencies:

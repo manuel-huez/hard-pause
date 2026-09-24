@@ -51,7 +51,7 @@ final class SystemFileKeychainAppleLockdownVault: AppleLockdownCredentialVault {
         query[kSecMatchSearchList as String] = [keychain]
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         query[kSecReturnData as String] = true
-        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        query[kSecUseAuthenticationContext as String] = noninteractiveKeychainContext()
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data,
@@ -94,7 +94,7 @@ final class SystemFileKeychainAppleLockdownVault: AppleLockdownCredentialVault {
             kSecMatchSearchList as String: [keychain],
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnAttributes as String: true,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
+            kSecUseAuthenticationContext as String: noninteractiveKeychainContext(),
         ]
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -114,12 +114,12 @@ final class SystemFileKeychainAppleLockdownVault: AppleLockdownCredentialVault {
     }
 
     private func systemKeychain() throws -> SecKeychain {
-        var keychain: SecKeychain?
-        let status = SecKeychainCopyDomainDefault(.system, &keychain)
+        var keychain: Unmanaged<SecKeychain>?
+        let status = HPCopySystemKeychain(&keychain)
         guard status == errSecSuccess, let keychain else {
             throw AppleLockdownError.credentialStoreFailed
         }
-        return keychain
+        return keychain.takeRetainedValue()
     }
 
     private func validate(_ passcode: String) throws {

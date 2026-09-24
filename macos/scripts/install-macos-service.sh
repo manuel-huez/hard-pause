@@ -920,7 +920,7 @@ install_browser_worker() {
         /usr/bin/ditto "${stage}/HardPauseBrowserWorker.app" "${browser_worker_destination}"
         /usr/sbin/chown -R root:wheel "${browser_worker_destination}"
     fi
-    /bin/chmod -R go-w "${browser_worker_destination}"
+    /bin/chmod -R a+rX,go-w "${browser_worker_destination}"
     [[ -x "${browser_worker_executable}" && ! -L "${browser_worker_executable}" ]] \
         || fail "the installed browser worker executable is unsafe"
     [[ "$(/usr/bin/stat -f '%u' "${browser_worker_executable}")" == 0 ]] \
