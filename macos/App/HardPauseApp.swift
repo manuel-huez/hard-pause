@@ -148,6 +148,16 @@ final class HardPauseLifecycle: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     weak var updater: AppUpdater?
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let installedApp = URL(fileURLWithPath: "/Applications/HardPause.app").standardizedFileURL
+        guard Bundle.main.bundleURL.standardizedFileURL != installedApp else { return }
+        if NSRunningApplication.runningApplications(withBundleIdentifier: "org.hardpause.app")
+            .contains(where: { $0.bundleURL?.standardizedFileURL == installedApp })
+        {
+            exit(EXIT_SUCCESS)
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
