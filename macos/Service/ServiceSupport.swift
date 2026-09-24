@@ -483,14 +483,14 @@ final class PrivilegedServiceUpdateTrigger: @unchecked Sendable {
             "/usr/bin/codesign",
             [
                 "--verify", "--strict", "--all-architectures",
-                "-R=(\(requirements[1])) and identifier \"org.hardpause.cli\"", cli.path,
+                "-R=\(requirements[1])", cli.path,
             ]
         )
         try runChecked(
             "/usr/bin/codesign",
             [
                 "--verify", "--strict", "--deep", "--all-architectures",
-                "-R=(\(requirements[2])) and identifier \"org.hardpause.browser-worker\"", worker.path,
+                "-R=\(requirements[2])", worker.path,
             ]
         )
         guard

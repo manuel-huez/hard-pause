@@ -460,6 +460,9 @@ fixture_exit() {
     local status=$?
     trap - EXIT
     stop_watcher
+    if [[ -n "${live_successor_app:-}" ]]; then
+        /usr/bin/pkill -f -x "$live_successor_app/Contents/MacOS/HardPause" || true
+    fi
     if [[ "$status" -ne 0 && -x "$installed_cli" ]]; then
         echo "The fixture stopped; completing its normal full unlock before removal."
         if [[ -n "${active_block_id:-}" ]]; then
