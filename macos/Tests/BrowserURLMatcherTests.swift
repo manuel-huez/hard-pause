@@ -35,6 +35,41 @@ final class BrowserURLMatcherTests: XCTestCase {
                 try XCTUnwrap(URL(string: "https://xn--bcher-kva.example/read")), pattern: "bücher.example/read"))
     }
 
+    func testAllowedDomainAppliesOnlyWithinItsPlan() throws {
+        let allowedPlan = ProtectedRules(
+            blockedDomains: ["example.com"], allowedDomains: ["example.com"],
+            blockedApplications: [], blocksStarterAdultSites: false)
+        let url = try XCTUnwrap(URL(string: "https://example.com/"))
+        XCTAssertFalse(BrowserURLMatcher.matches(url, rules: [allowedPlan]))
+        let otherPlan = ProtectedRules(
+            blockedDomains: ["example.com"], blockedApplications: [], blocksStarterAdultSites: false)
+        XCTAssertTrue(BrowserURLMatcher.matches(url, rules: [allowedPlan, otherPlan]))
+        let snapshot = { (rules: ProtectedRules) in
+            ProtectedBlockSnapshot(
+                id: UUID(), revision: 1,
+                draft: ProtectedBlockDraft(
+                    name: "Test", rules: rules, breakDelay: 60,
+                    fullUnlockDelay: 60, breakDuration: 60, elapsedDuration: nil),
+                phase: .active(naturalEndRemaining: nil))
+        }
+        XCTAssertEqual(
+            AppleWebsiteSyncTargets(blocks: [snapshot(allowedPlan)]).allowed,
+            ["example.com"])
+        let targets = AppleWebsiteSyncTargets(blocks: [snapshot(allowedPlan), snapshot(otherPlan)])
+        XCTAssertEqual(targets.restricted, ["example.com"])
+        XCTAssertTrue(targets.allowed.isEmpty)
+
+        let unrelatedException = ProtectedRules(
+            blockedDomains: ["example.com"], allowedDomains: ["other.example"],
+            blockedApplications: [], blocksStarterAdultSites: false)
+        XCTAssertTrue(AppleWebsiteSyncTargets(blocks: [snapshot(unrelatedException)]).allowed.isEmpty)
+
+        let subdomainBlock = ProtectedRules(
+            blockedDomains: ["www.example.com"], blockedApplications: [], blocksStarterAdultSites: false)
+        XCTAssertTrue(
+            AppleWebsiteSyncTargets(blocks: [snapshot(allowedPlan), snapshot(subdomainBlock)]).allowed.isEmpty)
+    }
+
     func testUnsupportedSchemesCannotCreateUnenforcedPatterns() {
         XCTAssertNil(URLPatternRule.normalize("ftp://example.com/private"))
         XCTAssertNil(URLPatternRule.exactDomain(from: "file://example.com"))

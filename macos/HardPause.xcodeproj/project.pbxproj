@@ -160,7 +160,6 @@
 		B4241D833DEC0C7CAF36ACEC /* adult-domains in Resources */ = {isa = PBXBuildFile; fileRef = 24AF6473F80C52C1D8012D68 /* adult-domains */; };
 		B54C6007614A4D2E6A326C71 /* Recursive.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10FAA4EF0128CE063FB7AC7C /* Recursive.ttf */; };
 		B6372333C0955D48A7A11A3E /* ProtectedPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14FDC607A53118F0B5719497 /* ProtectedPolicy.swift */; };
-		B691DDB3AEBCCE0688316771 /* AppleScreenTimeAutomationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DD32AB2DC3999BB912BD497 /* AppleScreenTimeAutomationTests.swift */; };
 		B7A6F8C4219362386C98448F /* ProtectedPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14FDC607A53118F0B5719497 /* ProtectedPolicy.swift */; };
 		B8421F81954F40C24B6AC486 /* ApplicationEnforcerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD7F5F527CCA0B94162548F /* ApplicationEnforcerTests.swift */; };
 		B8E039F44DA87D2C211DC665 /* BrowserWorkerReadinessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A24E2A38EF77A4AA11F98F /* BrowserWorkerReadinessTests.swift */; };
@@ -277,7 +276,6 @@
 		3C2CF63A97D4B104E70AC07D /* AppleProtectionIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleProtectionIPC.swift; sourceTree = "<group>"; };
 		3D05715D281272A3845C34D4 /* AdultWebsiteRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdultWebsiteRules.swift; sourceTree = "<group>"; };
 		3D176EE416BCE7E416A82CCC /* HardPauseServiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HardPauseServiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		3DD32AB2DC3999BB912BD497 /* AppleScreenTimeAutomationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleScreenTimeAutomationTests.swift; sourceTree = "<group>"; };
 		438D47E49D9C1B002570AA49 /* FirefoxBrowserProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxBrowserProtection.swift; sourceTree = "<group>"; };
 		4A38AE50C0DE33FBB37FE332 /* libbsm.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libbsm.tbd; path = usr/lib/libbsm.tbd; sourceTree = SDKROOT; };
 		4A74EEC991540531B98A6838 /* ProtectedBlockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedBlockTests.swift; sourceTree = "<group>"; };
@@ -469,7 +467,6 @@
 			children = (
 				FA8524D1C2059BCD2BA01364 /* AdultWebsiteRulesTests.swift */,
 				E4CD98976EE9E6978DA56DD4 /* AppleProtectionModelTests.swift */,
-				3DD32AB2DC3999BB912BD497 /* AppleScreenTimeAutomationTests.swift */,
 				FD02DDCC7088EEA1DCF7169F /* AppModelTests.swift */,
 				7F7C40DDAB04920654FA3EBE /* BrowserURLMatcherTests.swift */,
 				B2A24E2A38EF77A4AA11F98F /* BrowserWorkerReadinessTests.swift */,
@@ -1107,7 +1104,6 @@
 				F5ABE6459EFCA93D522B3979 /* AppleProtectionModelTests.swift in Sources */,
 				F8E0E77C288687C57C84BDF1 /* AppleProtectionState.swift in Sources */,
 				65D1BA8E19A39F3D15A75311 /* AppleScreenTimeAutomation.swift in Sources */,
-				B691DDB3AEBCCE0688316771 /* AppleScreenTimeAutomationTests.swift in Sources */,
 				9A50FDBF20E2E35BF9594061 /* BrowserProtection.swift in Sources */,
 				D9654622221EC630D13154CD /* BrowserURLMatcher.swift in Sources */,
 				DBAD0BC4037CA3685BDE07D8 /* BrowserURLMatcherTests.swift in Sources */,
@@ -1382,7 +1378,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1397,7 +1393,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.2;
+				MARKETING_VERSION = 0.2.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
@@ -1584,7 +1580,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1605,7 +1601,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.2;
+				MARKETING_VERSION = 0.2.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

@@ -428,7 +428,7 @@ final class ProtectedServiceCoordinator: @unchecked Sendable {
 final class ProtectedServiceListenerDelegate: NSObject, NSXPCListenerDelegate {
     private let engine: ProtectedServiceEngine
     private let appleLockdown: AppleLockdownEngine
-    private let coordinator: ProtectedServiceCoordinator
+    let coordinator: ProtectedServiceCoordinator
     private let authorizer: ClientAuthorizer
     private let runningDigest: String
     private let inactiveMigrationToken: UUID?
@@ -532,8 +532,84 @@ final class ProtectedStandbyListenerDelegate: NSObject, NSXPCListenerDelegate {
 
 final class ProtectedServiceUpdateEndpoint: NSObject, ProtectedServiceUpdateXPC {
     private let trigger: PrivilegedServiceUpdateTrigger
+    private let engine: ProtectedServiceEngine
+    private let appleLockdown: AppleLockdownEngine
+    private let coordinator: ProtectedServiceCoordinator
 
-    init(trigger: PrivilegedServiceUpdateTrigger) { self.trigger = trigger }
+    init(
+        trigger: PrivilegedServiceUpdateTrigger,
+        engine: ProtectedServiceEngine,
+        appleLockdown: AppleLockdownEngine,
+        coordinator: ProtectedServiceCoordinator
+    ) {
+        self.trigger = trigger
+        self.engine = engine
+        self.appleLockdown = appleLockdown
+        self.coordinator = coordinator
+    }
+
+    func beginWebsiteSync(withReply reply: @escaping (NSData) -> Void) {
+        let response: AppleWebsiteSyncReply
+        do {
+            let operation = try coordinator.perform {
+                let credential = try appleLockdown.websiteSyncCredential()
+                let targets = activeWebsiteTargets()
+                return AppleWebsiteSyncOperation(
+                    passcode: credential.passcode,
+                    activeDomains: targets.restricted,
+                    activeAllowedDomains: targets.allowed,
+                    mirroredDomains: credential.mirroredDomains,
+                    mirroredAllowedDomains: credential.mirroredAllowedDomains
+                )
+            }
+            response = AppleWebsiteSyncReply(operation: operation, error: nil)
+        } catch {
+            response = AppleWebsiteSyncReply(
+                operation: nil,
+                error: ProtectedServiceErrorPayload(
+                    code: "website_sync_unavailable", message: error.localizedDescription)
+            )
+        }
+        reply((try? ProtectedServiceCodec.encode(response)) ?? NSData())
+    }
+
+    func completeWebsiteSync(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        let response: AppleLockdownServiceReply
+        do {
+            let completion = try ProtectedServiceCodec.decode(AppleWebsiteSyncCompletion.self, from: request)
+            response = try coordinator.perform {
+                try appleLockdown.recordMirroredDomains(
+                    completion.mirroredDomains, required: Set(activeWebsiteTargets().restricted),
+                    allowed: completion.mirroredAllowedDomains,
+                    requiredAllowed: Set(activeWebsiteTargets().allowed))
+                return .success(try appleLockdown.status())
+            }
+        } catch {
+            response = .failure(code: "website_sync_unavailable", message: error.localizedDescription)
+        }
+        reply((try? ProtectedServiceCodec.encode(response)) ?? NSData())
+    }
+
+    func claimWebsiteSync(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        let response: AppleLockdownServiceReply
+        do {
+            let claim = try ProtectedServiceCodec.decode(AppleWebsiteSyncClaim.self, from: request)
+            response = try coordinator.perform {
+                let targets = activeWebsiteTargets()
+                try appleLockdown.claimMirroredDomains(
+                    claim.domains, required: Set(targets.restricted),
+                    allowed: claim.allowedDomains, requiredAllowed: Set(targets.allowed))
+                return .success(try appleLockdown.status())
+            }
+        } catch {
+            response = .failure(code: "website_sync_unavailable", message: error.localizedDescription)
+        }
+        reply((try? ProtectedServiceCodec.encode(response)) ?? NSData())
+    }
+
+    private func activeWebsiteTargets() -> AppleWebsiteSyncTargets {
+        AppleWebsiteSyncTargets(blocks: engine.list().blocks)
+    }
 
     func installationStatus(withReply reply: @escaping (NSData) -> Void) {
         let response: ProtectedServiceUpdateInstallationReply
@@ -570,10 +646,22 @@ final class ProtectedServiceUpdateEndpoint: NSObject, ProtectedServiceUpdateXPC 
 final class ProtectedServiceUpdateListenerDelegate: NSObject, NSXPCListenerDelegate {
     private let trigger: PrivilegedServiceUpdateTrigger
     private let authorizer: ClientAuthorizer
+    private let engine: ProtectedServiceEngine
+    private let appleLockdown: AppleLockdownEngine
+    private let coordinator: ProtectedServiceCoordinator
 
-    init(trigger: PrivilegedServiceUpdateTrigger, authorizer: ClientAuthorizer) {
+    init(
+        trigger: PrivilegedServiceUpdateTrigger,
+        authorizer: ClientAuthorizer,
+        engine: ProtectedServiceEngine,
+        appleLockdown: AppleLockdownEngine,
+        coordinator: ProtectedServiceCoordinator
+    ) {
         self.trigger = trigger
         self.authorizer = authorizer
+        self.engine = engine
+        self.appleLockdown = appleLockdown
+        self.coordinator = coordinator
     }
 
     func listener(
@@ -582,7 +670,8 @@ final class ProtectedServiceUpdateListenerDelegate: NSObject, NSXPCListenerDeleg
     ) -> Bool {
         guard authorizer.configureUpdate(newConnection) else { return false }
         newConnection.exportedInterface = NSXPCInterface(with: ProtectedServiceUpdateXPC.self)
-        newConnection.exportedObject = ProtectedServiceUpdateEndpoint(trigger: trigger)
+        newConnection.exportedObject = ProtectedServiceUpdateEndpoint(
+            trigger: trigger, engine: engine, appleLockdown: appleLockdown, coordinator: coordinator)
         newConnection.activate()
         return true
     }

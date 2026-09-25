@@ -35,6 +35,8 @@ impl Application {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Rules {
     pub blocked_domains: Vec<String>,
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
     pub blocked_applications: Vec<Application>,
     pub blocked_adult_domains: Vec<String>,
     pub adult_rules_version: Option<i64>,
@@ -457,6 +459,10 @@ pub fn normalize_rules(mut rules: Rules) -> Rules {
         Clone::clone,
     );
     rules.blocked_applications = unique_by(rules.blocked_applications, Application::id);
+    rules.allowed_domains = unique_by(
+        rules.allowed_domains.into_iter().filter_map(|domain| normalize_domain(&domain)),
+        Clone::clone,
+    );
     rules.blocked_url_patterns = unique_by(
         rules
             .blocked_url_patterns
@@ -508,6 +514,7 @@ pub fn includes_all_rules(current: &Rules, previous: &Rules) -> bool {
         previous.iter().all(|value| values.contains(value))
     }
     subset(&current.blocked_domains, &previous.blocked_domains)
+        && subset(&previous.allowed_domains, &current.allowed_domains)
         && subset(
             &current.blocked_url_patterns,
             &previous.blocked_url_patterns,
@@ -530,6 +537,7 @@ pub fn validate_rules(
     allow_legacy_application_identity: bool,
 ) -> Result<(), &'static str> {
     if rules.blocked_domains.len()
+        + rules.allowed_domains.len()
         + rules.blocked_adult_domains.len()
         + rules.blocked_url_patterns.len()
         > MAXIMUM_DOMAINS
@@ -557,6 +565,15 @@ pub fn validate_rules(
             != rules.blocked_domains.len()
         || unique_by(rules.blocked_adult_domains.iter(), |s| (*s).clone()).len()
             != rules.blocked_adult_domains.len()
+    {
+        return Err("invalid_domain");
+    }
+    if rules.allowed_domains.iter().any(|domain| {
+        normalize_domain(domain).as_deref() != Some(domain)
+            || is_literal_ip_address(domain)
+            || domain.graphemes(true).count() > 253
+    }) || unique_by(rules.allowed_domains.iter(), |s| (*s).clone()).len()
+        != rules.allowed_domains.len()
     {
         return Err("invalid_domain");
     }

@@ -93,6 +93,7 @@ struct AppleProtectionCard: View {
     private func openSetup() {
         Task {
             await model.inspectSettings()
+            guard model.message == nil else { return }
             NSApp.activate(ignoringOtherApps: true)
             showsSetup = true
         }
@@ -101,6 +102,87 @@ struct AppleProtectionCard: View {
     private func duration(_ seconds: TimeInterval?) -> String {
         guard let seconds else { return "the saved waiting period" }
         return Duration.seconds(max(0, seconds)).formatted(.units(allowed: [.days, .hours, .minutes], width: .wide))
+    }
+}
+
+struct ScreenTimeWebsitesCard: View {
+    @ObservedObject var model: AppleProtectionModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Screen Time websites", systemImage: "globe")
+                .font(PauseFont.display(18, relativeTo: .headline))
+            Text(
+                "Sync the active plans with Apple's Restricted and Allowed website lists. Hard Pause asks before it replaces entries it did not add."
+            )
+            .foregroundStyle(PauseTheme.muted)
+            if model.snapshot?.phase.hasConfirmedSystemPasscode == true,
+                model.snapshot?.enablesAdultFilter == true
+            {
+                HStack {
+                    Button("Read Apple lists") { Task { await model.readNativeWebsites() } }
+                    Button("Sync websites") { Task { await model.syncWebsites(presentingResult: true) } }
+                }
+            }
+            if model.isSyncingWebsites { ProgressView().controlSize(.small) }
+            if let websites = model.nativeWebsites {
+                websiteGroup("Restricted", entries: websites.restrictedEntries)
+                websiteGroup("Allowed", entries: websites.allowedEntries)
+                Text("An Allowed site overrides only its own plan. Another active plan can still block it.")
+                    .font(.caption).foregroundStyle(PauseTheme.muted)
+            }
+            if let message = model.websiteSyncMessage {
+                Text(message).font(.callout)
+            }
+        }
+        .disabled(model.isSyncingWebsites)
+        .sheet(
+            item: Binding(
+                get: { model.pendingWebsiteOverwrite },
+                set: { if $0 == nil { model.cancelWebsiteOverwrite() } }
+            )
+        ) { overwrite in
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Replace Apple website entries?")
+                    .font(PauseFont.display(24, relativeTo: .title))
+                Text(
+                    "These entries are in Screen Time but not in the active Hard Pause plans. Sync will remove them from Apple’s lists."
+                )
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        overwriteGroup("Restricted entries to remove", entries: overwrite.restricted)
+                        overwriteGroup("Allowed entries to remove", entries: overwrite.allowed)
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button("Cancel") { model.cancelWebsiteOverwrite() }
+                    Button("Replace and sync") {
+                        Task { await model.syncWebsites(approving: overwrite, presentingResult: true) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(24)
+            .frame(minWidth: 440, minHeight: 300)
+        }
+    }
+
+    private func websiteGroup(_ title: String, entries: [String]) -> some View {
+        DisclosureGroup("\(title) (\(entries.count))") {
+            if entries.isEmpty {
+                Text("None").foregroundStyle(PauseTheme.muted)
+            } else {
+                ForEach(entries, id: \.self) { entry in Text(entry).textSelection(.enabled) }
+            }
+        }
+    }
+
+    private func overwriteGroup(_ title: String, entries: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(title) (\(entries.count))").font(.headline)
+            ForEach(entries, id: \.self) { entry in Text(entry).textSelection(.enabled) }
+        }
     }
 }
 
@@ -121,7 +203,7 @@ private struct AppleProtectionSetupView: View {
             Text("Keep the code out of reach")
                 .font(PauseFont.display(24, relativeTo: .title))
             Text("Hard Pause saves a random code securely before it changes Screen Time. The new code is never shown.")
-            Text("This setup uses System Settings on this Mac. Keep it open and use English during setup.")
+            Text("This setup uses System Settings on this Mac. Keep it in front until setup finishes.")
                 .foregroundStyle(PauseTheme.muted)
             if model.snapshot?.phase != .pendingSetup, model.codeCheck == true {
                 Text(

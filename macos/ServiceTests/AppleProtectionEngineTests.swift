@@ -2,6 +2,32 @@ import Foundation
 import XCTest
 
 final class AppleProtectionEngineTests: XCTestCase {
+    func testWebsiteSyncCannotForgetAnActiveWebsite() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let engine = try configuredEngine(
+            store: store, vault: vault, clock: FakeServiceClock(serviceTestReading(0)))
+
+        XCTAssertEqual(try engine.websiteSyncCredential().passcode, "4820")
+        try engine.claimMirroredDomains(
+            ["example.com"], required: ["example.com"],
+            allowed: ["safe.example"], requiredAllowed: ["safe.example"])
+        XCTAssertEqual(store.persisted.mirroredDomains, ["example.com"])
+        try engine.recordMirroredDomains(
+            ["example.com"], required: ["example.com"],
+            allowed: ["safe.example"], requiredAllowed: ["safe.example"])
+        XCTAssertThrowsError(
+            try engine.recordMirroredDomains(
+                [], required: ["example.com"], allowed: [], requiredAllowed: ["safe.example"]))
+
+        let restarted = try AppleLockdownEngine(
+            stateStore: store,
+            credentialVault: vault,
+            clock: FakeServiceClock(serviceTestReading(0)))
+        XCTAssertEqual(try restarted.websiteSyncCredential().mirroredDomains, ["example.com"])
+        XCTAssertEqual(try restarted.websiteSyncCredential().mirroredAllowedDomains, ["safe.example"])
+    }
+
     func testLiveFreezeStopsAppleCheckpointAndRequestsUntilFinalization() throws {
         let store = FakeAppleLockdownStateStore()
         let vault = FakeAppleLockdownVault()

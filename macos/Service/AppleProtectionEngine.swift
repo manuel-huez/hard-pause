@@ -119,6 +119,54 @@ final class AppleLockdownEngine: @unchecked Sendable {
         }
     }
 
+    func websiteSyncCredential() throws -> (
+        passcode: String, mirroredDomains: [String], mirroredAllowedDomains: [String]
+    ) {
+        try withLock {
+            try requireNotFrozen()
+            guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(state.phase),
+                state.configuration?.enablesAdultFilter == true,
+                let credentialID = state.credentialID
+            else { throw AppleLockdownError.protectionNotActive }
+            return (
+                try credentialVault.read(credentialID: credentialID),
+                state.mirroredDomains ?? [], state.mirroredAllowedDomains ?? []
+            )
+        }
+    }
+
+    func recordMirroredDomains(
+        _ domains: [String], required: Set<String>, allowed: [String], requiredAllowed: Set<String>
+    ) throws {
+        try withLock {
+            try requireNotFrozen()
+            guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(state.phase) else {
+                throw AppleLockdownError.protectionNotActive
+            }
+            var candidate = state
+            try candidate.recordMirroredDomains(
+                domains, required: required, allowed: allowed, requiredAllowed: requiredAllowed)
+            try stateStore.save(candidate)
+            state = candidate
+        }
+    }
+
+    func claimMirroredDomains(
+        _ additions: [String], required: Set<String>, allowed: [String], requiredAllowed: Set<String>
+    ) throws {
+        try withLock {
+            try requireNotFrozen()
+            guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(state.phase) else {
+                throw AppleLockdownError.protectionNotActive
+            }
+            var candidate = state
+            try candidate.claimMirroredDomains(
+                additions, required: required, allowed: allowed, requiredAllowed: requiredAllowed)
+            try stateStore.save(candidate)
+            state = candidate
+        }
+    }
+
     func confirmSetupNotApplied(
         _ request: AppleLockdownOperationRequest
     ) throws -> AppleLockdownSnapshot {

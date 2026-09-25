@@ -2,10 +2,10 @@ import Foundation
 
 enum ProtectedServiceContract {
     static let machServiceName = "org.hardpause.service"
-    static let serviceVersion = "8"
+    static let serviceVersion = "9"
     // Enable only after a native launchd/PF/hosts handoff and rollback proof.
     static let liveServiceHandoffEnabled = true
-    static let safeUpdateSourceVersions: Set<String> = ["4", "5", "6", "7"]
+    static let safeUpdateSourceVersions: Set<String> = ["4", "5", "6", "7", "8"]
     static let standbyMachServiceName = "org.hardpause.service.standby"
     static let updateMachServiceName = "org.hardpause.service.updates"
     static let maximumPayloadBytes = 1_048_576
@@ -23,6 +23,9 @@ enum ProtectedServiceContract {
 @objc protocol ProtectedServiceUpdateXPC {
     func installationStatus(withReply reply: @escaping (NSData) -> Void)
     func requestUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func beginWebsiteSync(withReply reply: @escaping (NSData) -> Void)
+    func claimWebsiteSync(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
+    func completeWebsiteSync(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
 }
 
 struct ProtectedServiceUpdateInstallationStatus: Codable, Equatable, Sendable {

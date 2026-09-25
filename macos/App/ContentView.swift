@@ -802,8 +802,10 @@ private struct BlockEditorView: View {
     @State private var intention: PlanIntention?
     @State private var name: String
     @State private var domainInput = ""
+    @State private var allowedInput = ""
     @State private var blocksAdultWebsites: Bool
     @State private var domains: [String]
+    @State private var allowedDomains: [String]
     @State private var urlPatterns: [String]
     @State private var applications: [ProtectedApplication]
     @State private var protectionMode: ProtectionMode
@@ -842,6 +844,7 @@ private struct BlockEditorView: View {
             if !editableDomains.contains(domain) { editableDomains.append(domain) }
         }
         _domains = State(initialValue: editableDomains)
+        _allowedDomains = State(initialValue: draft?.rules.allowedDomains ?? [])
         _urlPatterns = State(initialValue: patterns)
         _applications = State(initialValue: draft?.rules.blockedApplications ?? [])
         _protectionMode = State(initialValue: draft?.protectionMode ?? .softLock)
@@ -1180,6 +1183,26 @@ private struct BlockEditorView: View {
                 }
             }
 
+            editorSection("Allowed websites") {
+                Text(
+                    "Allowed websites override this plan's rules. Another active plan can still block them. You cannot add exceptions after this plan starts."
+                )
+                .font(.caption)
+                .foregroundStyle(PauseTheme.muted)
+                HStack(spacing: 10) {
+                    TextField("example.com", text: $allowedInput)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { _ = addAllowedDomain() }
+                    Button("Add") { _ = addAllowedDomain() }
+                        .disabled(allowedInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                PagedPlanRules(allowedDomains) { domain in
+                    RemovableRule(title: domain, symbol: "checkmark.shield") {
+                        allowedDomains.removeAll { $0 == domain }
+                    }
+                }
+            }
+
             editorSection("Adult websites") {
                 Toggle("Block adult websites", isOn: $blocksAdultWebsites)
                     .toggleStyle(.switch)
@@ -1385,6 +1408,13 @@ private struct BlockEditorView: View {
                 Text("Websites").font(.body.weight(.semibold))
                 PagedPlanRules(reviewWebsites) { website in
                     WebsiteRuleSummaryRow(website: website)
+                }
+            }
+
+            if !allowedDomains.isEmpty {
+                Text("Allowed websites").font(.body.weight(.semibold)).padding(.top, 4)
+                PagedPlanRules(allowedDomains) { domain in
+                    Text(domain).textSelection(.enabled)
                 }
             }
 
@@ -1615,6 +1645,27 @@ private struct BlockEditorView: View {
     }
 
     @discardableResult
+    private func addAllowedDomain() -> Bool {
+        let input = allowedInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { return true }
+        do {
+            guard let domain = try ProtectedPolicy.normalizeDomainChecked(input),
+                !DomainRule.isLiteralIPAddress(domain)
+            else {
+                validationMessage = "Enter a whole website domain, such as example.com."
+                return false
+            }
+            if !allowedDomains.contains(domain) { allowedDomains.append(domain) }
+            allowedInput = ""
+            validationMessage = nil
+            return true
+        } catch {
+            validationMessage = "Website rules are temporarily unavailable. Try again."
+            return false
+        }
+    }
+
+    @discardableResult
     private func addActiveWebsite() -> Bool {
         guard let block else { return false }
         let input = domainInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1668,7 +1719,7 @@ private struct BlockEditorView: View {
 
     private func commitPendingWebsite() -> Bool {
         let input = domainInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return input.isEmpty || addDomain()
+        return (input.isEmpty || addDomain()) && addAllowedDomain()
     }
 
     private func addPreset(_ preset: SitePreset) {
@@ -1689,6 +1740,7 @@ private struct BlockEditorView: View {
             name: name,
             rules: ProtectedRules(
                 blockedDomains: domains,
+                allowedDomains: allowedDomains,
                 blockedApplications: applications,
                 blocksStarterAdultSites: false,
                 blockedURLPatterns: urlPatterns,
@@ -1937,6 +1989,14 @@ private struct FixedRulesView: View {
                 }
                 PagedPlanRules(websites) { website in
                     WebsiteRuleSummaryRow(website: website)
+                }
+            }
+            if !draft.rules.allowedDomains.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Allowed websites").font(.body.weight(.semibold))
+                    ForEach(draft.rules.allowedDomains, id: \.self) { domain in
+                        Text(domain).foregroundStyle(PauseTheme.muted)
+                    }
                 }
             }
             Text("Adult websites").font(.body.weight(.semibold)).padding(.top, 4)
@@ -2358,6 +2418,9 @@ private struct ProtectionSettingsPane: View {
                 SetupChecklistView(showsService: !model.setupServiceReady)
 
                 AppleProtectionCard(model: model.appleProtection)
+                    .settingsPanel()
+
+                ScreenTimeWebsitesCard(model: model.appleProtection)
                     .settingsPanel()
 
                 VStack(alignment: .leading, spacing: 10) {

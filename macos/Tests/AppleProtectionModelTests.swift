@@ -8,7 +8,6 @@ final class AppleProtectionModelTests: XCTestCase {
         let automation = FakeAppleScreenTimeAutomation(events: events)
         automation.inspection = AppleScreenTimeInspection(
             hasPasscode: true,
-            sharesAcrossDevices: false,
             adultFilterEnabled: false
         )
         let model = AppleProtectionModel(service: service, automation: automation)
@@ -96,7 +95,6 @@ final class AppleProtectionModelTests: XCTestCase {
         automation.installError = nil
         automation.inspection = AppleScreenTimeInspection(
             hasPasscode: true,
-            sharesAcrossDevices: false,
             adultFilterEnabled: false
         )
         await model.retrySetup(existingPasscode: "4321")
@@ -124,7 +122,6 @@ final class AppleProtectionModelTests: XCTestCase {
         let automation = FakeAppleScreenTimeAutomation(events: events)
         automation.inspection = AppleScreenTimeInspection(
             hasPasscode: true,
-            sharesAcrossDevices: false,
             adultFilterEnabled: false
         )
         let model = AppleProtectionModel(service: service, automation: automation)
@@ -172,6 +169,32 @@ final class AppleProtectionModelTests: XCTestCase {
         XCTAssertEqual(model.message, AppleScreenTimeAutomationError.verificationRequired.localizedDescription)
     }
 
+    func testReleaseRemovesOnlyHardPauseWebsiteEntries() async {
+        let events = AppleProtectionEventLog()
+        let operationID = UUID()
+        let releasing = makeSnapshot(
+            phase: .releaseInProgress, enablesAdultFilter: true,
+            mirroredDomains: ["ours.example"], operationID: operationID)
+        let service = FakeAppleProtectionService(
+            events: events, snapshot: makeSnapshot(phase: .readyForRelease),
+            releaseOperation: makeOperation(id: operationID, snapshot: releasing),
+            completedReleaseSnapshot: makeSnapshot(phase: .inactive))
+        service.websiteOperation = AppleWebsiteSyncOperation(
+            passcode: "1234", activeDomains: [], activeAllowedDomains: [],
+            mirroredDomains: ["ours.example"], mirroredAllowedDomains: [])
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        automation.websites = AppleScreenTimeWebsites(
+            restricted: ["ours.example", "native.example"], allowed: [],
+            restrictedEntries: ["https://ours.example", "https://native.example"], allowedEntries: [])
+        let model = AppleProtectionModel(service: service, automation: automation)
+
+        await model.finishEnd()
+
+        XCTAssertEqual(automation.removedRestricted, ["https://ours.example"])
+        XCTAssertEqual(automation.websites?.restricted, ["native.example"])
+        XCTAssertEqual(service.completedReleaseOperationIDs, [operationID])
+    }
+
     func testRequestEndStartsFullUnlockWaitWithoutReleasingProtection() async {
         let events = AppleProtectionEventLog()
         let waiting = makeSnapshot(phase: .waitingForFullUnlock, remainingDelay: 86_400)
@@ -197,6 +220,7 @@ final class AppleProtectionModelTests: XCTestCase {
         remainingDelay: TimeInterval? = nil,
         enablesAdultFilter: Bool = false,
         filterWasAlreadyEnabled: Bool = false,
+        mirroredDomains: [String] = [],
         operationID: UUID? = nil
     ) -> AppleLockdownSnapshot {
         AppleLockdownSnapshot(
@@ -206,6 +230,8 @@ final class AppleProtectionModelTests: XCTestCase {
             enablesAdultFilter: enablesAdultFilter,
             filterWasAlreadyEnabled: filterWasAlreadyEnabled,
             shareAcrossDevicesVerified: nil,
+            mirroredDomains: mirroredDomains,
+            mirroredAllowedDomains: [],
             operationID: operationID
         )
     }
@@ -235,12 +261,13 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
     let events: AppleProtectionEventLog
     var inspection = AppleScreenTimeInspection(
         hasPasscode: false,
-        sharesAcrossDevices: false,
         adultFilterEnabled: false
     )
     var installError: Error?
     var verifyError: Error?
     var releaseError: Error?
+    var websites: AppleScreenTimeWebsites?
+    private(set) var removedRestricted: [String] = []
     private(set) var installReplacementWasProvided: [Bool] = []
 
     init(events: AppleProtectionEventLog) {
@@ -252,7 +279,7 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
         return inspection.hasPasscode
     }
 
-    func inspect() async throws -> AppleScreenTimeInspection {
+    func inspect(checkAdultFilter: Bool, passcode: String?) async throws -> AppleScreenTimeInspection {
         events.append("inspect")
         return inspection
     }
@@ -276,6 +303,28 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
         events.append("release")
         if let releaseError { throw releaseError }
     }
+
+    func inspectWebsites(passcode: String) async throws -> AppleScreenTimeWebsites {
+        events.append("inspect websites")
+        guard let websites else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
+        return websites
+    }
+
+    func updateWebsites(
+        passcode: String, addRestricted: [String], removeRestricted: [String],
+        addAllowed: [String], removeAllowed: [String]
+    ) async throws -> AppleScreenTimeWebsites {
+        events.append("update websites")
+        removedRestricted = removeRestricted
+        guard let current = websites else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
+        let restrictedEntries = current.restrictedEntries.filter { !removeRestricted.contains($0) }
+        let updated = AppleScreenTimeWebsites(
+            restricted: Set(restrictedEntries.compactMap { URLPatternRule.exactDomain(from: $0) }),
+            allowed: current.allowed,
+            restrictedEntries: restrictedEntries, allowedEntries: current.allowedEntries)
+        websites = updated
+        return updated
+    }
 }
 
 @MainActor
@@ -287,6 +336,7 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
     var completedSetupSnapshot: AppleLockdownSnapshot?
     var requestedEndSnapshot: AppleLockdownSnapshot?
     var completedReleaseSnapshot: AppleLockdownSnapshot?
+    var websiteOperation: AppleWebsiteSyncOperation?
     private(set) var resumedSetupOperationIDs: [UUID] = []
     private(set) var completedSetupOperationIDs: [UUID] = []
     private(set) var completedReleaseOperationIDs: [UUID] = []
@@ -360,6 +410,18 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
         completedReleaseOperationIDs.append(operationID)
         snapshot = try required(completedReleaseSnapshot)
         return snapshot
+    }
+
+    func beginAppleWebsiteSync() async throws -> AppleWebsiteSyncOperation {
+        guard let websiteOperation else { throw AppleLockdownError.protectionNotActive }
+        events.append("begin website sync")
+        return websiteOperation
+    }
+
+    func completeAppleWebsiteSync(
+        mirroredDomains: [String], mirroredAllowedDomains: [String]
+    ) async throws {
+        events.append("complete website sync")
     }
 
     func list() async throws -> ProtectedServiceSnapshot { protectedSnapshot }

@@ -69,6 +69,11 @@ protocol ProtectedServiceServing {
     func requestAppleLockdownEnd() async throws -> AppleLockdownSnapshot
     func beginAppleLockdownRelease() async throws -> AppleLockdownCredentialOperation
     func completeAppleLockdownRelease(operationID: UUID) async throws -> AppleLockdownSnapshot
+    func beginAppleWebsiteSync() async throws -> AppleWebsiteSyncOperation
+    func claimAppleWebsiteSync(domains: [String], allowedDomains: [String]) async throws
+    func completeAppleWebsiteSync(
+        mirroredDomains: [String], mirroredAllowedDomains: [String]
+    ) async throws
 }
 
 extension ProtectedServiceServing {
@@ -133,6 +138,20 @@ extension ProtectedServiceServing {
             "Screen Time protection is unavailable in this service client."
         )
     }
+
+    func beginAppleWebsiteSync() async throws -> AppleWebsiteSyncOperation {
+        throw ProtectedServiceClientError.unavailable("Screen Time website sync is unavailable.")
+    }
+
+    func claimAppleWebsiteSync(domains: [String], allowedDomains: [String]) async throws {
+        throw ProtectedServiceClientError.unavailable("Screen Time website sync is unavailable.")
+    }
+
+    func completeAppleWebsiteSync(
+        mirroredDomains: [String], mirroredAllowedDomains: [String]
+    ) async throws {
+        throw ProtectedServiceClientError.unavailable("Screen Time website sync is unavailable.")
+    }
 }
 
 @MainActor
@@ -196,47 +215,59 @@ final class ProtectedServiceClient: ProtectedServiceServing {
         let payload = try ProtectedServiceCodec.encode(
             ProtectedServiceUpdateRequest(bundlePath: bundlePath)
         )
-        let connection = NSXPCConnection(
-            machServiceName: ProtectedServiceContract.updateMachServiceName,
-            options: .privileged
-        )
-        connection.remoteObjectInterface = NSXPCInterface(with: ProtectedServiceUpdateXPC.self)
-        connection.activate()
-        defer { connection.invalidate() }
-        return try await withCheckedThrowingContinuation { continuation in
-            let box = OneShotReplyBox(continuation)
-            guard
-                let service = connection.remoteObjectProxyWithErrorHandler({ error in
-                    box.finish(.failure(error))
-                }) as? ProtectedServiceUpdateXPC
-            else {
-                box.finish(.failure(ProtectedServiceClientError.invalidReply))
-                return
-            }
-            service.requestUpdate(payload) { data in
-                do {
-                    let reply = try ProtectedServiceCodec.decode(
-                        ProtectedServiceUpdateReply.self, from: data
-                    )
-                    if let error = reply.error {
-                        box.finish(.failure(ProtectedServiceClientError.service(error.message)))
-                    } else if let ticket = reply.ticket {
-                        box.finish(.success(ticket))
-                    } else {
-                        box.finish(.failure(ProtectedServiceClientError.invalidReply))
-                    }
-                } catch {
-                    box.finish(.failure(error))
-                }
-            }
-            Task {
-                try? await Task.sleep(for: .seconds(45))
-                box.finish(.failure(ProtectedServiceClientError.timedOut))
-            }
+        let reply: ProtectedServiceUpdateReply = try await performUpdate(timeout: .seconds(45)) {
+            service, callback in service.requestUpdate(payload, withReply: callback)
         }
+        if let error = reply.error { throw ProtectedServiceClientError.service(error.message) }
+        guard let ticket = reply.ticket else { throw ProtectedServiceClientError.invalidReply }
+        return ticket
     }
 
     func updateInstallationStatus() async throws -> ProtectedServiceUpdateInstallationStatus {
+        let reply: ProtectedServiceUpdateInstallationReply = try await performUpdate { service, callback in
+            service.installationStatus(withReply: callback)
+        }
+        if let error = reply.error { throw ProtectedServiceClientError.service(error.message) }
+        guard let status = reply.status else { throw ProtectedServiceClientError.invalidReply }
+        return status
+    }
+
+    func beginAppleWebsiteSync() async throws -> AppleWebsiteSyncOperation {
+        let reply: AppleWebsiteSyncReply = try await performUpdate { service, callback in
+            service.beginWebsiteSync(withReply: callback)
+        }
+        if let error = reply.error { throw ProtectedServiceClientError.service(error.message) }
+        guard let operation = reply.operation else { throw ProtectedServiceClientError.invalidReply }
+        return operation
+    }
+
+    func claimAppleWebsiteSync(domains: [String], allowedDomains: [String]) async throws {
+        let payload = try ProtectedServiceCodec.encode(
+            AppleWebsiteSyncClaim(domains: domains, allowedDomains: allowedDomains))
+        let reply: AppleLockdownServiceReply = try await performUpdate { service, callback in
+            service.claimWebsiteSync(payload, withReply: callback)
+        }
+        if let error = reply.error { throw ProtectedServiceClientError.service(error.message) }
+        guard reply.snapshot != nil else { throw ProtectedServiceClientError.invalidReply }
+    }
+
+    func completeAppleWebsiteSync(
+        mirroredDomains: [String], mirroredAllowedDomains: [String]
+    ) async throws {
+        let payload = try ProtectedServiceCodec.encode(
+            AppleWebsiteSyncCompletion(
+                mirroredDomains: mirroredDomains, mirroredAllowedDomains: mirroredAllowedDomains))
+        let reply: AppleLockdownServiceReply = try await performUpdate { service, callback in
+            service.completeWebsiteSync(payload, withReply: callback)
+        }
+        if let error = reply.error { throw ProtectedServiceClientError.service(error.message) }
+        guard reply.snapshot != nil else { throw ProtectedServiceClientError.invalidReply }
+    }
+
+    private func performUpdate<Reply: Decodable>(
+        timeout: Duration = .seconds(5),
+        _ invoke: @escaping (ProtectedServiceUpdateXPC, @escaping (NSData) -> Void) -> Void
+    ) async throws -> Reply {
         let connection = NSXPCConnection(
             machServiceName: ProtectedServiceContract.updateMachServiceName,
             options: .privileged
@@ -254,24 +285,15 @@ final class ProtectedServiceClient: ProtectedServiceServing {
                 box.finish(.failure(ProtectedServiceClientError.invalidReply))
                 return
             }
-            service.installationStatus { data in
+            invoke(service) { data in
                 do {
-                    let reply = try ProtectedServiceCodec.decode(
-                        ProtectedServiceUpdateInstallationReply.self, from: data
-                    )
-                    if let error = reply.error {
-                        box.finish(.failure(ProtectedServiceClientError.service(error.message)))
-                    } else if let status = reply.status {
-                        box.finish(.success(status))
-                    } else {
-                        box.finish(.failure(ProtectedServiceClientError.invalidReply))
-                    }
+                    box.finish(.success(try ProtectedServiceCodec.decode(Reply.self, from: data)))
                 } catch {
                     box.finish(.failure(error))
                 }
             }
             Task {
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: timeout)
                 box.finish(.failure(ProtectedServiceClientError.timedOut))
             }
         }

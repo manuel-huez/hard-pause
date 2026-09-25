@@ -85,8 +85,13 @@ pub fn compose(request: Request) -> EffectiveRestrictions {
             continue;
         }
         block_ids.insert(block.id);
-        domains.extend(activation.rules.blocked_domains);
-        domains.extend(activation.rules.blocked_adult_domains);
+        let allowed = activation.rules.allowed_domains.iter().collect::<BTreeSet<_>>();
+        domains.extend(
+            activation.rules.blocked_domains.iter()
+                .chain(&activation.rules.blocked_adult_domains)
+                .filter(|domain| !allowed.contains(domain))
+                .cloned(),
+        );
         url_patterns.extend(activation.rules.blocked_url_patterns);
         for application in activation.rules.blocked_applications {
             applications.insert(application.id(), application);

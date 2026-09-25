@@ -5,6 +5,7 @@ use hard_pause_core::restrictions::{
 
 fn rules(domain: &str, application_name: &str) -> Rules {
     Rules {
+        allowed_domains: vec![],
         blocked_domains: vec![domain.into()],
         blocked_applications: vec![Application {
             bundle_identifier: "com.example.app".into(),
@@ -88,4 +89,29 @@ fn staging_union_retains_both_rule_sets_and_uses_candidate_application() {
     );
     assert_eq!(staged.contributing_block_ids, ["A", "B"]);
     assert_eq!(staged.blocked_applications[0].display_name, "New");
+}
+
+#[test]
+fn allowed_domain_applies_only_to_its_own_block() {
+    let mut first = rules("shared.example", "First");
+    first.allowed_domains = vec!["shared.example".into()];
+    let block = |id: &str, rules: Rules| Block {
+        id: id.into(),
+        activation: Some(Activation {
+            accumulated_elapsed: 10.0,
+            break_ends_at_elapsed: None,
+            rules,
+        }),
+    };
+    let first_only = compose(Request {
+        blocks: vec![block("A", first.clone())],
+        including_breaks: false,
+    });
+    assert!(!first_only.blocked_domains.contains(&"shared.example".into()));
+
+    let both = compose(Request {
+        blocks: vec![block("A", first), block("B", rules("shared.example", "Second"))],
+        including_breaks: false,
+    });
+    assert!(both.blocked_domains.contains(&"shared.example".into()));
 }

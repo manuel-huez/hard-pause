@@ -18,6 +18,7 @@ struct ProtectedApplication: Codable, Equatable, Hashable, Identifiable, Sendabl
 
 struct ProtectedRules: Codable, Equatable, Sendable {
     let blockedDomains: [String]
+    let allowedDomains: [String]
     let blockedApplications: [ProtectedApplication]
     let blockedAdultDomains: [String]
     let adultRulesVersion: Int?
@@ -45,6 +46,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
 
     init(
         blockedDomains: [String],
+        allowedDomains: [String] = [],
         blockedApplications: [ProtectedApplication],
         blocksStarterAdultSites: Bool,
         blockedURLPatterns: [String] = [],
@@ -53,6 +55,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         self = ProtectedPolicy.normalizeRules(
             ProtectedRules(
                 blockedDomains: blockedDomains,
+                allowedDomains: allowedDomains,
                 blockedApplications: blockedApplications,
                 blockedAdultDomains: blocksStarterAdultSites ? StarterAdultRules.domains : [],
                 adultRulesVersion: blocksStarterAdultSites ? StarterAdultRules.version : nil,
@@ -63,6 +66,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
 
     init(
         blockedDomains: [String],
+        allowedDomains: [String] = [],
         blockedApplications: [ProtectedApplication],
         blockedAdultDomains: [String],
         adultRulesVersion: Int?,
@@ -71,6 +75,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
     ) {
         self.blocksAdultWebsites = blocksAdultWebsites
         self.blockedDomains = blockedDomains
+        self.allowedDomains = allowedDomains
         self.blockedApplications = blockedApplications
         self.blockedAdultDomains = blockedAdultDomains
         self.adultRulesVersion = adultRulesVersion
@@ -79,6 +84,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case blockedDomains
+        case allowedDomains
         case blockedApplications
         case blockedAdultDomains
         case adultRulesVersion
@@ -90,6 +96,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             blockedDomains: try container.decode([String].self, forKey: .blockedDomains),
+            allowedDomains: try container.decodeIfPresent([String].self, forKey: .allowedDomains) ?? [],
             blockedApplications: try container.decode(
                 [ProtectedApplication].self,
                 forKey: .blockedApplications
@@ -108,6 +115,7 @@ struct ProtectedRules: Codable, Equatable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(blockedDomains, forKey: .blockedDomains)
+        if !allowedDomains.isEmpty { try container.encode(allowedDomains, forKey: .allowedDomains) }
         try container.encode(blockedApplications, forKey: .blockedApplications)
         try container.encode(blockedAdultDomains, forKey: .blockedAdultDomains)
         try container.encodeIfPresent(adultRulesVersion, forKey: .adultRulesVersion)
@@ -737,7 +745,8 @@ struct ProtectedState: Codable, Equatable, Sendable {
         for block in blocks {
             guard let activation = block.activation else { continue }
             contributingBlocks.insert(block.id)
-            domains.formUnion(activation.frozenDraft.rules.allBlockedDomains)
+            let rules = activation.frozenDraft.rules
+            domains.formUnion(Set(rules.allBlockedDomains).subtracting(rules.allowedDomains))
             urlPatterns.formUnion(activation.frozenDraft.rules.blockedURLPatterns)
             for application in activation.frozenDraft.rules.blockedApplications {
                 applications[application.id] = application

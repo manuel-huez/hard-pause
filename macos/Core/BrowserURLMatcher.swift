@@ -29,7 +29,12 @@ enum BrowserURLMatcher {
             return true  // Do not allow a URL during an unexpected shared-core failure.
         }
         return rules.contains { rule in
-            (rule.blocksAdultWebsites && (hasAdultRating || adultDomains?.contains(normalizedHost) == true))
+            if rule.allowedDomains.contains(where: {
+                DomainRule.browserHost($0) == DomainRule.browserHost(normalizedHost)
+            }) {
+                return false
+            }
+            return (rule.blocksAdultWebsites && (hasAdultRating || adultDomains?.contains(normalizedHost) == true))
                 || rule.allBlockedDomains.contains(where: {
                     DomainRule.browserHost($0) == DomainRule.browserHost(normalizedHost)
                 })

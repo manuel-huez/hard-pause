@@ -47,6 +47,8 @@ struct AppleLockdownSnapshot: Codable, Equatable, Sendable {
     let enablesAdultFilter: Bool
     let filterWasAlreadyEnabled: Bool
     let shareAcrossDevicesVerified: Bool?
+    let mirroredDomains: [String]?
+    let mirroredAllowedDomains: [String]?
     let operationID: UUID?
 }
 
@@ -89,6 +91,77 @@ struct AppleLockdownServiceReply: Codable, Equatable, Sendable {
             credential: nil,
             error: ProtectedServiceErrorPayload(code: code, message: message)
         )
+    }
+}
+
+struct AppleWebsiteSyncOperation: Codable, Equatable, Sendable,
+    CustomStringConvertible, CustomDebugStringConvertible
+{
+    let passcode: String
+    let activeDomains: [String]
+    let activeAllowedDomains: [String]
+    let mirroredDomains: [String]
+    let mirroredAllowedDomains: [String]
+
+    var description: String { "AppleWebsiteSyncOperation(passcode: <redacted>)" }
+    var debugDescription: String { description }
+}
+
+struct AppleWebsiteSyncReply: Codable, Equatable, Sendable {
+    let operation: AppleWebsiteSyncOperation?
+    let error: ProtectedServiceErrorPayload?
+}
+
+struct AppleWebsiteSyncCompletion: Codable, Equatable, Sendable {
+    let mirroredDomains: [String]
+    let mirroredAllowedDomains: [String]
+}
+
+struct AppleWebsiteSyncClaim: Codable, Equatable, Sendable {
+    let domains: [String]
+    let allowedDomains: [String]
+}
+
+struct AppleWebsiteSyncTargets: Equatable, Sendable {
+    let restricted: [String]
+    let allowed: [String]
+
+    init(blocks: [ProtectedBlockSnapshot]) {
+        var restricted = Set<String>()
+        var allowed = Set<String>()
+        var activeRules: [ProtectedRules] = []
+        for block in blocks {
+            switch block.phase {
+            case .inactive, .breakActive: continue
+            case .active, .waitingForBreak, .waitingForFullUnlock: break
+            }
+            let rules = block.draft.rules
+            activeRules.append(rules)
+            restricted.formUnion(Set(rules.blockedDomains).subtracting(rules.allowedDomains))
+            allowed.formUnion(
+                rules.allowedDomains.filter { domain in
+                    Self.blocks(domain, with: rules)
+                })
+        }
+        self.restricted = restricted.sorted()
+        self.allowed = Set(
+            allowed.filter { domain in
+                !restricted.contains(where: {
+                    $0 == domain || $0.hasSuffix(".\(domain)") || domain.hasSuffix(".\($0)")
+                })
+                    && !activeRules.contains { rules in
+                        !rules.allowedDomains.contains(domain) && Self.blocks(domain, with: rules)
+                    }
+            }
+        ).subtracting(restricted).sorted()
+    }
+
+    private static func blocks(_ domain: String, with rules: ProtectedRules) -> Bool {
+        if rules.blocksAdultWebsites || rules.allBlockedDomains.contains(domain) { return true }
+        return rules.blockedURLPatterns.contains { pattern in
+            guard let parsed = ProtectedPolicy.parseURLPattern(pattern) else { return true }
+            return domain == parsed.host || parsed.subdomains && domain.hasSuffix(".\(parsed.host)")
+        }
     }
 }
 

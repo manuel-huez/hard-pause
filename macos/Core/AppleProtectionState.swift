@@ -46,6 +46,8 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
     private(set) var anchorBootIdentifier: String?
     private(set) var requestedAtElapsed: TimeInterval?
     private(set) var requestedAtWallTime: Date?
+    private(set) var mirroredDomains: [String]?
+    private(set) var mirroredAllowedDomains: [String]?
 
     init() {
         schemaVersion = Self.currentSchemaVersion
@@ -58,6 +60,8 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         anchorBootIdentifier = nil
         requestedAtElapsed = nil
         requestedAtWallTime = nil
+        mirroredDomains = nil
+        mirroredAllowedDomains = nil
     }
 
     mutating func beginSetup(
@@ -138,6 +142,38 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         self = AppleLockdownState()
     }
 
+    mutating func recordMirroredDomains(
+        _ domains: [String], required: Set<String>, allowed: [String], requiredAllowed: Set<String>
+    ) throws {
+        guard isConfirmedActive, configuration?.enablesAdultFilter == true,
+            Set(domains).isSubset(of: required),
+            Set(allowed).isSubset(of: requiredAllowed),
+            Set(mirroredDomains ?? []).intersection(required).isSubset(of: domains),
+            Set(mirroredAllowedDomains ?? []).intersection(requiredAllowed).isSubset(of: allowed),
+            domains == Array(Set(domains)).sorted(),
+            domains.allSatisfy({ DomainRule.normalize($0) == $0 }),
+            allowed == Array(Set(allowed)).sorted(),
+            allowed.allSatisfy({ DomainRule.normalize($0) == $0 })
+        else { throw AppleLockdownError.invalidRequest("Screen Time website sync is not available.") }
+        mirroredDomains = domains
+        mirroredAllowedDomains = allowed
+    }
+
+    mutating func claimMirroredDomains(
+        _ additions: [String], required: Set<String>, allowed: [String], requiredAllowed: Set<String>
+    ) throws {
+        guard isConfirmedActive, configuration?.enablesAdultFilter == true,
+            additions == Array(Set(additions)).sorted(),
+            additions.allSatisfy({ DomainRule.normalize($0) == $0 }),
+            Set(additions).isSubset(of: required),
+            allowed == Array(Set(allowed)).sorted(),
+            allowed.allSatisfy({ DomainRule.normalize($0) == $0 }),
+            Set(allowed).isSubset(of: requiredAllowed)
+        else { throw AppleLockdownError.invalidRequest("Screen Time website sync is not available.") }
+        mirroredDomains = Array(Set(mirroredDomains ?? []).union(additions)).sorted()
+        mirroredAllowedDomains = Array(Set(mirroredAllowedDomains ?? []).union(allowed)).sorted()
+    }
+
     mutating func advance(to reading: ClockReading) {
         guard phase == .waitingForFullUnlock else { return }
         let projection = PauseCoreClock.project(
@@ -195,6 +231,8 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
             enablesAdultFilter: configuration?.enablesAdultFilter ?? false,
             filterWasAlreadyEnabled: configuration?.filterWasAlreadyEnabled ?? false,
             shareAcrossDevicesVerified: configuration?.shareAcrossDevicesVerified,
+            mirroredDomains: mirroredDomains ?? [],
+            mirroredAllowedDomains: mirroredAllowedDomains ?? [],
             operationID: publicPhase == .pendingSetup || publicPhase == .releaseInProgress
                 ? operationID : nil
         )
@@ -215,6 +253,15 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         guard anchorBootIdentifier?.utf8.count ?? 0 <= 256 else {
             throw AppleLockdownError.stateUnavailable
         }
+        if let mirroredDomains, let mirroredAllowedDomains {
+            guard mirroredDomains == Array(Set(mirroredDomains)).sorted(),
+                mirroredDomains.allSatisfy({ DomainRule.normalize($0) == $0 }),
+                mirroredAllowedDomains == Array(Set(mirroredAllowedDomains)).sorted(),
+                mirroredAllowedDomains.allSatisfy({ DomainRule.normalize($0) == $0 })
+            else { throw AppleLockdownError.stateUnavailable }
+        } else if mirroredDomains != nil || mirroredAllowedDomains != nil {
+            throw AppleLockdownError.stateUnavailable
+        }
         if let requestedAtElapsed {
             guard requestedAtElapsed.isFinite,
                 requestedAtElapsed >= 0,
@@ -232,7 +279,8 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         switch phase {
         case .inactive:
             guard configuration == nil, credentialID == nil, operationID == nil,
-                requestedAtElapsed == nil, requestedAtWallTime == nil
+                requestedAtElapsed == nil, requestedAtWallTime == nil,
+                mirroredDomains == nil, mirroredAllowedDomains == nil
             else {
                 throw AppleLockdownError.stateUnavailable
             }

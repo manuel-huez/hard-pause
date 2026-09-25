@@ -166,6 +166,21 @@ fn normalized_rules_keep_native_json_field_and_legacy_defaults() {
 }
 
 #[test]
+fn active_rule_update_cannot_add_allowed_domain() {
+    let previous = json!({
+        "blocked_domains": ["example.com"],
+        "blocked_applications": [],
+        "blocked_adult_domains": [],
+        "adult_rules_version": null
+    });
+    let mut current = previous.clone();
+    current["allowed_domains"] = json!(["example.com"]);
+    assert_eq!(call("policy.includes_all_rules", json!({
+        "current": current, "previous": previous
+    }))["result"]["value"], false);
+}
+
+#[test]
 fn draft_validation_preserves_legacy_identity_and_wait_errors() {
     let mut rules = json!({
         "blocked_domains": ["example.com"],

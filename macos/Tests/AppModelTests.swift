@@ -451,6 +451,8 @@ final class AppModelTests: XCTestCase {
             enablesAdultFilter: false,
             filterWasAlreadyEnabled: false,
             shareAcrossDevicesVerified: nil,
+            mirroredDomains: [],
+            mirroredAllowedDomains: [],
             operationID: operationID
         )
     }

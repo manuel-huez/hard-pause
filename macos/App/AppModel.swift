@@ -49,6 +49,7 @@ final class AppModel: ObservableObject {
     let appleProtection: AppleProtectionModel
     private var cancellables = Set<AnyCancellable>()
     private var secondsSinceIdleRefresh = 0
+    private var lastWebsiteTargets: AppleWebsiteSyncTargets?
     private var browserActivity: NSObjectProtocol?
     private(set) var keepsBrowserProtectionRunning = false
     private var displayAnchor = SystemClock.read().continuousTime
@@ -600,6 +601,22 @@ final class AppModel: ObservableObject {
     }
 
     private func accept(_ nextSnapshot: ProtectedServiceSnapshot) {
+        let websiteTargets = AppleWebsiteSyncTargets(blocks: nextSnapshot.blocks)
+        if lastWebsiteTargets != websiteTargets {
+            lastWebsiteTargets = websiteTargets
+            Task { @MainActor in
+                await appleProtection.refresh()
+                if let status = appleProtection.snapshot,
+                    [.active, .waitingForFullUnlock, .readyForRelease].contains(status.phase),
+                    status.enablesAdultFilter,
+                    !websiteTargets.restricted.isEmpty || !websiteTargets.allowed.isEmpty
+                        || status.mirroredDomains?.isEmpty == false
+                        || status.mirroredAllowedDomains?.isEmpty == false
+                {
+                    await appleProtection.syncWebsites()
+                }
+            }
+        }
         snapshot = nextSnapshot
         keepsBrowserProtectionRunning = nextSnapshot.blocks.contains {
             $0.phase != .inactive

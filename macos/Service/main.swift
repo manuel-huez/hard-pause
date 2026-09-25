@@ -241,7 +241,10 @@ do {
         )
         let updateDelegate = ProtectedServiceUpdateListenerDelegate(
             trigger: updateTrigger,
-            authorizer: authorizer
+            authorizer: authorizer,
+            engine: engine,
+            appleLockdown: appleLockdown,
+            coordinator: delegate.coordinator
         )
         updateListener.delegate = updateDelegate
         engine.start()

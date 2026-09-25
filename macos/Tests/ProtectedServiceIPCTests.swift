@@ -96,6 +96,8 @@ final class ProtectedServiceIPCTests: XCTestCase {
             enablesAdultFilter: true,
             filterWasAlreadyEnabled: false,
             shareAcrossDevicesVerified: nil,
+            mirroredDomains: [],
+            mirroredAllowedDomains: [],
             operationID: UUID()
         )
 
@@ -114,6 +116,8 @@ final class ProtectedServiceIPCTests: XCTestCase {
             enablesAdultFilter: false,
             filterWasAlreadyEnabled: false,
             shareAcrossDevicesVerified: false,
+            mirroredDomains: [],
+            mirroredAllowedDomains: [],
             operationID: UUID()
         )
         let operation = AppleLockdownCredentialOperation(
