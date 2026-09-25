@@ -85,9 +85,16 @@ pub fn compose(request: Request) -> EffectiveRestrictions {
             continue;
         }
         block_ids.insert(block.id);
-        let allowed = activation.rules.allowed_domains.iter().collect::<BTreeSet<_>>();
+        let allowed = activation
+            .rules
+            .allowed_domains
+            .iter()
+            .collect::<BTreeSet<_>>();
         domains.extend(
-            activation.rules.blocked_domains.iter()
+            activation
+                .rules
+                .blocked_domains
+                .iter()
                 .chain(&activation.rules.blocked_adult_domains)
                 .filter(|domain| !allowed.contains(domain))
                 .cloned(),

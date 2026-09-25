@@ -460,7 +460,10 @@ pub fn normalize_rules(mut rules: Rules) -> Rules {
     );
     rules.blocked_applications = unique_by(rules.blocked_applications, Application::id);
     rules.allowed_domains = unique_by(
-        rules.allowed_domains.into_iter().filter_map(|domain| normalize_domain(&domain)),
+        rules
+            .allowed_domains
+            .into_iter()
+            .filter_map(|domain| normalize_domain(&domain)),
         Clone::clone,
     );
     rules.blocked_url_patterns = unique_by(

@@ -107,10 +107,15 @@ fn allowed_domain_applies_only_to_its_own_block() {
         blocks: vec![block("A", first.clone())],
         including_breaks: false,
     });
-    assert!(!first_only.blocked_domains.contains(&"shared.example".into()));
+    assert!(!first_only
+        .blocked_domains
+        .contains(&"shared.example".into()));
 
     let both = compose(Request {
-        blocks: vec![block("A", first), block("B", rules("shared.example", "Second"))],
+        blocks: vec![
+            block("A", first),
+            block("B", rules("shared.example", "Second")),
+        ],
         including_breaks: false,
     });
     assert!(both.blocked_domains.contains(&"shared.example".into()));

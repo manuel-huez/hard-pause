@@ -175,9 +175,15 @@ fn active_rule_update_cannot_add_allowed_domain() {
     });
     let mut current = previous.clone();
     current["allowed_domains"] = json!(["example.com"]);
-    assert_eq!(call("policy.includes_all_rules", json!({
-        "current": current, "previous": previous
-    }))["result"]["value"], false);
+    assert_eq!(
+        call(
+            "policy.includes_all_rules",
+            json!({
+                "current": current, "previous": previous
+            })
+        )["result"]["value"],
+        false
+    );
 }
 
 #[test]
