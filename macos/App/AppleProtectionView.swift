@@ -69,7 +69,8 @@ struct AppleProtectionCard: View {
         switch model.snapshot?.phase {
         case .inactive:
             if model.inspection?.hasPasscode == true {
-                return "Screen Time already has a code. Enter the current code during setup to let Hard Pause replace it."
+                return
+                    "Screen Time already has a code. Enter the current code during setup to let Hard Pause replace it."
             }
             return "Hard Pause keeps a private Screen Time code. Set it up once before starting a Hard Pause plan."
         case .pendingSetup:
@@ -123,8 +124,10 @@ private struct AppleProtectionSetupView: View {
             Text("This setup uses System Settings on this Mac. Keep it open and use English during setup.")
                 .foregroundStyle(PauseTheme.muted)
             if model.snapshot?.phase != .pendingSetup, model.inspection?.hasPasscode == true {
-                Text("A Screen Time code is already enabled. Enter its current code below to replace it with Hard Pause's private code.")
-                    .foregroundStyle(PauseTheme.muted)
+                Text(
+                    "A Screen Time code is already enabled. Enter its current code below to replace it with Hard Pause's private code."
+                )
+                .foregroundStyle(PauseTheme.muted)
             }
             if model.snapshot?.phase != .pendingSetup {
                 Picker("Wait to remove the code", selection: $delay) {
