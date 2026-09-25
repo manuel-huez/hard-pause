@@ -6,7 +6,7 @@ import SwiftUI
 struct HardPauseApp: App {
     @NSApplicationDelegateAdaptor(HardPauseLifecycle.self) private var lifecycle
     @StateObject private var model = AppModel()
-    @State private var updater = AppUpdater()
+    @StateObject private var updater = AppUpdater()
 
     init() {
         let installedApp = URL(fileURLWithPath: "/Applications/HardPause.app").standardizedFileURL
@@ -55,7 +55,7 @@ struct HardPauseApp: App {
 
 private struct HardPauseMenu: View {
     @ObservedObject var model: AppModel
-    let updater: AppUpdater
+    @ObservedObject var updater: AppUpdater
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -76,6 +76,9 @@ private struct HardPauseMenu: View {
         Text("Version \(appVersion)")
         Button("Check for Updates…") { updater.checkForUpdates() }
             .disabled(!updater.canCheckForUpdates)
+        if updater.isPreparingUpdate {
+            Text("Checking signed update and protection service…")
+        }
         if !model.activeBlocks.isEmpty && !model.browserWorkerReadyForHandoff {
             Text("Updates wait until browser protection is ready")
         } else if !model.setupServiceReady {

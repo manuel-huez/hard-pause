@@ -63,7 +63,10 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         requestedAtWallTime = nil
         mirroredDomains = nil
         mirroredAllowedDomains = nil
-        hasUsedPlan = false
+        // An inactive state can be synthesized by either service during a
+        // live handoff when no Apple state file exists. Keep its encoding the
+        // same as older services until a new setup starts.
+        hasUsedPlan = nil
     }
 
     mutating func beginSetup(

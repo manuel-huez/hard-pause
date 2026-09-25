@@ -204,6 +204,7 @@
 		EA45FAEF4A9A27E31A440264 /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
 		EBC9AC6FB284AA7E40996666 /* RustCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABD40901F5B581378F144C60 /* RustCoreBridge.swift */; };
 		EC88743F2F7F96C3AE929A54 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
+		ED87D939B50BB10C26F2A626 /* ServiceFirstUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B567B499F94D20EAB0E8F08C /* ServiceFirstUpdate.swift */; };
 		F122BA17C9DD1DC1197C373E /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
 		F12E4E54053B902DA04BB919 /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
 		F35A575BFF0629B94822E263 /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
@@ -312,6 +313,7 @@
 		A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		ABD40901F5B581378F144C60 /* RustCoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustCoreBridge.swift; sourceTree = "<group>"; };
 		B2A24E2A38EF77A4AA11F98F /* BrowserWorkerReadinessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWorkerReadinessTests.swift; sourceTree = "<group>"; };
+		B567B499F94D20EAB0E8F08C /* ServiceFirstUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceFirstUpdate.swift; sourceTree = "<group>"; };
 		B67DC67E70153E368D907025 /* ApplicationEnforcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationEnforcer.swift; sourceTree = "<group>"; };
 		BCB8AD2EF9D6D37968F814C2 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		C07578D74BB9C3F153392F59 /* ServiceSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceSupport.swift; sourceTree = "<group>"; };
@@ -577,6 +579,7 @@
 				CC180345D481C61E5696F730 /* Info.plist */,
 				73CE020B75644E033DA2B68E /* LocalPausePageServer.swift */,
 				A3A9B40334B2C8EF80C77D3C /* ProtectedServiceClient.swift */,
+				B567B499F94D20EAB0E8F08C /* ServiceFirstUpdate.swift */,
 				19AA79F4313E580D58F07DBE /* ServiceInstaller.swift */,
 				FCE19D586EC509EECAD2D8C2 /* SetupReadiness.swift */,
 			);
@@ -1205,6 +1208,7 @@
 				F4D4B664AD2FC66AA1316249 /* ProtectedServiceIPC.swift in Sources */,
 				020F7E1C26DE69D22E479603 /* ProtectionMode.swift in Sources */,
 				C0B64035463E4382319BCF8E /* RustCoreBridge.swift in Sources */,
+				ED87D939B50BB10C26F2A626 /* ServiceFirstUpdate.swift in Sources */,
 				9ADFC4521345CCC1D2CF9A62 /* ServiceInstaller.swift in Sources */,
 				18AE99E1A3BB558B2AAABAA9 /* SetupReadiness.swift in Sources */,
 				04C6824E9FF3784826B660FD /* Theme.swift in Sources */,
@@ -1378,7 +1382,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 30;
+				CURRENT_PROJECT_VERSION = 31;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1393,7 +1397,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.4;
+				MARKETING_VERSION = 0.2.5;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
@@ -1580,7 +1584,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 30;
+				CURRENT_PROJECT_VERSION = 31;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1601,7 +1605,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.4;
+				MARKETING_VERSION = 0.2.5;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

@@ -2,6 +2,12 @@ import Foundation
 import XCTest
 
 final class AppleProtectionEngineTests: XCTestCase {
+    func testInactiveAppleStateKeepsItsPreviousHandoffDigest() throws {
+        XCTAssertEqual(
+            try ServiceStateDigest.hash(AppleLockdownState()),
+            "901204822ac837c3a7453cfe8782cfc3fdf2c45278b140ce4feac1dcd6e74d44")
+    }
+
     func testWebsiteSyncCannotForgetAnActiveWebsite() throws {
         let store = FakeAppleLockdownStateStore()
         let vault = FakeAppleLockdownVault()

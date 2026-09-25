@@ -261,18 +261,43 @@ release_update_gate() {
     return 1
 }
 
+release_retry_claim() {
+    local suffix ticket marker
+    [[ "${app_bundle}" == "${helper_dir}/ServiceUpdates/"*"/HardPause.app" ]] || return 0
+    suffix=${app_bundle#"${helper_dir}/ServiceUpdates/"}
+    ticket=${suffix%/HardPause.app}
+    [[ "${ticket}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
+    marker="${support_dir}/service-updates/active"
+    [[ -f "${marker}" && ! -L "${marker}" ]] || return 1
+    [[ "$(/usr/bin/stat -f '%u:%Lp' "${marker}")" == "0:600" ]] || return 1
+    [[ "$(/bin/cat "${marker}")" == "${ticket}" ]] || return 1
+    /bin/rm -f -- "${marker}"
+}
+
 finish_install() {
     local installer_exit_code=$?
+    local safe_live_retry=0
     trap - EXIT
     if [[ ${installer_exit_code} -eq 0 && ${install_complete} -eq 0 ]]; then
         installer_exit_code=1
     fi
     if [[ ${live_update} -eq 1 ]]; then
         if [[ ${installer_exit_code} -ne 0 && ${live_started} -eq 1 && ${live_finalization_started} -eq 0 ]]; then
-            recover_live_update || preserve_stage=1
+            if recover_live_update; then
+                safe_live_retry=1
+            else
+                preserve_stage=1
+            fi
         elif [[ ${installer_exit_code} -ne 0 && ${live_finalization_started} -eq 1 ]]; then
             preserve_stage=1
             echo "hard-pause installer: finalization may have committed; do not restore the old service." >&2
+        elif [[ ${installer_exit_code} -ne 0 && ${live_started} -eq 0 ]]; then
+            safe_live_retry=1
+        fi
+        if [[ ${safe_live_retry} -eq 1 ]] && ! release_retry_claim; then
+            safe_live_retry=0
+            preserve_stage=1
+            echo "hard-pause installer: the safe update claim could not be released." >&2
         fi
         if [[ ( ${live_success} -eq 1 || ${live_started} -eq 0 ) \
             && ${preserve_stage} -eq 0 && -n "${live_stage}" ]]; then
@@ -295,6 +320,11 @@ finish_install() {
         if [[ -n "${migration_stage}" ]]; then
             /bin/rm -rf -- "${migration_stage}"
         fi
+    fi
+    # The privileged update job may release its claim only when this script
+    # either never froze the service or verified that the old service resumed.
+    if [[ ${safe_live_retry} -eq 1 ]]; then
+        exit 75
     fi
     exit "${installer_exit_code}"
 }

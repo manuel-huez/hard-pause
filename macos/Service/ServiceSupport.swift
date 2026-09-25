@@ -624,6 +624,14 @@ final class PrivilegedServiceUpdateTrigger: @unchecked Sendable {
             result=$?
             /usr/bin/printf 'failed:%s\\n' "$result" > "$receipt.tmp"
             /bin/mv -f "$receipt.tmp" "$receipt"
+            # Status 75 means the installer verified that the old service is
+            # still running or resumed safely. Only then may another update try.
+            if [ "$result" -eq 75 ]; then
+                /bin/rm -rf -- "$public_stage"
+                if [ "$(/bin/cat "$marker" 2>/dev/null)" = "$ticket" ]; then
+                    /bin/rm -f -- "$marker"
+                fi
+            fi
             exit "$result"
         fi
         """
