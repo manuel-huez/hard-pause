@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AppleProtectionCard: View {
@@ -15,11 +16,11 @@ struct AppleProtectionCard: View {
             if model.isBusy { ProgressView().controlSize(.small) }
             switch model.snapshot?.phase {
             case .inactive:
-                Button("Set up Screen Time code") { showsSetup = true }
+                Button("Set up Screen Time code") { openSetup() }
             case .pendingSetup:
                 HStack {
                     Button("Verify setup") { Task { await model.verifySetup() } }
-                    Button("Continue setup") { showsSetup = true }
+                    Button("Continue setup") { openSetup() }
                 }
             case .active:
                 Button("Request to end Screen Time protection") { Task { await model.requestEnd() } }
@@ -29,6 +30,19 @@ struct AppleProtectionCard: View {
                 Button("Finish ending Screen Time protection") { Task { await model.finishEnd() } }
             case nil:
                 Button("Check protection") { Task { await model.refresh() } }
+            }
+            if model.snapshot != nil {
+                Button("Check Screen Time code") { Task { await model.inspectSettings() } }
+                    .buttonStyle(.link)
+            }
+            if let inspection = model.inspection {
+                Text(
+                    inspection.hasPasscode
+                        ? "Last check: a Screen Time code is enabled on this Mac. The code was not verified."
+                        : "Last check: no Screen Time code was found on this Mac."
+                )
+                .font(.caption)
+                .foregroundStyle(inspection.hasPasscode ? PauseTheme.muted : .orange)
             }
             if let message = model.message {
                 Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
@@ -54,10 +68,16 @@ struct AppleProtectionCard: View {
     private var statusText: String {
         switch model.snapshot?.phase {
         case .inactive:
+            if model.inspection?.hasPasscode == true {
+                return "Screen Time already has a code. Enter the current code during setup to let Hard Pause replace it."
+            }
             return "Hard Pause keeps a private Screen Time code. Set it up once before starting a Hard Pause plan."
         case .pendingSetup:
             return "Setup is incomplete. The saved code is retained until setup is verified."
         case .active:
+            if model.inspection?.hasPasscode == false {
+                return "The last check found no Screen Time code. Hard Pause's saved protection needs attention."
+            }
             return
                 "The code is saved and verified on this Mac. To remove it, request to end protection and wait \(duration(model.snapshot?.fullUnlockDelay)). All plans must also end."
         case .waitingForFullUnlock:
@@ -66,6 +86,14 @@ struct AppleProtectionCard: View {
             return "The wait has finished. End all active plans, then finish removing the Screen Time code."
         case nil:
             return "Check the saved Screen Time protection status."
+        }
+    }
+
+    private func openSetup() {
+        Task {
+            await model.inspectSettings()
+            NSApp.activate(ignoringOtherApps: true)
+            showsSetup = true
         }
     }
 
@@ -94,6 +122,10 @@ private struct AppleProtectionSetupView: View {
             Text("Hard Pause saves a random code securely before it changes Screen Time. The new code is never shown.")
             Text("This setup uses System Settings on this Mac. Keep it open and use English during setup.")
                 .foregroundStyle(PauseTheme.muted)
+            if model.snapshot?.phase != .pendingSetup, model.inspection?.hasPasscode == true {
+                Text("A Screen Time code is already enabled. Enter its current code below to replace it with Hard Pause's private code.")
+                    .foregroundStyle(PauseTheme.muted)
+            }
             if model.snapshot?.phase != .pendingSetup {
                 Picker("Wait to remove the code", selection: $delay) {
                     ForEach(Array(Set([TimeInterval(3_600), 86_400, 604_800, delay])).sorted(), id: \.self) { value in

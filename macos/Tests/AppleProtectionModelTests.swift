@@ -2,6 +2,24 @@ import XCTest
 
 @MainActor
 final class AppleProtectionModelTests: XCTestCase {
+    func testCheckingExistingCodeDoesNotStartSetupOrClaimOwnership() async {
+        let events = AppleProtectionEventLog()
+        let service = FakeAppleProtectionService(events: events, snapshot: makeSnapshot(phase: .inactive))
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        automation.inspection = AppleScreenTimeInspection(
+            hasPasscode: true,
+            sharesAcrossDevices: false,
+            adultFilterEnabled: false
+        )
+        let model = AppleProtectionModel(service: service, automation: automation)
+
+        await model.inspectSettings()
+
+        XCTAssertEqual(events.values, ["inspect"])
+        XCTAssertEqual(model.inspection, automation.inspection)
+        XCTAssertNil(model.message)
+    }
+
     func testSetupBeginsProtectedOperationBeforeNativeInstallAndVerification() async {
         let events = AppleProtectionEventLog()
         let operationID = UUID()

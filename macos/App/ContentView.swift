@@ -245,6 +245,8 @@ private struct HomePane: View {
                                 showUnlockGuidance: { showUnlockGuidance(block.id) }
                             )
                         }
+                        AppleProtectionCard(model: model.appleProtection)
+                            .settingsPanel()
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

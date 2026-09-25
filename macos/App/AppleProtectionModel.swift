@@ -23,8 +23,8 @@ final class AppleProtectionModel: ObservableObject {
 
     func inspectSettings() async {
         await perform {
+            self.inspection = nil
             self.inspection = try await self.automation.inspect()
-            self.message = "Mac settings checked. iPhone protection still needs a device check."
         }
     }
 
@@ -102,6 +102,7 @@ final class AppleProtectionModel: ObservableObject {
                     && !operation.snapshot.filterWasAlreadyEnabled
             )
             self.snapshot = try await self.service.completeAppleLockdownRelease(operationID: operation.operationID)
+            self.inspection = nil
             self.message = "Hard Pause's Screen Time code was removed. Pre-existing filters were preserved."
         }
     }
@@ -110,6 +111,7 @@ final class AppleProtectionModel: ObservableObject {
         try await automation.verify(
             passcode: operation.passcode, requiresAdultFilter: operation.snapshot.enablesAdultFilter)
         snapshot = try await service.completeAppleLockdownSetup(operationID: operation.operationID)
+        inspection = nil
         message = "The code is secured and verified on this Mac. iPhone protection is not yet verified."
     }
 
