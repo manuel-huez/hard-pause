@@ -176,11 +176,25 @@ final class AppleLockdownEngine: @unchecked Sendable {
     func requestEnd() throws -> AppleLockdownSnapshot {
         try withLock {
             try requireNotFrozen()
+            guard state.configuration?.fullUnlockDelay != 0 else {
+                throw AppleLockdownError.invalidRequest("Screen Time protection ends with its plans.")
+            }
             var candidate = state
             try candidate.requestEnd(at: clock.read())
             try stateStore.save(candidate)
             state = candidate
             return state.snapshot()
+        }
+    }
+
+    func reconcilePlanUse(hasDependentPlans: Bool) throws {
+        try withLock {
+            try requireNotFrozen()
+            var candidate = state
+            try candidate.reconcilePlanUse(hasDependentPlans: hasDependentPlans, at: clock.read())
+            guard candidate != state else { return }
+            try stateStore.save(candidate)
+            state = candidate
         }
     }
 
@@ -238,10 +252,16 @@ final class AppleLockdownEngine: @unchecked Sendable {
 
     func activationReadiness() -> (allowsLockdown: Bool, blocksAnyActivation: Bool) {
         withLock {
-            let allowsLockdown = state.phase == .active || state.phase == .waitingForFullUnlock
+            let endingWithPlans =
+                state.configuration?.fullUnlockDelay == 0
+                && state.phase == .waitingForFullUnlock
+            let allowsLockdown =
+                state.phase == .active
+                || (state.phase == .waitingForFullUnlock && !endingWithPlans)
             let blocksAnyActivation =
                 state.phase == .releaseInProgress
                 || state.phase == .completingRelease
+                || endingWithPlans
             return (allowsLockdown, blocksAnyActivation)
         }
     }

@@ -41,7 +41,7 @@ final class AppleProtectionModel: ObservableObject {
         }
     }
 
-    func setUp(fullUnlockDelay: TimeInterval, enablesAdultFilter: Bool, existingPasscode: String?) async {
+    func setUp(enablesAdultFilter: Bool, existingPasscode: String?) async {
         await perform {
             let baseline = try await self.automation.inspect(
                 checkAdultFilter: enablesAdultFilter, passcode: existingPasscode)
@@ -51,7 +51,7 @@ final class AppleProtectionModel: ObservableObject {
             }
             let operation = try await self.service.beginAppleLockdownSetup(
                 AppleLockdownSetupRequest(
-                    fullUnlockDelay: fullUnlockDelay,
+                    fullUnlockDelay: 0,
                     enablesAdultFilter: enablesAdultFilter,
                     filterWasAlreadyEnabled: baseline.adultFilterEnabled,
                     shareAcrossDevicesVerified: nil
@@ -111,6 +111,7 @@ final class AppleProtectionModel: ObservableObject {
     }
 
     func finishEnd() async {
+        guard !isSyncingWebsites else { return }
         await perform {
             let operation = try await self.service.beginAppleLockdownRelease()
             self.snapshot = operation.snapshot

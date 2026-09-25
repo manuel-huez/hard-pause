@@ -3,7 +3,6 @@ import SwiftUI
 
 struct AppleProtectionCard: View {
     @ObservedObject var model: AppleProtectionModel
-    var proposedDelay: TimeInterval = 86_400
     @State private var showsSetup = false
 
     var body: some View {
@@ -23,11 +22,20 @@ struct AppleProtectionCard: View {
                     Button("Continue setup") { openSetup() }
                 }
             case .active:
-                Button("Request to end Screen Time protection") { Task { await model.requestEnd() } }
+                if model.snapshot?.fullUnlockDelay != 0 {
+                    Button("Request to end Screen Time protection") { Task { await model.requestEnd() } }
+                }
             case .waitingForFullUnlock:
-                Text("Protection stays on during the wait.").font(.caption)
+                if model.snapshot?.fullUnlockDelay != 0 {
+                    Text("Protection stays on during the wait.").font(.caption)
+                }
             case .readyForRelease, .releaseInProgress:
-                Button("Finish ending Screen Time protection") { Task { await model.finishEnd() } }
+                Button(
+                    model.snapshot?.fullUnlockDelay == 0
+                        ? "Retry removing Screen Time protection" : "Finish ending Screen Time protection"
+                ) {
+                    Task { await model.finishEnd() }
+                }
             case nil:
                 Button("Check protection") { Task { await model.refresh() } }
             }
@@ -61,7 +69,7 @@ struct AppleProtectionCard: View {
             }
         }
         .sheet(isPresented: $showsSetup) {
-            AppleProtectionSetupView(model: model, proposedDelay: proposedDelay)
+            AppleProtectionSetupView(model: model)
         }
     }
 
@@ -79,11 +87,21 @@ struct AppleProtectionCard: View {
             if model.codeCheck == false {
                 return "The last check found no Screen Time code. Hard Pause's saved protection needs attention."
             }
+            if model.snapshot?.fullUnlockDelay == 0 {
+                return
+                    "The code stays on while plans that use Screen Time are active. Hard Pause removes it after the last such plan ends."
+            }
             return
                 "The code is saved and verified on this Mac. To remove it, request to end protection and wait \(duration(model.snapshot?.fullUnlockDelay)). All plans must also end."
         case .waitingForFullUnlock:
+            if model.snapshot?.fullUnlockDelay == 0 {
+                return "The plans have ended. Hard Pause is removing Screen Time protection."
+            }
             return "Ready to remove the code in \(duration(model.snapshot?.remainingDelay)). All plans must also end."
         case .readyForRelease, .releaseInProgress:
+            if model.snapshot?.fullUnlockDelay == 0 {
+                return "The plans have ended. Hard Pause is removing Screen Time protection."
+            }
             return "The wait has finished. End all active plans, then finish removing the Screen Time code."
         case nil:
             return "Check the saved Screen Time protection status."
@@ -189,14 +207,8 @@ struct ScreenTimeWebsitesCard: View {
 private struct AppleProtectionSetupView: View {
     @ObservedObject var model: AppleProtectionModel
     @Environment(\.dismiss) private var dismiss
-    @State private var delay: TimeInterval
     @State private var enableAdultFilter = true
     @State private var currentCode = ""
-
-    init(model: AppleProtectionModel, proposedDelay: TimeInterval) {
-        self.model = model
-        _delay = State(initialValue: proposedDelay)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -212,17 +224,11 @@ private struct AppleProtectionSetupView: View {
                 .foregroundStyle(PauseTheme.muted)
             }
             if model.snapshot?.phase != .pendingSetup {
-                Picker("Wait to remove the code", selection: $delay) {
-                    ForEach(Array(Set([TimeInterval(3_600), 86_400, 604_800, delay])).sorted(), id: \.self) { value in
-                        Text(Duration.seconds(value).formatted(.units(allowed: [.days, .hours], width: .wide))).tag(
-                            value)
-                    }
-                }
                 Toggle("Use Apple's adult website filter", isOn: $enableAdultFilter)
                 SecureField("Current Screen Time code, if set", text: $currentCode)
                     .textFieldStyle(.roundedBorder)
                 Text(
-                    "Requesting to end a Hard Pause plan starts this wait too. The code stays until all plans have ended. Existing filters are kept."
+                    "The code stays on while plans that use Screen Time are active. Hard Pause removes it after the last such plan ends. Existing filters are kept."
                 )
                 .font(.caption).foregroundStyle(PauseTheme.muted)
             } else {
@@ -250,7 +256,7 @@ private struct AppleProtectionSetupView: View {
                             await model.retrySetup(existingPasscode: oldCode)
                         } else {
                             await model.setUp(
-                                fullUnlockDelay: delay, enablesAdultFilter: enableAdultFilter, existingPasscode: oldCode
+                                enablesAdultFilter: enableAdultFilter, existingPasscode: oldCode
                             )
                         }
                         if model.snapshot?.phase == .active { dismiss() }

@@ -139,7 +139,7 @@ final class AppModelTests: XCTestCase {
             XCTAssertEqual(service.activationCalls, 0, "phase=\(phase)")
             XCTAssertEqual(
                 model.errorMessage,
-                "Set up the Screen Time code before starting a Hard Pause plan. Open Screen Time protection in Settings or in the plan editor."
+                "Set up the Screen Time code before starting a Hard Pause plan. Open Screen Time protection in Settings."
             )
         }
     }

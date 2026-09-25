@@ -134,6 +134,7 @@ final class ProtectedServiceIPCTests: XCTestCase {
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "4"))
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "5"))
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "6"))
+        XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "9"))
         XCTAssertTrue(
             ProtectedServiceContract.supportsSafeUpdate(
                 from: ProtectedServiceContract.serviceVersion

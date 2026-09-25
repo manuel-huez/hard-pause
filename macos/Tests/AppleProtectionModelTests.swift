@@ -33,13 +33,14 @@ final class AppleProtectionModelTests: XCTestCase {
         let automation = FakeAppleScreenTimeAutomation(events: events)
         let model = AppleProtectionModel(service: service, automation: automation)
 
-        await model.setUp(fullUnlockDelay: 86_400, enablesAdultFilter: true, existingPasscode: nil)
+        await model.setUp(enablesAdultFilter: true, existingPasscode: nil)
 
         XCTAssertEqual(
             events.values,
             ["inspect", "begin setup", "install", "verify", "complete setup"]
         )
         XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
+        XCTAssertEqual(service.setupDelay, 0)
         XCTAssertEqual(model.snapshot, active)
         XCTAssertEqual(
             model.message,
@@ -61,7 +62,7 @@ final class AppleProtectionModelTests: XCTestCase {
         automation.verifyError = AppleScreenTimeAutomationError.verificationRequired
         let model = AppleProtectionModel(service: service, automation: automation)
 
-        await model.setUp(fullUnlockDelay: 86_400, enablesAdultFilter: false, existingPasscode: nil)
+        await model.setUp(enablesAdultFilter: false, existingPasscode: nil)
 
         XCTAssertEqual(
             events.values,
@@ -87,7 +88,7 @@ final class AppleProtectionModelTests: XCTestCase {
         automation.installError = AppleScreenTimeAutomationError.unsupportedScreen
         let model = AppleProtectionModel(service: service, automation: automation)
 
-        await model.setUp(fullUnlockDelay: 86_400, enablesAdultFilter: false, existingPasscode: nil)
+        await model.setUp(enablesAdultFilter: false, existingPasscode: nil)
         XCTAssertEqual(model.snapshot, pending)
         XCTAssertTrue(service.completedSetupOperationIDs.isEmpty)
 
@@ -341,6 +342,7 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
     private(set) var completedSetupOperationIDs: [UUID] = []
     private(set) var completedReleaseOperationIDs: [UUID] = []
     private(set) var requestEndCalls = 0
+    private(set) var setupDelay: TimeInterval?
 
     init(
         events: AppleProtectionEventLog,
@@ -369,6 +371,7 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
         _ request: AppleLockdownSetupRequest
     ) async throws -> AppleLockdownCredentialOperation {
         events.append("begin setup")
+        setupDelay = request.fullUnlockDelay
         let operation = try required(setupOperation)
         snapshot = operation.snapshot
         return operation

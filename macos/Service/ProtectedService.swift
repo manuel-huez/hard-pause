@@ -25,7 +25,14 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
     }
 
     func list(withReply reply: @escaping (NSData) -> Void) {
-        reply(encoded(.success(coordinator.perform { engine.list() })))
+        let snapshot = coordinator.perform {
+            let snapshot = engine.list()
+            do { try reconcileApplePlanUse(snapshot) } catch {
+                NSLog("Hard Pause Screen Time plan reconciliation failed: %@", error.localizedDescription)
+            }
+            return snapshot
+        }
+        reply(encoded(.success(snapshot)))
     }
 
     func create(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
@@ -53,10 +60,12 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
                 guard !readiness.blocksAnyActivation else {
                     throw AppleLockdownError.releaseInProgress
                 }
-                return try engine.activate(
+                let snapshot = try engine.activate(
                     request,
                     appleLockdownActive: readiness.allowsLockdown
                 )
+                try reconcileApplePlanUse(snapshot)
+                return snapshot
             }
         }
     }
@@ -232,7 +241,11 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         withReply reply: @escaping (NSData) -> Void
     ) {
         handleApple(request, as: AppleLockdownOperationRequest.self, reply: reply) { request in
-            .success(try appleLockdown.completeSetup(request))
+            try coordinator.perform {
+                _ = try appleLockdown.completeSetup(request)
+                try reconcileApplePlanUse(engine.list())
+                return .success(try appleLockdown.status())
+            }
         }
     }
 
@@ -257,8 +270,11 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         do {
             let credential = try coordinator.perform {
                 let snapshot = engine.list()
+                try reconcileApplePlanUse(snapshot)
+                let appleStatus = try appleLockdown.status()
                 return try appleLockdown.beginRelease(
-                    normalProtectionIsInactiveAndHealthy: Self.isSafeForAppleRelease(snapshot)
+                    normalProtectionIsInactiveAndHealthy: Self.isSafeForAppleRelease(
+                        snapshot, appleStatus: appleStatus)
                 )
             }
             reply(encoded(.success(credential)))
@@ -403,13 +419,29 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         )
     }
 
-    private static func isSafeForAppleRelease(_ snapshot: ProtectedServiceSnapshot) -> Bool {
-        snapshot.blocks.allSatisfy {
-            if case .inactive = $0.phase { return true }
-            return false
+    private func reconcileApplePlanUse(_ snapshot: ProtectedServiceSnapshot) throws {
+        let status = try appleLockdown.status()
+        guard status.fullUnlockDelay == 0 else { return }
+        try appleLockdown.reconcilePlanUse(
+            hasDependentPlans: snapshot.blocks.contains {
+                AppleWebsiteSyncTargets.usesScreenTime($0, websitesEnabled: status.enablesAdultFilter)
+            })
+    }
+
+    private static func isSafeForAppleRelease(
+        _ snapshot: ProtectedServiceSnapshot, appleStatus: AppleLockdownSnapshot
+    ) -> Bool {
+        let noDependentPlans: Bool
+        if appleStatus.fullUnlockDelay == 0 {
+            noDependentPlans = !snapshot.blocks.contains {
+                AppleWebsiteSyncTargets.usesScreenTime($0, websitesEnabled: appleStatus.enablesAdultFilter)
+            }
+        } else {
+            noDependentPlans =
+                snapshot.blocks.allSatisfy { $0.phase == .inactive }
+                && snapshot.effectiveRestrictions.contributingBlockIDs.isEmpty
         }
-            && snapshot.effectiveRestrictions.contributingBlockIDs.isEmpty
-            && snapshot.protection.isEnforcing
+        return noDependentPlans && snapshot.protection.isEnforcing
             && snapshot.protection.lastAppliedAt != nil
             && snapshot.protection.issues.isEmpty
     }

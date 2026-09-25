@@ -50,6 +50,10 @@ final class AppModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var secondsSinceIdleRefresh = 0
     private var lastWebsiteTargets: AppleWebsiteSyncTargets?
+    private var websiteSyncPending = false
+    private var isReconcilingAppleProtection = false
+    private var lastAutomaticAppleRelease = Date.distantPast
+    private var automaticAppleReleaseRetryInterval: TimeInterval = 30
     private var browserActivity: NSObjectProtocol?
     private(set) var keepsBrowserProtectionRunning = false
     private var displayAnchor = SystemClock.read().continuousTime
@@ -235,7 +239,7 @@ final class AppModel: ObservableObject {
         await appleProtection.refresh()
         guard appleProtection.snapshot?.phase == .active else {
             errorMessage =
-                "Set up the Screen Time code before starting a Hard Pause plan. Open Screen Time protection in Settings or in the plan editor."
+                "Set up the Screen Time code before starting a Hard Pause plan. Open Screen Time protection in Settings."
             return false
         }
         return true
@@ -266,12 +270,14 @@ final class AppModel: ObservableObject {
     func requestEnd(for block: ProtectedBlockSnapshot) async -> Bool {
         let requested = await mutate { try await service.requestEnd(id: block.id) }
         if requested, !block.draft.protectionMode.allowsBreaks {
-            // Start both waits together. Release still requires every plan to be inactive.
-            await appleProtection.requestEnd()
-            if let message = appleProtection.message,
-                appleProtection.snapshot?.phase == .active || appleProtection.snapshot == nil
-            {
-                errorMessage = "The plan end was requested. The Screen Time wait could not start: \(message)"
+            await appleProtection.refresh()
+            if appleProtection.snapshot?.fullUnlockDelay != 0 {
+                await appleProtection.requestEnd()
+                if let message = appleProtection.message,
+                    appleProtection.snapshot?.phase == .active || appleProtection.snapshot == nil
+                {
+                    errorMessage = "The plan end was requested. The Screen Time wait could not start: \(message)"
+                }
             }
         }
         return requested
@@ -600,22 +606,45 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func reconcileAppleProtection() async {
+        guard !isReconcilingAppleProtection, !appleProtection.isBusy,
+            !appleProtection.isSyncingWebsites
+        else { return }
+        isReconcilingAppleProtection = true
+        defer { isReconcilingAppleProtection = false }
+        await appleProtection.refresh()
+        guard let status = appleProtection.snapshot else { return }
+        if status.fullUnlockDelay == 0,
+            status.phase == .readyForRelease || status.phase == .releaseInProgress
+        {
+            guard Date().timeIntervalSince(lastAutomaticAppleRelease) >= automaticAppleReleaseRetryInterval
+            else { return }
+            lastAutomaticAppleRelease = Date()
+            await appleProtection.finishEnd()
+            automaticAppleReleaseRetryInterval =
+                appleProtection.snapshot?.phase == .inactive
+                ? 30 : min(automaticAppleReleaseRetryInterval * 2, 900)
+            return
+        }
+        guard websiteSyncPending else { return }
+        websiteSyncPending = false
+        if [.active, .waitingForFullUnlock, .readyForRelease].contains(status.phase),
+            status.enablesAdultFilter,
+            let targets = lastWebsiteTargets,
+            !targets.restricted.isEmpty || !targets.allowed.isEmpty
+                || status.mirroredDomains?.isEmpty == false
+                || status.mirroredAllowedDomains?.isEmpty == false
+        {
+            await appleProtection.syncWebsites()
+        }
+    }
+
     private func accept(_ nextSnapshot: ProtectedServiceSnapshot) {
         let websiteTargets = AppleWebsiteSyncTargets(blocks: nextSnapshot.blocks)
-        if lastWebsiteTargets != websiteTargets {
-            lastWebsiteTargets = websiteTargets
-            Task { @MainActor in
-                await appleProtection.refresh()
-                if let status = appleProtection.snapshot,
-                    [.active, .waitingForFullUnlock, .readyForRelease].contains(status.phase),
-                    status.enablesAdultFilter,
-                    !websiteTargets.restricted.isEmpty || !websiteTargets.allowed.isEmpty
-                        || status.mirroredDomains?.isEmpty == false
-                        || status.mirroredAllowedDomains?.isEmpty == false
-                {
-                    await appleProtection.syncWebsites()
-                }
-            }
+        if lastWebsiteTargets != websiteTargets { websiteSyncPending = true }
+        lastWebsiteTargets = websiteTargets
+        Task { @MainActor in
+            await reconcileAppleProtection()
         }
         snapshot = nextSnapshot
         keepsBrowserProtectionRunning = nextSnapshot.blocks.contains {

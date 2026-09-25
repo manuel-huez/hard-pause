@@ -48,6 +48,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
     private(set) var requestedAtWallTime: Date?
     private(set) var mirroredDomains: [String]?
     private(set) var mirroredAllowedDomains: [String]?
+    private(set) var hasUsedPlan: Bool?
 
     init() {
         schemaVersion = Self.currentSchemaVersion
@@ -62,6 +63,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         requestedAtWallTime = nil
         mirroredDomains = nil
         mirroredAllowedDomains = nil
+        hasUsedPlan = false
     }
 
     mutating func beginSetup(
@@ -81,6 +83,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         self.credentialID = credentialID
         self.operationID = operationID
         resetClock()
+        hasUsedPlan = false
     }
 
     mutating func markSetupCredentialReady() throws {
@@ -112,6 +115,15 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
             throw AppleLockdownError.releaseAlreadyRequested
         default:
             throw AppleLockdownError.protectionNotActive
+        }
+    }
+
+    mutating func reconcilePlanUse(hasDependentPlans: Bool, at reading: ClockReading) throws {
+        guard configuration?.fullUnlockDelay == 0, phase == .active else { return }
+        if hasDependentPlans {
+            hasUsedPlan = true
+        } else if hasUsedPlan == true {
+            try requestEnd(at: reading)
         }
     }
 

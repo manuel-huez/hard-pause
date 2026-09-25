@@ -1330,11 +1330,6 @@ private struct BlockEditorView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
 
-            if !protectionMode.allowsBreaks && !isReadOnly {
-                AppleProtectionCard(model: model.appleProtection, proposedDelay: fullUnlockDelay)
-                    .settingsPanel()
-            }
-
             if !applications.isEmpty {
                 Label(
                     "Selected apps close when the plan starts. Save your work first.",

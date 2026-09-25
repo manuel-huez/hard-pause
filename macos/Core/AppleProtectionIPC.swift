@@ -19,6 +19,7 @@ enum AppleLockdownPhase: String, Codable, Equatable, Sendable {
 }
 
 struct AppleLockdownSetupRequest: Codable, Equatable, Sendable {
+    // Zero links removal to the last Screen Time plan; positive values preserve older setup waits.
     let fullUnlockDelay: TimeInterval
     let enablesAdultFilter: Bool
     let filterWasAlreadyEnabled: Bool
@@ -26,7 +27,7 @@ struct AppleLockdownSetupRequest: Codable, Equatable, Sendable {
 
     func validate() throws {
         guard fullUnlockDelay.isFinite,
-            fullUnlockDelay >= ProtectedBlockLimits.minimumDelay,
+            fullUnlockDelay == 0 || fullUnlockDelay >= ProtectedBlockLimits.minimumDelay,
             fullUnlockDelay <= ProtectedBlockLimits.maximumDelay
         else {
             throw AppleLockdownError.invalidRequest(
@@ -126,6 +127,15 @@ struct AppleWebsiteSyncTargets: Equatable, Sendable {
     let restricted: [String]
     let allowed: [String]
 
+    static func usesScreenTime(_ block: ProtectedBlockSnapshot, websitesEnabled: Bool) -> Bool {
+        guard block.phase != .inactive else { return false }
+        if !block.draft.protectionMode.allowsBreaks { return true }
+        let rules = block.draft.rules
+        return websitesEnabled
+            && (rules.blocksAdultWebsites || !rules.allBlockedDomains.isEmpty
+                || !rules.blockedURLPatterns.isEmpty)
+    }
+
     init(blocks: [ProtectedBlockSnapshot]) {
         var restricted = Set<String>()
         var allowed = Set<String>()
@@ -194,7 +204,7 @@ enum AppleLockdownError: LocalizedError, Equatable {
         case .releaseAlreadyRequested: return "Screen Time protection release is already in progress."
         case .releaseNotReady: return "The Screen Time protection full unlock delay has not finished."
         case .normalProtectionActiveOrUnhealthy:
-            return "All other protection must be inactive and healthy before Screen Time protection can end."
+            return "A plan still uses Screen Time or protection is not healthy."
         case .releaseInProgress:
             return "Screen Time protection release must finish before protection can change."
         case .credentialUnavailable:
