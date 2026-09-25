@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 final class AppleProtectionModel: ObservableObject {
     @Published private(set) var snapshot: AppleLockdownSnapshot?
-    @Published private(set) var inspection: AppleScreenTimeInspection?
+    @Published private(set) var codeCheck: Bool?
     @Published private(set) var isBusy = false
     @Published private(set) var message: String?
     private let service: any ProtectedServiceServing
@@ -23,15 +23,15 @@ final class AppleProtectionModel: ObservableObject {
 
     func inspectSettings() async {
         await perform {
-            self.inspection = nil
-            self.inspection = try await self.automation.inspect()
+            self.codeCheck = nil
+            self.codeCheck = try await self.automation.inspectCode()
         }
     }
 
     func setUp(fullUnlockDelay: TimeInterval, enablesAdultFilter: Bool, existingPasscode: String?) async {
         await perform {
             let baseline = try await self.automation.inspect()
-            self.inspection = baseline
+            self.codeCheck = baseline.hasPasscode
             if baseline.hasPasscode, existingPasscode?.isEmpty != false {
                 throw AppleScreenTimeAutomationError.existingPasscodeRequired
             }
@@ -102,7 +102,7 @@ final class AppleProtectionModel: ObservableObject {
                     && !operation.snapshot.filterWasAlreadyEnabled
             )
             self.snapshot = try await self.service.completeAppleLockdownRelease(operationID: operation.operationID)
-            self.inspection = nil
+            self.codeCheck = nil
             self.message = "Hard Pause's Screen Time code was removed. Pre-existing filters were preserved."
         }
     }
@@ -111,7 +111,7 @@ final class AppleProtectionModel: ObservableObject {
         try await automation.verify(
             passcode: operation.passcode, requiresAdultFilter: operation.snapshot.enablesAdultFilter)
         snapshot = try await service.completeAppleLockdownSetup(operationID: operation.operationID)
-        inspection = nil
+        codeCheck = nil
         message = "The code is secured and verified on this Mac. iPhone protection is not yet verified."
     }
 

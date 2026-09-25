@@ -35,14 +35,14 @@ struct AppleProtectionCard: View {
                 Button("Check Screen Time code") { Task { await model.inspectSettings() } }
                     .buttonStyle(.link)
             }
-            if let inspection = model.inspection {
+            if let codeCheck = model.codeCheck {
                 Text(
-                    inspection.hasPasscode
+                    codeCheck
                         ? "Last check: a Screen Time code is enabled on this Mac. The code was not verified."
                         : "Last check: no Screen Time code was found on this Mac."
                 )
                 .font(.caption)
-                .foregroundStyle(inspection.hasPasscode ? PauseTheme.muted : .orange)
+                .foregroundStyle(codeCheck ? PauseTheme.muted : .orange)
             }
             if let message = model.message {
                 Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
@@ -68,15 +68,15 @@ struct AppleProtectionCard: View {
     private var statusText: String {
         switch model.snapshot?.phase {
         case .inactive:
-            if model.inspection?.hasPasscode == true {
+            if model.codeCheck == true {
                 return
                     "Screen Time already has a code. Enter the current code during setup to let Hard Pause replace it."
             }
-            return "Hard Pause keeps a private Screen Time code. Set it up once before starting a Hard Pause plan."
+            return "Hard Pause keeps a private Screen Time code. You can set it up before or during a Hard Pause plan."
         case .pendingSetup:
             return "Setup is incomplete. The saved code is retained until setup is verified."
         case .active:
-            if model.inspection?.hasPasscode == false {
+            if model.codeCheck == false {
                 return "The last check found no Screen Time code. Hard Pause's saved protection needs attention."
             }
             return
@@ -123,7 +123,7 @@ private struct AppleProtectionSetupView: View {
             Text("Hard Pause saves a random code securely before it changes Screen Time. The new code is never shown.")
             Text("This setup uses System Settings on this Mac. Keep it open and use English during setup.")
                 .foregroundStyle(PauseTheme.muted)
-            if model.snapshot?.phase != .pendingSetup, model.inspection?.hasPasscode == true {
+            if model.snapshot?.phase != .pendingSetup, model.codeCheck == true {
                 Text(
                     "A Screen Time code is already enabled. Enter its current code below to replace it with Hard Pause's private code."
                 )

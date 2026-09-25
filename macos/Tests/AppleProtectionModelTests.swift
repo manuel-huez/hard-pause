@@ -15,8 +15,8 @@ final class AppleProtectionModelTests: XCTestCase {
 
         await model.inspectSettings()
 
-        XCTAssertEqual(events.values, ["inspect"])
-        XCTAssertEqual(model.inspection, automation.inspection)
+        XCTAssertEqual(events.values, ["inspect code"])
+        XCTAssertEqual(model.codeCheck, true)
         XCTAssertNil(model.message)
     }
 
@@ -245,6 +245,11 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
 
     init(events: AppleProtectionEventLog) {
         self.events = events
+    }
+
+    func inspectCode() async throws -> Bool {
+        events.append("inspect code")
+        return inspection.hasPasscode
     }
 
     func inspect() async throws -> AppleScreenTimeInspection {

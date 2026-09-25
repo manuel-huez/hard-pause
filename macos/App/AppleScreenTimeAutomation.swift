@@ -21,7 +21,7 @@ enum AppleScreenTimeAutomationError: LocalizedError {
             return "Allow Hard Pause in System Settings → Privacy & Security → Accessibility, then try again."
         case .unsupportedScreen:
             return
-                "Screen Time could not be changed safely. Keep System Settings open and use English for this setup. Your saved code has been retained."
+                "Screen Time controls were not recognized. Keep System Settings open and try again. Any saved code is retained."
         case .existingPasscodeRequired:
             return "Enter the current Screen Time code to replace it. Hard Pause will not remove an unknown code."
         case .recoveryRequired:
@@ -58,6 +58,7 @@ enum ScreenTimeCodeStage: Equatable {
 /// This adapter deliberately stops on unknown UI instead of guessing coordinates.
 @MainActor
 protocol AppleScreenTimeAutomating {
+    func inspectCode() async throws -> Bool
     func inspect() async throws -> AppleScreenTimeInspection
     func install(passcode: String, replacing existingPasscode: String?, enableAdultFilter: Bool) async throws
     func verify(passcode: String, requiresAdultFilter: Bool) async throws
@@ -67,6 +68,11 @@ protocol AppleScreenTimeAutomating {
 @MainActor
 final class AppleScreenTimeAutomation: AppleScreenTimeAutomating {
     private let worker = ScreenTimeAccessibilityWorker()
+
+    func inspectCode() async throws -> Bool {
+        try await openScreenTime()
+        return try await worker.inspectCode()
+    }
 
     func inspect() async throws -> AppleScreenTimeInspection {
         try await openScreenTime()
@@ -111,11 +117,16 @@ private actor ScreenTimeAccessibilityWorker {
         }
     }
 
+    func inspectCode() async throws -> Bool {
+        let root = try await screenTimeRoot()
+        return try boolValue(passcodeSwitch(in: root))
+    }
+
     func inspect() async throws -> AppleScreenTimeInspection {
-        let root = try application
-        let lock = try unique(root, matching: isPasscodeSwitch)
+        let root = try await screenTimeRoot()
+        let lock = try passcodeSwitch(in: root)
         let hasPasscode = try boolValue(lock)
-        let sharing = try unique(root) { text($0, kAXIdentifierAttribute) == "Share across devices" }
+        let sharing = try screenTimeSwitches(in: root).sharing
         let shares = try boolValue(sharing)
         guard try await openWebSettings() else {
             try await goBack()
@@ -152,7 +163,7 @@ private actor ScreenTimeAccessibilityWorker {
             }
             try await closeWebSettings()
         }
-        let lock = try unique(try application, matching: isPasscodeSwitch)
+        let lock = try passcodeSwitch(in: application)
         if try boolValue(lock) {
             guard let old, validCode(old) else { throw AppleScreenTimeAutomationError.existingPasscodeRequired }
             try await openChangePasscode()
@@ -177,7 +188,7 @@ private actor ScreenTimeAccessibilityWorker {
         // Authentication succeeded. Never enter another code during verification.
         try press(try unique(try application) { role($0) == kAXButtonRole && text($0, kAXTitleAttribute) == "Cancel" })
         try await settle()
-        guard try boolValue(unique(try application, matching: isPasscodeSwitch)) else {
+        guard try boolValue(passcodeSwitch(in: application)) else {
             throw AppleScreenTimeAutomationError.verificationRequired
         }
     }
@@ -200,13 +211,13 @@ private actor ScreenTimeAccessibilityWorker {
                 try await goBack()
             }
         }
-        let lock = try unique(try application, matching: isPasscodeSwitch)
+        let lock = try passcodeSwitch(in: application)
         if try boolValue(lock) {
             try press(lock)
             try await settle()
             try await enterCode(passcode, stage: .current)
         }
-        guard try !boolValue(unique(try application, matching: isPasscodeSwitch)) else {
+        guard try !boolValue(passcodeSwitch(in: application)) else {
             throw AppleScreenTimeAutomationError.verificationRequired
         }
     }
@@ -317,8 +328,20 @@ private actor ScreenTimeAccessibilityWorker {
     }
 
     private func goBack() async throws {
-        try press(try unique(try application) { text($0, kAXIdentifierAttribute) == "go back" })
+        let toolbar = try unique(try application) { role($0) == kAXToolbarRole }
+        let buttons = nodes(toolbar).filter { [kAXButtonRole, kAXMenuButtonRole].contains(role($0)) }
+        guard buttons.count == 2 else { throw AppleScreenTimeAutomationError.unsupportedScreen }
+        try press(buttons[0])
         try await settle()
+    }
+
+    private func screenTimeRoot() async throws -> AXUIElement {
+        let root = try application
+        if (try? passcodeSwitch(in: root)) != nil { return root }
+        try await goBack()
+        let previous = try application
+        _ = try passcodeSwitch(in: previous)
+        return previous
     }
 
     private func webFilter() throws -> AXUIElement {
@@ -342,9 +365,17 @@ private actor ScreenTimeAccessibilityWorker {
         }
     }
 
-    private func isPasscodeSwitch(_ node: AXUIElement) -> Bool {
-        text(node, kAXDescriptionAttribute) == "Use a passcode to secure Screen Time settings."
-            || text(node, kAXTitleAttribute) == "Lock Screen Time Settings"
+    private func passcodeSwitch(in root: AXUIElement) throws -> AXUIElement {
+        try screenTimeSwitches(in: root).passcode
+    }
+
+    private func screenTimeSwitches(in root: AXUIElement) throws -> (sharing: AXUIElement, passcode: AXUIElement) {
+        let switches = nodes(root).filter { role($0) == kAXCheckBoxRole }
+        guard switches.count == 2,
+            let sharing = switches.first(where: { !text($0, kAXIdentifierAttribute).isEmpty }),
+            let passcode = switches.first(where: { text($0, kAXIdentifierAttribute).isEmpty })
+        else { throw AppleScreenTimeAutomationError.unsupportedScreen }
+        return (sharing, passcode)
     }
 
     private func validCode(_ value: String) -> Bool {
