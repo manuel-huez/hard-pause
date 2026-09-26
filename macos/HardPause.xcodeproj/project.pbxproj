@@ -52,6 +52,7 @@
 		26B9C126DA5554373BE953EC /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6A2101E0583BFA72A50A02 /* ProtectionMode.swift */; };
 		271780DEEA027871BD257E4A /* ServiceSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07578D74BB9C3F153392F59 /* ServiceSupport.swift */; };
 		275ACB6B0CC8AC194298A0C0 /* ProtectionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6A2101E0583BFA72A50A02 /* ProtectionMode.swift */; };
+		27CDDAAA19D68DFC98721EA2 /* ReleaseVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8606711216276AACF27F7C7C /* ReleaseVersion.swift */; };
 		29A2701C829082C808CE546A /* mascot in Resources */ = {isa = PBXBuildFile; fileRef = C6AC102D0805B788A197E82E /* mascot */; };
 		2B14C2467D18DFEC601DE3CE /* BrowserURLMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B8D85DE3CBFE4781E9984C /* BrowserURLMatcher.swift */; };
 		2B757ECCC300D44152E66279 /* AppleProtectionIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2CF63A97D4B104E70AC07D /* AppleProtectionIPC.swift */; };
@@ -75,6 +76,7 @@
 		3B15C2A3B2399452C373775F /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
 		3C1FAD29773DC572C153CBE9 /* AppleProtectionIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2CF63A97D4B104E70AC07D /* AppleProtectionIPC.swift */; };
 		40B01687BD87C09E359882A9 /* AGENTS.md in Resources */ = {isa = PBXBuildFile; fileRef = 8D1F4228069182E29D66DE68 /* AGENTS.md */; };
+		41CC4A7184E0F9034732D183 /* ReleaseVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8606711216276AACF27F7C7C /* ReleaseVersion.swift */; };
 		436AC669BD642FB70346F7C3 /* AppleProtectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77328E3BB0BF25A6443E2AA /* AppleProtectionState.swift */; };
 		439C65877EC9069DCBE0B070 /* ProtectedPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14FDC607A53118F0B5719497 /* ProtectedPolicy.swift */; };
 		4498954D0B4C85B7117832BF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1A97B9164197B452C7956E60 /* PrivacyInfo.xcprivacy */; };
@@ -116,6 +118,7 @@
 		7675290B5655F25D6907EBB7 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E4F0A168A1D0B45455880B /* AppUpdater.swift */; };
 		76A57C121DBF6A631B33474E /* PauseCoreTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19F909DC65DCD6164B95EA7 /* PauseCoreTransaction.swift */; };
 		773F95229B0EEB8C3EEF6705 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 87A1A4469F35AC9F07AACBE4 /* Sparkle */; };
+		794662E6C2C06B2A21884BE3 /* ReleaseVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8606711216276AACF27F7C7C /* ReleaseVersion.swift */; };
 		7F2BD52D61021B449DC70C4C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 721BDA26F3C01BE8A4471DAD /* ContentView.swift */; };
 		7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
 		82C01C16A843065A7D058C62 /* BrowserWorkerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D77585D62431352E3D82CB9 /* BrowserWorkerClient.swift */; };
@@ -130,6 +133,7 @@
 		8C11C12C6A9F1D2DC708E755 /* ProtectedStateStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1935757EE38CB123CD1F14F4 /* ProtectedStateStoreTests.swift */; };
 		8DC56883D6AECA924F62B331 /* PortableDomainList.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10D5CEB6575B30222806E38 /* PortableDomainList.swift */; };
 		8DE8DEE4070975ECCCF1B39A /* AppleProtectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77328E3BB0BF25A6443E2AA /* AppleProtectionState.swift */; };
+		8F02C37D3C6AE64F8FCA8F39 /* ReleaseVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8606711216276AACF27F7C7C /* ReleaseVersion.swift */; };
 		90A3D91ABD5D46FB387D7A11 /* ProtectedServiceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67932AFAB8002B6016394A3 /* ProtectedServiceEngine.swift */; };
 		90F1D3771E9C9709F68008DE /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
 		91DA6C33364E5C1BDA68D462 /* ProtectedServiceEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F361845254DBC195DE507DD /* ProtectedServiceEngineTests.swift */; };
@@ -190,6 +194,7 @@
 		DBAD0BC4037CA3685BDE07D8 /* BrowserURLMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7C40DDAB04920654FA3EBE /* BrowserURLMatcherTests.swift */; };
 		DC2D4C8EC4D1A9621E909126 /* BrowserWorkerIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C4BC9F6EB1B1ACF1F7C3164 /* BrowserWorkerIPC.swift */; };
 		DCEEFC9195E7D2637FEF8036 /* ProtectedServiceIPCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 206EDC61E9BEECAC4CF570BC /* ProtectedServiceIPCTests.swift */; };
+		DCFDC6C024E8E892B65DF2E4 /* ReleaseVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8606711216276AACF27F7C7C /* ReleaseVersion.swift */; };
 		DD3C2827DA628740EEF98141 /* FirefoxBrowserProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438D47E49D9C1B002570AA49 /* FirefoxBrowserProtection.swift */; };
 		DEFA9248ACF39E99BD073A26 /* BrowserWorkerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D77585D62431352E3D82CB9 /* BrowserWorkerClient.swift */; };
 		DFB51C218922601DE7EB862A /* PauseCoreLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF14D587F9BBA49ED56A2053 /* PauseCoreLifecycle.swift */; };
@@ -200,6 +205,7 @@
 		E56783271F94690FEFF5137B /* ProcessCommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A04B7606D7292D75A03DFBB /* ProcessCommandRunnerTests.swift */; };
 		E5C21C0720531301FC5AF505 /* PauseCoreEncryptedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEA01237E7A7AC6B0D0A755 /* PauseCoreEncryptedState.swift */; };
 		E7EC975BD5528A82FC4145A8 /* WebsiteRulePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E805518C3528C2FBF4512415 /* WebsiteRulePresentation.swift */; };
+		E8A4A7A05781B8C05A53A659 /* ReleaseVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8606711216276AACF27F7C7C /* ReleaseVersion.swift */; };
 		EA4210B52A7C9D3C21917A94 /* AppleProtectionIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2CF63A97D4B104E70AC07D /* AppleProtectionIPC.swift */; };
 		EA45FAEF4A9A27E31A440264 /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
 		EBC9AC6FB284AA7E40996666 /* RustCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABD40901F5B581378F144C60 /* RustCoreBridge.swift */; };
@@ -296,6 +302,7 @@
 		76FE540206093F3051809B5B /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		7C6A2101E0583BFA72A50A02 /* ProtectionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectionMode.swift; sourceTree = "<group>"; };
 		7F7C40DDAB04920654FA3EBE /* BrowserURLMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserURLMatcherTests.swift; sourceTree = "<group>"; };
+		8606711216276AACF27F7C7C /* ReleaseVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseVersion.swift; sourceTree = "<group>"; };
 		8A04B7606D7292D75A03DFBB /* ProcessCommandRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessCommandRunnerTests.swift; sourceTree = "<group>"; };
 		8BEA01237E7A7AC6B0D0A755 /* PauseCoreEncryptedState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreEncryptedState.swift; sourceTree = "<group>"; };
 		8D1F4228069182E29D66DE68 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
@@ -459,6 +466,7 @@
 				14FDC607A53118F0B5719497 /* ProtectedPolicy.swift */,
 				14A1729B8F0309D32FF35968 /* ProtectedRules.swift */,
 				C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */,
+				8606711216276AACF27F7C7C /* ReleaseVersion.swift */,
 				E805518C3528C2FBF4512415 /* WebsiteRulePresentation.swift */,
 			);
 			path = Core;
@@ -1039,6 +1047,7 @@
 				F35A575BFF0629B94822E263 /* ProtectedRules.swift in Sources */,
 				35CC8F9FC1F4100F07F8DE23 /* ProtectedServiceIPC.swift in Sources */,
 				26B9C126DA5554373BE953EC /* ProtectionMode.swift in Sources */,
+				27CDDAAA19D68DFC98721EA2 /* ReleaseVersion.swift in Sources */,
 				97B28ECB8C796BA74DAA93C3 /* RustCoreBridge.swift in Sources */,
 				F4C0AD1427FAC3F45AF52979 /* WebsiteRulePresentation.swift in Sources */,
 				115568E2B919E0425F4623DC /* main.swift in Sources */,
@@ -1083,6 +1092,7 @@
 				4E6E273A08961F056E5C24B6 /* ProtectedStateStore.swift in Sources */,
 				8C11C12C6A9F1D2DC708E755 /* ProtectedStateStoreTests.swift in Sources */,
 				275ACB6B0CC8AC194298A0C0 /* ProtectionMode.swift in Sources */,
+				E8A4A7A05781B8C05A53A659 /* ReleaseVersion.swift in Sources */,
 				EBC9AC6FB284AA7E40996666 /* RustCoreBridge.swift in Sources */,
 				02DD56773059EE71109D5379 /* ServiceSupport.swift in Sources */,
 				AE197935A8ECD1E71A091AE0 /* ServiceTestSupport.swift in Sources */,
@@ -1129,6 +1139,7 @@
 				1D1BAA8F84E08006B10CF6F4 /* ProtectedServiceIPC.swift in Sources */,
 				DCEEFC9195E7D2637FEF8036 /* ProtectedServiceIPCTests.swift in Sources */,
 				CEFED0AECA298E09839CABB5 /* ProtectionMode.swift in Sources */,
+				8F02C37D3C6AE64F8FCA8F39 /* ReleaseVersion.swift in Sources */,
 				6D0619522B327E6E52035BAC /* RustCoreBridge.swift in Sources */,
 				4EB0942FA9A82C363FE204FE /* ServiceInstaller.swift in Sources */,
 				9F40F483F79EB64882D70AFA /* SetupReadiness.swift in Sources */,
@@ -1165,6 +1176,7 @@
 				AF54A8B3C4FB0F953D8A4F9F /* ProtectedServiceClient.swift in Sources */,
 				EC88743F2F7F96C3AE929A54 /* ProtectedServiceIPC.swift in Sources */,
 				CBF79B1F0A7AFD270399DB56 /* ProtectionMode.swift in Sources */,
+				DCFDC6C024E8E892B65DF2E4 /* ReleaseVersion.swift in Sources */,
 				2EE1787E53F85A36BBFD7821 /* RustCoreBridge.swift in Sources */,
 				1801877731218BBABD7687EC /* SetupReadiness.swift in Sources */,
 				2CE5D363340AF92C10E54F60 /* WebsiteRulePresentation.swift in Sources */,
@@ -1207,6 +1219,7 @@
 				9AABF71AD34E585DDCE71004 /* ProtectedServiceClient.swift in Sources */,
 				F4D4B664AD2FC66AA1316249 /* ProtectedServiceIPC.swift in Sources */,
 				020F7E1C26DE69D22E479603 /* ProtectionMode.swift in Sources */,
+				794662E6C2C06B2A21884BE3 /* ReleaseVersion.swift in Sources */,
 				C0B64035463E4382319BCF8E /* RustCoreBridge.swift in Sources */,
 				ED87D939B50BB10C26F2A626 /* ServiceFirstUpdate.swift in Sources */,
 				9ADFC4521345CCC1D2CF9A62 /* ServiceInstaller.swift in Sources */,
@@ -1246,6 +1259,7 @@
 				CAEDAD73119951086EECDB79 /* ProtectedServiceIPC.swift in Sources */,
 				BCECA29FB4E5A381CCE0C380 /* ProtectedStateStore.swift in Sources */,
 				6DC0DE37B3C286EF2AA2B753 /* ProtectionMode.swift in Sources */,
+				41CC4A7184E0F9034732D183 /* ReleaseVersion.swift in Sources */,
 				17FE907C5BC7F11E19F73B61 /* RustCoreBridge.swift in Sources */,
 				271780DEEA027871BD257E4A /* ServiceSupport.swift in Sources */,
 				14D8FBB2BD84FC58C476C8D9 /* StateAuthentication.swift in Sources */,
@@ -1279,6 +1293,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1314,6 +1329,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1382,7 +1398,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1397,7 +1413,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.5;
+				MARKETING_VERSION = 0.2.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
@@ -1430,6 +1446,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1481,6 +1498,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1584,7 +1602,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1605,7 +1623,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.5;
+				MARKETING_VERSION = 0.2.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

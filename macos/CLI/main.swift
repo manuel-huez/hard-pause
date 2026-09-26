@@ -301,6 +301,7 @@ private final class ProtectedServiceCLIClient {
 private func usage() -> String {
     """
     Usage:
+      hard-pause --version
       hard-pause list
       hard-pause create <request.json|->
       hard-pause update <request.json|->
@@ -393,6 +394,10 @@ private func activeBlockNames(in snapshot: ProtectedServiceSnapshot) -> [String]
 
 private func run() throws {
     let arguments = Array(CommandLine.arguments.dropFirst())
+    if arguments == ["--version"] {
+        print(ReleaseVersion.description)
+        return
+    }
     guard let command = arguments.first else { throw CLIError.usage(usage()) }
     if command == "help" || command == "--help" || command == "-h" {
         print(usage())

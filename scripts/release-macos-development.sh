@@ -29,12 +29,22 @@ verify_assets() {
     signature="$(python3 - "$feed" "$archive" "$tag" "$app" <<'PY'
 import pathlib
 import plistlib
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
 feed, archive, tag, app = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3], pathlib.Path(sys.argv[4])
 with (app / 'Contents/Info.plist').open('rb') as info_file:
     info = plistlib.load(info_file)
+expected_version = f"{info['CFBundleShortVersionString']} ({info['CFBundleVersion']})"
+for tool in ('hard-pause-service', 'hard-pause'):
+    actual = subprocess.check_output([str(app / 'Contents/Resources' / tool), '--version'], text=True).strip()
+    if actual != expected_version:
+        raise SystemExit(f'{tool} version differs from the app')
+with (app / 'Contents/Resources/HardPauseBrowserWorker.app/Contents/Info.plist').open('rb') as worker_file:
+    worker = plistlib.load(worker_file)
+if any(worker.get(key) != info[key] for key in ('CFBundleShortVersionString', 'CFBundleVersion')):
+    raise SystemExit('Browser worker version differs from the app')
 sparkle = '{http://www.andymatuschak.org/xml-namespaces/sparkle}'
 item = ET.parse(feed).find('./channel/item')
 if item is None:

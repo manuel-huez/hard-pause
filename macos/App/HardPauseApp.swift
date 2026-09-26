@@ -41,6 +41,10 @@ struct HardPauseApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
+            }
         }
 
         MenuBarExtra("Hard Pause", systemImage: "pause.circle") {
@@ -73,7 +77,7 @@ private struct HardPauseMenu: View {
             NSApplication.shared.activate()
         }
         Divider()
-        Text("Version \(appVersion)")
+        Text("Version \(ReleaseVersion.description)")
         Button("Check for Updates…") { updater.checkForUpdates() }
             .disabled(!updater.canCheckForUpdates)
         if updater.isPreparingUpdate {
@@ -98,13 +102,6 @@ private struct HardPauseMenu: View {
                     : "Use Update protection in the app for the service"
             )
         }
-    }
-
-    private var appVersion: String {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let version = info["CFBundleShortVersionString"] as? String ?? "Unknown"
-        let build = info["CFBundleVersion"] as? String ?? "?"
-        return "\(version) (\(build))"
     }
 }
 

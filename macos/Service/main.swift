@@ -40,6 +40,10 @@ private func makeEnforcer(enrolledUID: UInt32, standby: Bool) -> CompositeProtec
 
 do {
     let arguments = Array(CommandLine.arguments.dropFirst())
+    if arguments == ["--version"] {
+        print(ReleaseVersion.description)
+        exit(EXIT_SUCCESS)
+    }
     if arguments == ["--help"] || arguments == ["-h"] {
         AgentCommitmentGuidance.writeToStandardOutput()
         print("The service is managed by launchd. Use the installed hard-pause CLI for normal administration.")

@@ -57,6 +57,44 @@ esac
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 app_bundle=$(CDPATH='' cd -- "${script_dir}/../.." && pwd -P)
+retry_claim_preflight_allowed=0
+if [[ ( ${update_existing} -eq 1 || ${live_update} -eq 1 ) \
+    && "${app_bundle}" == "${helper_dir}/ServiceUpdates/"*"/HardPause.app" ]]; then
+    retry_claim_preflight_allowed=1
+fi
+
+release_retry_claim() {
+    local suffix ticket marker
+    [[ "${app_bundle}" == "${helper_dir}/ServiceUpdates/"*"/HardPause.app" ]] || return 0
+    suffix=${app_bundle#"${helper_dir}/ServiceUpdates/"}
+    ticket=${suffix%/HardPause.app}
+    [[ "${ticket}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
+    marker="${support_dir}/service-updates/active"
+    [[ -f "${marker}" && ! -L "${marker}" ]] || return 1
+    [[ "$(/usr/bin/stat -f '%u:%Lp' "${marker}")" == "0:600" ]] || return 1
+    [[ "$(/bin/cat "${marker}")" == "${ticket}" ]] || return 1
+    /bin/rm -f -- "${marker}"
+}
+
+finish_preflight() {
+    local installer_exit_code=$?
+    local stage_path=${stage:-}
+    trap - EXIT
+    if [[ "${stage_path}" == /tmp/hard-pause-install.* && -d "${stage_path}" && ! -L "${stage_path}" ]]; then
+        /bin/rm -rf -- "${stage_path}" \
+            || echo "hard-pause installer: could not remove the preflight stage at ${stage_path}." >&2
+    fi
+    if [[ ${installer_exit_code} -ne 0 && ${retry_claim_preflight_allowed} -eq 1 ]] \
+        && release_retry_claim; then
+        exit 75
+    fi
+    exit "${installer_exit_code}"
+}
+
+if [[ ${retry_claim_preflight_allowed} -eq 1 ]]; then
+    trap finish_preflight EXIT
+fi
+
 service_source="${script_dir}/hard-pause-service"
 cli_source="${script_dir}/hard-pause"
 plist_source="${script_dir}/${label}.plist"
@@ -261,22 +299,9 @@ release_update_gate() {
     return 1
 }
 
-release_retry_claim() {
-    local suffix ticket marker
-    [[ "${app_bundle}" == "${helper_dir}/ServiceUpdates/"*"/HardPause.app" ]] || return 0
-    suffix=${app_bundle#"${helper_dir}/ServiceUpdates/"}
-    ticket=${suffix%/HardPause.app}
-    [[ "${ticket}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
-    marker="${support_dir}/service-updates/active"
-    [[ -f "${marker}" && ! -L "${marker}" ]] || return 1
-    [[ "$(/usr/bin/stat -f '%u:%Lp' "${marker}")" == "0:600" ]] || return 1
-    [[ "$(/bin/cat "${marker}")" == "${ticket}" ]] || return 1
-    /bin/rm -f -- "${marker}"
-}
-
 finish_install() {
     local installer_exit_code=$?
-    local safe_live_retry=0
+    local safe_update_retry=0
     trap - EXIT
     if [[ ${installer_exit_code} -eq 0 && ${install_complete} -eq 0 ]]; then
         installer_exit_code=1
@@ -284,7 +309,7 @@ finish_install() {
     if [[ ${live_update} -eq 1 ]]; then
         if [[ ${installer_exit_code} -ne 0 && ${live_started} -eq 1 && ${live_finalization_started} -eq 0 ]]; then
             if recover_live_update; then
-                safe_live_retry=1
+                safe_update_retry=1
             else
                 preserve_stage=1
             fi
@@ -292,13 +317,17 @@ finish_install() {
             preserve_stage=1
             echo "hard-pause installer: finalization may have committed; do not restore the old service." >&2
         elif [[ ${installer_exit_code} -ne 0 && ${live_started} -eq 0 ]]; then
-            safe_live_retry=1
+            safe_update_retry=1
         fi
-        if [[ ${safe_live_retry} -eq 1 ]] && ! release_retry_claim; then
-            safe_live_retry=0
-            preserve_stage=1
-            echo "hard-pause installer: the safe update claim could not be released." >&2
-        fi
+    elif [[ ${installer_exit_code} -ne 0 && ${retry_claim_preflight_allowed} -eq 1 ]]; then
+        safe_update_retry=1
+    fi
+    if [[ ${safe_update_retry} -eq 1 ]] && ! release_retry_claim; then
+        safe_update_retry=0
+        preserve_stage=1
+        echo "hard-pause installer: the safe update claim could not be released." >&2
+    fi
+    if [[ ${live_update} -eq 1 ]]; then
         if [[ ( ${live_success} -eq 1 || ${live_started} -eq 0 ) \
             && ${preserve_stage} -eq 0 && -n "${live_stage}" ]]; then
             /bin/rm -rf -- "${live_stage}"
@@ -323,7 +352,7 @@ finish_install() {
     fi
     # The privileged update job may release its claim only when this script
     # either never froze the service or verified that the old service resumed.
-    if [[ ${safe_live_retry} -eq 1 ]]; then
+    if [[ ${safe_update_retry} -eq 1 ]]; then
         exit 75
     fi
     exit "${installer_exit_code}"
@@ -786,6 +815,7 @@ run_live_update() {
     /usr/bin/plutil -lint "${public_plist}" >/dev/null
 
     live_started=1
+    retry_claim_preflight_allowed=0
     run_enrolled_cli "${cli_source}" "${live_stage}/begin.json" \
         begin-live-update "${live_token}" "${live_stage}/new/hard-pause-service" \
         || fail "the running service did not freeze for live update"
@@ -890,6 +920,7 @@ if [[ ${update_existing} -eq 1 ]]; then
         /usr/bin/printf '%s\n' "${update_gate_token}" >"${update_gate_token_path}"
         /bin/chmod 0600 "${update_gate_token_path}"
         update_gate_cleanup_needed=1
+        retry_claim_preflight_allowed=0
         /bin/launchctl asuser "${existing_enrolled_uid}" /usr/bin/sudo -u "#${existing_enrolled_uid}" \
             "${cli_source}" prepare-update "${update_gate_token}" \
             >"${stage}/update-gate-health-check.json" 2>"${stage}/update-gate-health-check.stderr" \
@@ -898,6 +929,9 @@ if [[ ${update_existing} -eq 1 ]]; then
     fi
 fi
 
+if [[ ${inactive_migration} -eq 1 || ${active_legacy_migration} -eq 1 ]]; then
+    retry_claim_preflight_allowed=0
+fi
 if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
     [[ ${managed_install} -eq 1 ]] \
         || fail "a launchd job already uses ${label}, but Hard Pause does not own this installation"

@@ -2463,7 +2463,10 @@ private struct ProtectionSettingsPane: View {
                 .font(PauseFont.display(18, relativeTo: .headline))
                 .foregroundStyle(PauseTheme.coral)
             if let protection = model.snapshot?.protection {
-                LabeledContent("Service version", value: protection.serviceVersion)
+                LabeledContent(
+                    "Service version",
+                    value: protection.releaseVersion.map { "\($0) (\(protection.releaseBuild ?? "?"))" } ?? "Unknown"
+                )
                 LabeledContent("Active plans", value: "\(model.activeBlocks.count)")
                 LabeledContent(
                     "Network and app rules",

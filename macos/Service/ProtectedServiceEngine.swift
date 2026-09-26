@@ -611,7 +611,9 @@ final class ProtectedServiceEngine: @unchecked Sendable {
             isEnforcing: issues.isEmpty,
             lastAppliedAt: lastAppliedAt,
             issues: issues,
-            recentApplicationClosures: recentClosures
+            recentApplicationClosures: recentClosures,
+            releaseVersion: ReleaseVersion.version,
+            releaseBuild: ReleaseVersion.build
         )
         return state.snapshot(at: date, protection: status)
     }
@@ -720,7 +722,9 @@ final class ProtectedStandbyEngine: @unchecked Sendable {
                 isEnforcing: !retired && issues.isEmpty && lastAppliedAt != nil,
                 lastAppliedAt: lastAppliedAt,
                 issues: issues,
-                recentApplicationClosures: []
+                recentApplicationClosures: [],
+                releaseVersion: ReleaseVersion.version,
+                releaseBuild: ReleaseVersion.build
             )
         )
     }

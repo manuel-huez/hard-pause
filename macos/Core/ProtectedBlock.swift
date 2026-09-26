@@ -921,6 +921,8 @@ struct ClosedApplicationNotice: Codable, Equatable, Identifiable, Sendable {
 
 struct ProtectionStatus: Codable, Equatable, Sendable {
     let serviceVersion: String
+    let releaseVersion: String?
+    let releaseBuild: String?
     let isEnforcing: Bool
     let lastAppliedAt: Date?
     let issues: [ProtectionIssue]
@@ -931,9 +933,13 @@ struct ProtectionStatus: Codable, Equatable, Sendable {
         isEnforcing: Bool,
         lastAppliedAt: Date?,
         issues: [ProtectionIssue],
-        recentApplicationClosures: [ClosedApplicationNotice]
+        recentApplicationClosures: [ClosedApplicationNotice],
+        releaseVersion: String? = nil,
+        releaseBuild: String? = nil
     ) {
         self.serviceVersion = serviceVersion.utf8Prefix(maxBytes: 64)
+        self.releaseVersion = releaseVersion?.utf8Prefix(maxBytes: 64)
+        self.releaseBuild = releaseBuild?.utf8Prefix(maxBytes: 64)
         self.isEnforcing = isEnforcing
         self.lastAppliedAt = lastAppliedAt
         self.issues = issues.prefix(16).map {

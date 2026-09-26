@@ -10,8 +10,8 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: Apple Development
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
-    CURRENT_PROJECT_VERSION: 31
-    MARKETING_VERSION: 0.2.5
+    CURRENT_PROJECT_VERSION: 32
+    MARKETING_VERSION: 0.2.6
     LIBRARY_SEARCH_PATHS: $(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)
     OTHER_LDFLAGS: $(inherited) -lhard_pause_core
 packages:
@@ -185,6 +185,7 @@ targets:
         PRODUCT_NAME: hard-pause-service
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.service
         GENERATE_INFOPLIST_FILE: YES
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
         ENABLE_HARDENED_RUNTIME: YES
     dependencies:
       - sdk: Security.framework
@@ -207,6 +208,7 @@ targets:
         PRODUCT_NAME: hard-pause
         PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.cli
         GENERATE_INFOPLIST_FILE: YES
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
         ENABLE_HARDENED_RUNTIME: YES
     preBuildScripts:
       - name: Build portable core
