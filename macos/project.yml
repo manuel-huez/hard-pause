@@ -183,7 +183,7 @@ targets:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/Service/SystemKeychainBridge.h
         PRODUCT_NAME: hard-pause-service
-        PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.service
+        PRODUCT_BUNDLE_IDENTIFIER: hard-pause-service
         GENERATE_INFOPLIST_FILE: YES
         CREATE_INFOPLIST_SECTION_IN_BINARY: YES
         ENABLE_HARDENED_RUNTIME: YES
@@ -206,7 +206,7 @@ targets:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h
         PRODUCT_NAME: hard-pause
-        PRODUCT_BUNDLE_IDENTIFIER: org.hardpause.cli
+        PRODUCT_BUNDLE_IDENTIFIER: hard-pause
         GENERATE_INFOPLIST_FILE: YES
         CREATE_INFOPLIST_SECTION_IN_BINARY: YES
         ENABLE_HARDENED_RUNTIME: YES

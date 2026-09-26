@@ -41,6 +41,10 @@ for tool in ('hard-pause-service', 'hard-pause'):
     actual = subprocess.check_output([str(app / 'Contents/Resources' / tool), '--version'], text=True).strip()
     if actual != expected_version:
         raise SystemExit(f'{tool} version differs from the app')
+    signature = subprocess.run(['codesign', '-dv', str(app / 'Contents/Resources' / tool)],
+                               capture_output=True, text=True, check=True).stderr
+    if f'Identifier={tool}' not in signature.splitlines():
+        raise SystemExit(f'{tool} signing identity no longer matches existing service enrollments')
 with (app / 'Contents/Resources/HardPauseBrowserWorker.app/Contents/Info.plist').open('rb') as worker_file:
     worker = plistlib.load(worker_file)
 if any(worker.get(key) != info[key] for key in ('CFBundleShortVersionString', 'CFBundleVersion')):

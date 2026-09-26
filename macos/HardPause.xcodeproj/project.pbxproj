@@ -1304,7 +1304,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.service;
+				PRODUCT_BUNDLE_IDENTIFIER = "hard-pause-service";
 				PRODUCT_NAME = "hard-pause-service";
 				SDKROOT = macosx;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Service/SystemKeychainBridge.h";
@@ -1340,7 +1340,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.cli;
+				PRODUCT_BUNDLE_IDENTIFIER = "hard-pause";
 				PRODUCT_NAME = "hard-pause";
 				SDKROOT = macosx;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/../core/rust/include/hard_pause_core.h";
@@ -1457,7 +1457,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.cli;
+				PRODUCT_BUNDLE_IDENTIFIER = "hard-pause";
 				PRODUCT_NAME = "hard-pause";
 				SDKROOT = macosx;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/../core/rust/include/hard_pause_core.h";
@@ -1509,7 +1509,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.hardpause.service;
+				PRODUCT_BUNDLE_IDENTIFIER = "hard-pause-service";
 				PRODUCT_NAME = "hard-pause-service";
 				SDKROOT = macosx;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Service/SystemKeychainBridge.h";
