@@ -2,6 +2,69 @@ import XCTest
 
 @MainActor
 final class AppleProtectionModelTests: XCTestCase {
+    func testMalformedOriginalCodeDoesNotCreateASetupOperation() async {
+        let events = AppleProtectionEventLog()
+        let service = FakeAppleProtectionService(events: events, snapshot: makeSnapshot(phase: .inactive))
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        let model = AppleProtectionModel(service: service, automation: automation)
+
+        await model.setUp(enablesAdultFilter: true, existingPasscode: "123")
+
+        XCTAssertEqual(events.values, ["status"])
+        XCTAssertNil(service.setupDelay)
+        XCTAssertEqual(model.snapshot?.phase, .inactive)
+        XCTAssertTrue(model.hasError)
+    }
+
+    func testNativeCheckCannotInterruptWebsiteSyncAcrossAppModels() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let lockURL = directory.appendingPathComponent("native.lock")
+        let events = AppleProtectionEventLog()
+        let service = FakeAppleProtectionService(events: events, snapshot: makeSnapshot(phase: .active))
+        service.websiteOperation = AppleWebsiteSyncOperation(
+            passcode: "1234", activeDomains: [], activeAllowedDomains: [],
+            mirroredDomains: [], mirroredAllowedDomains: [])
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        automation.websites = AppleScreenTimeWebsites(
+            restricted: [], allowed: [], restrictedEntries: [], allowedEntries: [])
+        let entered = expectation(description: "Native list inspection started")
+        var resume: CheckedContinuation<Void, Never>?
+        automation.onInspectWebsites = {
+            await withCheckedContinuation {
+                resume = $0
+                entered.fulfill()
+            }
+        }
+        let model = AppleProtectionModel(service: service, automation: automation, operationLockURL: lockURL)
+        let second = AppleProtectionModel(service: service, automation: automation, operationLockURL: lockURL)
+        let sync = Task { await model.syncWebsites() }
+        await fulfillment(of: [entered], timeout: 2)
+
+        await model.inspectSettings()
+        await second.inspectSettings()
+        XCTAssertEqual(model.activity, .syncingWebsites)
+        XCTAssertFalse(events.values.contains("inspect code"))
+        XCTAssertTrue(second.hasError)
+
+        resume?.resume()
+        let synced = await sync.value
+        XCTAssertTrue(synced)
+        XCTAssertNil(model.activity)
+        XCTAssertFalse(model.websiteSyncNeedsRetry)
+        await second.inspectSettings()
+        XCTAssertTrue(events.values.contains("inspect code"))
+        XCTAssertFalse(second.hasError)
+
+        events.removeAll()
+        automation.websiteReadError = AppleScreenTimeAutomationError.settingsNotResponding
+        let failed = await model.syncWebsites()
+        XCTAssertFalse(failed)
+        await second.inspectSettings()
+        XCTAssertTrue(events.values.contains("inspect code"))
+        XCTAssertFalse(second.hasError)
+    }
+
     func testCheckingExistingCodeDoesNotStartSetupOrClaimOwnership() async {
         let events = AppleProtectionEventLog()
         let service = FakeAppleProtectionService(events: events, snapshot: makeSnapshot(phase: .inactive))
@@ -42,10 +105,7 @@ final class AppleProtectionModelTests: XCTestCase {
         XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
         XCTAssertEqual(service.setupDelay, 0)
         XCTAssertEqual(model.snapshot, active)
-        XCTAssertEqual(
-            model.message,
-            "The code is secured and verified on this Mac. iPhone protection is not yet verified."
-        )
+        XCTAssertFalse(model.hasError)
     }
 
     func testVerificationFailureKeepsSetupPendingAndDoesNotComplete() async {
@@ -129,7 +189,7 @@ final class AppleProtectionModelTests: XCTestCase {
 
         await model.retrySetup(existingPasscode: "")
 
-        XCTAssertEqual(events.values, ["status", "inspect", "status"])
+        XCTAssertEqual(events.values, ["status", "status"])
         XCTAssertTrue(service.resumedSetupOperationIDs.isEmpty)
         XCTAssertTrue(automation.installReplacementWasProvided.isEmpty)
         XCTAssertEqual(model.snapshot, pending)
@@ -189,6 +249,14 @@ final class AppleProtectionModelTests: XCTestCase {
             restrictedEntries: ["https://ours.example", "https://native.example"], allowedEntries: [])
         let model = AppleProtectionModel(service: service, automation: automation)
 
+        automation.websiteReadError = AppleScreenTimeAutomationError.settingsNotResponding
+        await model.finishEnd()
+        XCTAssertFalse(events.values.contains("claim website sync"))
+        XCTAssertFalse(events.values.contains("complete website sync"))
+        XCTAssertFalse(events.values.contains("release"))
+        XCTAssertTrue(service.completedReleaseOperationIDs.isEmpty)
+
+        automation.websiteReadError = nil
         await model.finishEnd()
 
         XCTAssertEqual(automation.removedRestricted, ["https://ours.example"])
@@ -213,7 +281,7 @@ final class AppleProtectionModelTests: XCTestCase {
         XCTAssertEqual(service.requestEndCalls, 1)
         XCTAssertEqual(model.snapshot, waiting)
         XCTAssertTrue(service.completedReleaseOperationIDs.isEmpty)
-        XCTAssertEqual(model.message, "The full unlock wait has started. Protection stays on.")
+        XCTAssertFalse(model.hasError)
     }
 
     private func makeSnapshot(
@@ -268,6 +336,8 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
     var verifyError: Error?
     var releaseError: Error?
     var websites: AppleScreenTimeWebsites?
+    var websiteReadError: Error?
+    var onInspectWebsites: (() async -> Void)?
     private(set) var removedRestricted: [String] = []
     private(set) var installReplacementWasProvided: [Bool] = []
 
@@ -307,6 +377,8 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
 
     func inspectWebsites(passcode: String) async throws -> AppleScreenTimeWebsites {
         events.append("inspect websites")
+        if let websiteReadError { throw websiteReadError }
+        await onInspectWebsites?()
         guard let websites else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
         return websites
     }
@@ -422,9 +494,23 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
     }
 
     func completeAppleWebsiteSync(
+        operationID: UUID, verifiedDomains: [String], verifiedAllowedDomains: [String],
         mirroredDomains: [String], mirroredAllowedDomains: [String]
     ) async throws {
         events.append("complete website sync")
+    }
+
+    func claimAppleWebsiteSync(
+        domains: [String], allowedDomains: [String], expectedDomains: [String], expectedAllowedDomains: [String]
+    ) async throws -> AppleWebsiteSyncOperation {
+        events.append("claim website sync")
+        let operation = try required(websiteOperation)
+        return AppleWebsiteSyncOperation(
+            operationID: operation.operationID ?? UUID(),
+            passcode: operation.passcode, activeDomains: operation.activeDomains,
+            activeAllowedDomains: operation.activeAllowedDomains,
+            mirroredDomains: Array(Set(operation.mirroredDomains).union(domains)),
+            mirroredAllowedDomains: Array(Set(operation.mirroredAllowedDomains).union(allowedDomains)))
     }
 
     func list() async throws -> ProtectedServiceSnapshot { protectedSnapshot }

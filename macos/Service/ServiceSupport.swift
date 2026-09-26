@@ -385,6 +385,7 @@ final class PrivilegedServiceUpdateTrigger: @unchecked Sendable {
         var publicStageCreated = false
         var bootstrapStarted = false
         do {
+            try recoverSupersededUpdate(at: active, installedBuild: baseline)
             try claim(active, ticket: ticketText)
             claimed = true
             guard mkdir(stage.path, 0o700) == 0 else { throw ProtectedStateError.updateUnavailable }
@@ -432,6 +433,7 @@ final class PrivilegedServiceUpdateTrigger: @unchecked Sendable {
     }
 
     func updateMode() throws -> ServiceUpdateMode {
+        try appleLockdown.requireNoWebsiteSync()
         let snapshot = engine.list()
         guard snapshot.protection.isEnforcing,
             snapshot.protection.issues.isEmpty,
@@ -749,6 +751,44 @@ final class PrivilegedServiceUpdateTrigger: @unchecked Sendable {
             _ = Darwin.unlink(url.path)
             throw ProtectedStateError.updateUnavailable
         }
+    }
+
+    private func recoverSupersededUpdate(at marker: URL, installedBuild: UInt64) throws {
+        guard FileManager.default.fileExists(atPath: marker.path) else { return }
+        try requireRootFile(marker, exactMode: 0o600)
+        let markerData = try Data(contentsOf: marker)
+        guard markerData.count == 37,
+            let text = String(data: markerData, encoding: .utf8),
+            let ticket = UUID(uuidString: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+            text == ticket.uuidString.lowercased() + "\n",
+            engine.liveUpdateGate() == nil
+        else { throw ProtectedStateError.updateInProgress }
+        let ticketText = ticket.uuidString.lowercased()
+        let receipt = updatesDirectory.appendingPathComponent("\(ticketText).result")
+        try requireRootFile(receipt, exactMode: 0o600)
+        let result = try String(contentsOf: receipt, encoding: .utf8)
+        guard result.hasPrefix("failed:"),
+            let exitCode = Int32(result.dropFirst(7).trimmingCharacters(in: .whitespacesAndNewlines)),
+            exitCode != 0
+        else { throw ProtectedStateError.updateInProgress }
+        let bundle = publicUpdatesDirectory.appendingPathComponent("\(ticketText)/HardPause.app")
+        try requireRootPublicDirectory(bundle, sealed: true)
+        let info = try signedInfo(at: bundle.appendingPathComponent("Contents/Info.plist"))
+        guard info.identifier == "org.hardpause.app", info.build < installedBuild else {
+            throw ProtectedStateError.updateInProgress
+        }
+        let label = "system/org.hardpause.service-update.\(ticketText)"
+        let job = try runner.run(executable: "/bin/launchctl", arguments: ["print", label], standardInput: nil)
+        let lines = Set(job.standardOutput.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) })
+        guard job.status == 0, lines.contains("state = not running"),
+            lines.contains("last exit code = \(exitCode)")
+        else { throw ProtectedStateError.updateInProgress }
+        // A newer service is installed and the failed job has stopped. Retain its
+        // evidence, but prevent that obsolete job from starting again.
+        try runChecked("/bin/launchctl", ["bootout", label])
+        guard try Data(contentsOf: marker) == markerData else { throw ProtectedStateError.updateInProgress }
+        try FileManager.default.moveItem(
+            at: marker, to: updatesDirectory.appendingPathComponent("\(ticketText).superseded"))
     }
 
     private func cleanupFailedPreflight(

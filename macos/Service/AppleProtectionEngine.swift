@@ -1,10 +1,39 @@
+import Darwin
 import Foundation
+
+enum AppleWebsiteSyncProcess {
+    static func currentWriter() throws -> AppleWebsiteSyncWriter {
+        guard let connection = NSXPCConnection.current(),
+            let writer = fingerprint(processID: connection.processIdentifier)
+        else { throw AppleLockdownError.websiteSyncWriterUnavailable }
+        return writer
+    }
+
+    static func isRunning(_ writer: AppleWebsiteSyncWriter) throws -> Bool {
+        if let current = fingerprint(processID: writer.processID) { return current == writer }
+        if kill(writer.processID, 0) == -1, errno == ESRCH { return false }
+        throw AppleLockdownError.websiteSyncWriterUnavailable
+    }
+
+    private static func fingerprint(processID: Int32) -> AppleWebsiteSyncWriter? {
+        guard processID > 0 else { return nil }
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout.size(ofValue: info))
+        guard proc_pidinfo(processID, PROC_PIDTBSDINFO, 0, &info, size) == size,
+            info.pbi_start_tvsec > 0
+        else { return nil }
+        return AppleWebsiteSyncWriter(
+            processID: processID, startedAtSeconds: info.pbi_start_tvsec,
+            startedAtMicroseconds: info.pbi_start_tvusec)
+    }
+}
 
 final class AppleLockdownEngine: @unchecked Sendable {
     private let stateStore: AppleLockdownStateStoring
     private let credentialVault: AppleLockdownCredentialVault
     private let passcodeGenerator: AppleLockdownPasscodeGenerating
     private let clock: ServiceClock
+    private let websiteSyncWriterIsRunning: (AppleWebsiteSyncWriter) throws -> Bool
     private let lock = NSLock()
     private let timerQueue = DispatchQueue(
         label: "org.hardpause.service.apple-protection",
@@ -19,12 +48,15 @@ final class AppleLockdownEngine: @unchecked Sendable {
         credentialVault: AppleLockdownCredentialVault,
         passcodeGenerator: AppleLockdownPasscodeGenerating = SecureAppleLockdownPasscodeGenerator(),
         clock: ServiceClock = SystemServiceClock(),
-        preloadedState: AppleLockdownState? = nil
+        preloadedState: AppleLockdownState? = nil,
+        websiteSyncWriterIsRunning: @escaping (AppleWebsiteSyncWriter) throws -> Bool = AppleWebsiteSyncProcess
+            .isRunning
     ) throws {
         self.stateStore = stateStore
         self.credentialVault = credentialVault
         self.passcodeGenerator = passcodeGenerator
         self.clock = clock
+        self.websiteSyncWriterIsRunning = websiteSyncWriterIsRunning
         state = try preloadedState ?? stateStore.load()
         frozenForLiveUpdate = preloadedState != nil
     }
@@ -119,52 +151,67 @@ final class AppleLockdownEngine: @unchecked Sendable {
         }
     }
 
-    func websiteSyncCredential() throws -> (
-        passcode: String, mirroredDomains: [String], mirroredAllowedDomains: [String]
-    ) {
+    func websiteSyncOperation(targets: AppleWebsiteSyncTargets) throws -> AppleWebsiteSyncOperation {
         try withLock {
             try requireNotFrozen()
-            guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(state.phase),
-                state.configuration?.enablesAdultFilter == true,
-                let credentialID = state.credentialID
-            else { throw AppleLockdownError.protectionNotActive }
-            return (
-                try credentialVault.read(credentialID: credentialID),
-                state.mirroredDomains ?? [], state.mirroredAllowedDomains ?? []
-            )
+            return websiteSyncOperationLocked(passcode: try websiteSyncCredentialLocked(), targets: targets)
         }
     }
 
-    func recordMirroredDomains(
-        _ domains: [String], required: Set<String>, allowed: [String], requiredAllowed: Set<String>
-    ) throws {
+    func prepareWebsiteSync(
+        _ claim: AppleWebsiteSyncClaim, targets: AppleWebsiteSyncTargets, writer: AppleWebsiteSyncWriter
+    ) throws -> AppleWebsiteSyncOperation {
         try withLock {
             try requireNotFrozen()
-            guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(state.phase) else {
-                throw AppleLockdownError.protectionNotActive
+            let passcode = try websiteSyncCredentialLocked()
+            if let permit = state.pendingWebsiteSync, permit.writer != writer,
+                try websiteSyncWriterIsRunning(permit.writer)
+            {
+                throw AppleLockdownError.websiteSyncOwnedByAnotherApp
             }
             var candidate = state
-            try candidate.recordMirroredDomains(
-                domains, required: required, allowed: allowed, requiredAllowed: requiredAllowed)
+            try candidate.prepareWebsiteSync(claim, targets: targets, writer: writer)
+            try stateStore.save(candidate)
+            state = candidate
+            return websiteSyncOperationLocked(passcode: passcode, targets: targets)
+        }
+    }
+
+    func completeWebsiteSync(_ completion: AppleWebsiteSyncCompletion, writer: AppleWebsiteSyncWriter) throws {
+        try withLock {
+            try requireNotFrozen()
+            var candidate = state
+            try candidate.completeWebsiteSync(completion, writer: writer)
             try stateStore.save(candidate)
             state = candidate
         }
     }
 
-    func claimMirroredDomains(
-        _ additions: [String], required: Set<String>, allowed: [String], requiredAllowed: Set<String>
-    ) throws {
-        try withLock {
-            try requireNotFrozen()
-            guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(state.phase) else {
-                throw AppleLockdownError.protectionNotActive
-            }
-            var candidate = state
-            try candidate.claimMirroredDomains(
-                additions, required: required, allowed: allowed, requiredAllowed: requiredAllowed)
-            try stateStore.save(candidate)
-            state = candidate
-        }
+    func requireNoWebsiteSync() throws {
+        try withLock { try requireNoWebsiteSyncLocked() }
+    }
+
+    private func requireNoWebsiteSyncLocked() throws {
+        guard state.pendingWebsiteSync == nil else { throw AppleLockdownError.websiteSyncPending }
+    }
+
+    private func websiteSyncCredentialLocked() throws -> String {
+        guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(state.phase),
+            state.configuration?.enablesAdultFilter == true,
+            let credentialID = state.credentialID
+        else { throw AppleLockdownError.protectionNotActive }
+        return try credentialVault.read(credentialID: credentialID)
+    }
+
+    private func websiteSyncOperationLocked(
+        passcode: String, targets: AppleWebsiteSyncTargets
+    ) -> AppleWebsiteSyncOperation {
+        let captured = state.pendingWebsiteSync?.targets ?? targets
+        return AppleWebsiteSyncOperation(
+            operationID: state.pendingWebsiteSync?.operationID,
+            passcode: passcode,
+            activeDomains: captured.restricted, activeAllowedDomains: captured.allowed,
+            mirroredDomains: state.mirroredDomains ?? [], mirroredAllowedDomains: state.mirroredAllowedDomains ?? [])
     }
 
     func confirmSetupNotApplied(
@@ -173,10 +220,10 @@ final class AppleLockdownEngine: @unchecked Sendable {
         throw AppleLockdownError.setupCancellationUnavailable
     }
 
-    func requestEnd() throws -> AppleLockdownSnapshot {
+    func requestEnd(allowUnusedZeroDelayRemoval: Bool = false) throws -> AppleLockdownSnapshot {
         try withLock {
             try requireNotFrozen()
-            guard state.configuration?.fullUnlockDelay != 0 else {
+            guard state.configuration?.fullUnlockDelay != 0 || allowUnusedZeroDelayRemoval else {
                 throw AppleLockdownError.invalidRequest("Screen Time protection ends with its plans.")
             }
             var candidate = state
@@ -203,6 +250,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
     ) throws -> AppleLockdownCredentialOperation {
         try withLock {
             try requireNotFrozen()
+            if state.phase != .releaseInProgress { try requireNoWebsiteSyncLocked() }
             guard normalProtectionIsInactiveAndHealthy else {
                 throw AppleLockdownError.normalProtectionActiveOrUnhealthy
             }
@@ -231,6 +279,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
         try withLock {
             try requireNotFrozen()
             var candidate = state
+            try requireNoWebsiteSyncLocked()
             try candidate.beginReleaseCompletion(operationID: request.operationID)
             try stateStore.save(candidate)
             state = candidate
@@ -262,12 +311,14 @@ final class AppleLockdownEngine: @unchecked Sendable {
                 state.phase == .releaseInProgress
                 || state.phase == .completingRelease
                 || endingWithPlans
+                || state.pendingWebsiteSync != nil
             return (allowsLockdown, blocksAnyActivation)
         }
     }
 
     func freezeForLiveUpdate() throws -> String {
         try withLock {
+            try requireNoWebsiteSyncLocked()
             if !frozenForLiveUpdate {
                 switch state.phase {
                 case .inactive, .active, .waitingForFullUnlock: break

@@ -119,6 +119,7 @@
 		76A57C121DBF6A631B33474E /* PauseCoreTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19F909DC65DCD6164B95EA7 /* PauseCoreTransaction.swift */; };
 		773F95229B0EEB8C3EEF6705 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 87A1A4469F35AC9F07AACBE4 /* Sparkle */; };
 		794662E6C2C06B2A21884BE3 /* ReleaseVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8606711216276AACF27F7C7C /* ReleaseVersion.swift */; };
+		799E27ABFBFD3BC9D2E5E28F /* ScreenTimeUIStringsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 748CCB5ACEF70E58D892267D /* ScreenTimeUIStringsTests.swift */; };
 		7F2BD52D61021B449DC70C4C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 721BDA26F3C01BE8A4471DAD /* ContentView.swift */; };
 		7F71AED36AC0B1A6AEA6DB4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
 		82C01C16A843065A7D058C62 /* BrowserWorkerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D77585D62431352E3D82CB9 /* BrowserWorkerClient.swift */; };
@@ -299,6 +300,7 @@
 		6F3811631786D46D6EEC8BF8 /* AgentCommitmentGuidance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCommitmentGuidance.swift; sourceTree = "<group>"; };
 		721BDA26F3C01BE8A4471DAD /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		73CE020B75644E033DA2B68E /* LocalPausePageServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPausePageServer.swift; sourceTree = "<group>"; };
+		748CCB5ACEF70E58D892267D /* ScreenTimeUIStringsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenTimeUIStringsTests.swift; sourceTree = "<group>"; };
 		76FE540206093F3051809B5B /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		7C6A2101E0583BFA72A50A02 /* ProtectionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectionMode.swift; sourceTree = "<group>"; };
 		7F7C40DDAB04920654FA3EBE /* BrowserURLMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserURLMatcherTests.swift; sourceTree = "<group>"; };
@@ -483,6 +485,7 @@
 				F30A474BF5A2F17C2066899D /* PausePageAssetsTests.swift */,
 				4A74EEC991540531B98A6838 /* ProtectedBlockTests.swift */,
 				206EDC61E9BEECAC4CF570BC /* ProtectedServiceIPCTests.swift */,
+				748CCB5ACEF70E58D892267D /* ScreenTimeUIStringsTests.swift */,
 				EB27A84DDD9FE13DC5619037 /* WebsiteRulePresentationTests.swift */,
 			);
 			path = Tests;
@@ -1141,6 +1144,7 @@
 				CEFED0AECA298E09839CABB5 /* ProtectionMode.swift in Sources */,
 				8F02C37D3C6AE64F8FCA8F39 /* ReleaseVersion.swift in Sources */,
 				6D0619522B327E6E52035BAC /* RustCoreBridge.swift in Sources */,
+				799E27ABFBFD3BC9D2E5E28F /* ScreenTimeUIStringsTests.swift in Sources */,
 				4EB0942FA9A82C363FE204FE /* ServiceInstaller.swift in Sources */,
 				9F40F483F79EB64882D70AFA /* SetupReadiness.swift in Sources */,
 				091A65D6923693B287EA4CD8 /* WebsiteRulePresentation.swift in Sources */,
@@ -1398,7 +1402,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 33;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1413,7 +1417,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.6;
+				MARKETING_VERSION = 0.2.7;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
@@ -1602,7 +1606,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 33;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1623,7 +1627,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.6;
+				MARKETING_VERSION = 0.2.7;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

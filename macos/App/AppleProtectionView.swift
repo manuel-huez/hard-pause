@@ -1,119 +1,135 @@
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 struct AppleProtectionCard: View {
     @ObservedObject var model: AppleProtectionModel
+    var canRemoveCode = false
     @State private var showsSetup = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Screen Time protection", systemImage: "lock.shield")
-                .font(PauseFont.display(18, relativeTo: .headline))
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Screen Time protection")
+                    .font(PauseFont.display(18, relativeTo: .headline))
+                Spacer()
+                Text(stateLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(needsAttention ? .orange : PauseTheme.muted)
+            }
             Text(statusText)
                 .foregroundStyle(PauseTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
-            if model.isBusy { ProgressView().controlSize(.small) }
-            switch model.snapshot?.phase {
-            case .inactive:
-                Button("Set up Screen Time code") { openSetup() }
-            case .pendingSetup:
-                HStack {
-                    Button("Verify setup") { Task { await model.verifySetup() } }
-                    Button("Continue setup") { openSetup() }
-                }
-            case .active:
-                if model.snapshot?.fullUnlockDelay != 0 {
-                    Button("Request to end Screen Time protection") { Task { await model.requestEnd() } }
-                }
-            case .waitingForFullUnlock:
-                if model.snapshot?.fullUnlockDelay != 0 {
-                    Text("Protection stays on during the wait.").font(.caption)
-                }
-            case .readyForRelease, .releaseInProgress:
-                Button(
-                    model.snapshot?.fullUnlockDelay == 0
-                        ? "Retry removing Screen Time protection" : "Finish ending Screen Time protection"
-                ) {
-                    Task { await model.finishEnd() }
-                }
-            case nil:
-                Button("Check protection") { Task { await model.refresh() } }
+            if let activity = model.activity {
+                ProgressView(activity.label).controlSize(.small)
+            } else {
+                actions
             }
-            if model.snapshot != nil {
-                Button("Check Screen Time code") { Task { await model.inspectSettings() } }
-                    .buttonStyle(.link)
+            if model.hasError, let message = model.message {
+                Text(message).font(.callout).foregroundStyle(.orange)
             }
-            if let codeCheck = model.codeCheck {
-                Text(
-                    codeCheck
-                        ? "Last check: a Screen Time code is enabled on this Mac. The code was not verified."
-                        : "Last check: no Screen Time code was found on this Mac."
-                )
-                .font(.caption)
-                .foregroundStyle(codeCheck ? PauseTheme.muted : .orange)
+            if let message = model.websiteSyncMessage {
+                Text(message).font(.callout)
+                    .foregroundStyle(model.websiteSyncNeedsRetry ? .orange : PauseTheme.muted)
+                Button(model.websiteSyncNeedsRetry ? "Retry website sync" : "Review website sync") {
+                    Task { await model.syncWebsites(presentingResult: true) }
+                }
+                .buttonStyle(PauseButtonStyle())
+                .disabled(model.isBusy)
             }
-            if let message = model.message {
-                Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
-            }
-            Text(
-                "iPhone protection and sharing are not verified. Apple account recovery can still reset a Screen Time code."
-            )
-            .font(.caption).foregroundStyle(PauseTheme.muted)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .disabled(model.isBusy)
-        .task {
-            while !Task.isCancelled {
-                await model.refresh()
-                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            if model.snapshot?.phase.hasConfirmedSystemPasscode == true {
+                DisclosureGroup("Details") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if model.snapshot?.enablesAdultFilter == true {
+                            Text("Apple’s adult filter and website limits stay on during breaks.")
+                            if let websites = model.nativeWebsites {
+                                websiteGroup("Restricted", entries: websites.restrictedEntries)
+                                websiteGroup("Allowed", entries: websites.allowedEntries)
+                            }
+                        }
+                        Text(
+                            "This status is saved on this Mac. iPhone protection and device sharing are not verified. Apple account recovery can still reset the code."
+                        )
+                    }
+                    .font(.caption).foregroundStyle(PauseTheme.muted)
+                    .padding(.top, 8)
+                }
             }
         }
-        .sheet(isPresented: $showsSetup) {
-            AppleProtectionSetupView(model: model)
+        .task { await model.refresh() }
+        .sheet(isPresented: $showsSetup) { AppleProtectionSetupView(model: model) }
+        .screenTimeWebsiteOverwriteSheet(model: model, isActive: !showsSetup)
+    }
+
+    @ViewBuilder private var actions: some View {
+        switch model.snapshot?.phase {
+        case .inactive:
+            Button("Set up Screen Time") { showsSetup = true }
+                .buttonStyle(PauseButtonStyle(primary: true))
+        case .pendingSetup:
+            Button("Continue setup") { showsSetup = true }
+                .buttonStyle(PauseButtonStyle(primary: true))
+        case .active:
+            if model.snapshot?.fullUnlockDelay != 0 {
+                Button("Request to end protection") { Task { await model.requestEnd() } }
+                    .buttonStyle(PauseButtonStyle())
+            } else if canRemoveCode {
+                Button("Remove unused Screen Time code") {
+                    Task {
+                        await model.requestEnd()
+                        if model.snapshot?.phase == .readyForRelease { await model.finishEnd() }
+                    }
+                }
+                .buttonStyle(PauseButtonStyle())
+            }
+        case .readyForRelease, .releaseInProgress:
+            Button("Finish removing code") { Task { await model.finishEnd() } }
+                .buttonStyle(PauseButtonStyle(primary: true))
+        case nil:
+            if model.hasError {
+                Button("Retry connection") { Task { await model.refresh() } }
+                    .buttonStyle(PauseButtonStyle())
+            }
+        case .waitingForFullUnlock: EmptyView()
+        }
+    }
+
+    private var needsAttention: Bool {
+        model.hasError || model.websiteSyncMessage != nil || model.snapshot?.phase == .pendingSetup
+    }
+
+    private var stateLabel: String {
+        if needsAttention { return "Needs attention" }
+        switch model.snapshot?.phase {
+        case .inactive: return "Not set up"
+        case .active: return "On"
+        case .waitingForFullUnlock: return "Waiting"
+        case .readyForRelease, .releaseInProgress: return "Ending"
+        case .pendingSetup: return "Setup incomplete"
+        case nil: return "Checking"
         }
     }
 
     private var statusText: String {
         switch model.snapshot?.phase {
         case .inactive:
-            if model.codeCheck == true {
-                return
-                    "Screen Time already has a code. Enter the current code during setup to let Hard Pause replace it."
-            }
-            return "Hard Pause keeps a private Screen Time code. You can set it up before or during a Hard Pause plan."
+            return "Let Hard Pause keep a private code for Apple’s Screen Time settings."
         case .pendingSetup:
-            return "Setup is incomplete. The saved code is retained until setup is verified."
+            return "The private code is saved. Finish setup so Hard Pause can verify it."
         case .active:
-            if model.codeCheck == false {
-                return "The last check found no Screen Time code. Hard Pause's saved protection needs attention."
-            }
             if model.snapshot?.fullUnlockDelay == 0 {
-                return
-                    "The code stays on while plans that use Screen Time are active. Hard Pause removes it after the last such plan ends."
+                return canRemoveCode
+                    ? "The code is ready for your next plan. No current plan needs it."
+                    : "The code stays on until the last plan that uses Screen Time ends."
             }
             return
-                "The code is saved and verified on this Mac. To remove it, request to end protection and wait \(duration(model.snapshot?.fullUnlockDelay)). All plans must also end."
+                "To remove the code, end all plans and wait \(duration(model.snapshot?.fullUnlockDelay)) after your request."
         case .waitingForFullUnlock:
-            if model.snapshot?.fullUnlockDelay == 0 {
-                return "The plans have ended. Hard Pause is removing Screen Time protection."
-            }
-            return "Ready to remove the code in \(duration(model.snapshot?.remainingDelay)). All plans must also end."
+            return "The code can be removed in \(duration(model.snapshot?.remainingDelay)), once all plans have ended."
         case .readyForRelease, .releaseInProgress:
-            if model.snapshot?.fullUnlockDelay == 0 {
-                return "The plans have ended. Hard Pause is removing Screen Time protection."
-            }
-            return "The wait has finished. End all active plans, then finish removing the Screen Time code."
+            return "The wait is complete. Hard Pause can finish removing its code once all plans have ended."
         case nil:
-            return "Check the saved Screen Time protection status."
-        }
-    }
-
-    private func openSetup() {
-        Task {
-            await model.inspectSettings()
-            guard model.message == nil else { return }
-            NSApp.activate(ignoringOtherApps: true)
-            showsSetup = true
+            return "Connecting to saved Screen Time protection."
         }
     }
 
@@ -121,154 +137,206 @@ struct AppleProtectionCard: View {
         guard let seconds else { return "the saved waiting period" }
         return Duration.seconds(max(0, seconds)).formatted(.units(allowed: [.days, .hours, .minutes], width: .wide))
     }
-}
-
-struct ScreenTimeWebsitesCard: View {
-    @ObservedObject var model: AppleProtectionModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Screen Time websites", systemImage: "globe")
-                .font(PauseFont.display(18, relativeTo: .headline))
-            Text(
-                "Sync the active plans with Apple's Restricted and Allowed website lists. Hard Pause asks before it replaces entries it did not add."
-            )
-            .foregroundStyle(PauseTheme.muted)
-            if model.snapshot?.phase.hasConfirmedSystemPasscode == true,
-                model.snapshot?.enablesAdultFilter == true
-            {
-                HStack {
-                    Button("Read Apple lists") { Task { await model.readNativeWebsites() } }
-                    Button("Sync websites") { Task { await model.syncWebsites(presentingResult: true) } }
-                }
-            }
-            if model.isSyncingWebsites { ProgressView().controlSize(.small) }
-            if let websites = model.nativeWebsites {
-                websiteGroup("Restricted", entries: websites.restrictedEntries)
-                websiteGroup("Allowed", entries: websites.allowedEntries)
-                Text("An Allowed site overrides only its own plan. Another active plan can still block it.")
-                    .font(.caption).foregroundStyle(PauseTheme.muted)
-            }
-            if let message = model.websiteSyncMessage {
-                Text(message).font(.callout)
-            }
-        }
-        .disabled(model.isSyncingWebsites)
-        .sheet(
-            item: Binding(
-                get: { model.pendingWebsiteOverwrite },
-                set: { if $0 == nil { model.cancelWebsiteOverwrite() } }
-            )
-        ) { overwrite in
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Replace Apple website entries?")
-                    .font(PauseFont.display(24, relativeTo: .title))
-                Text(
-                    "These entries are in Screen Time but not in the active Hard Pause plans. Sync will remove them from Apple’s lists."
-                )
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        overwriteGroup("Restricted entries to remove", entries: overwrite.restricted)
-                        overwriteGroup("Allowed entries to remove", entries: overwrite.allowed)
-                    }
-                }
-                HStack {
-                    Spacer()
-                    Button("Cancel") { model.cancelWebsiteOverwrite() }
-                    Button("Replace and sync") {
-                        Task { await model.syncWebsites(approving: overwrite, presentingResult: true) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            }
-            .padding(24)
-            .frame(minWidth: 440, minHeight: 300)
-        }
-    }
 
     private func websiteGroup(_ title: String, entries: [String]) -> some View {
         DisclosureGroup("\(title) (\(entries.count))") {
-            if entries.isEmpty {
-                Text("None").foregroundStyle(PauseTheme.muted)
-            } else {
-                ForEach(entries, id: \.self) { entry in Text(entry).textSelection(.enabled) }
-            }
-        }
-    }
-
-    private func overwriteGroup(_ title: String, entries: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("\(title) (\(entries.count))").font(.headline)
-            ForEach(entries, id: \.self) { entry in Text(entry).textSelection(.enabled) }
+            ForEach(entries, id: \.self) { Text($0).textSelection(.enabled) }
         }
     }
 }
 
-private struct AppleProtectionSetupView: View {
+struct ScreenTimeWebsiteOverwriteView: View {
     @ObservedObject var model: AppleProtectionModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var enableAdultFilter = true
-    @State private var currentCode = ""
+    let overwrite: AppleWebsiteOverwrite
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Keep the code out of reach")
+            Text("Replace Apple website entries?")
                 .font(PauseFont.display(24, relativeTo: .title))
-            Text("Hard Pause saves a random code securely before it changes Screen Time. The new code is never shown.")
-            Text("This setup uses System Settings on this Mac. Keep it in front until setup finishes.")
-                .foregroundStyle(PauseTheme.muted)
-            if model.snapshot?.phase != .pendingSetup, model.codeCheck == true {
-                Text(
-                    "A Screen Time code is already enabled. Enter its current code below to replace it with Hard Pause's private code."
-                )
-                .foregroundStyle(PauseTheme.muted)
+            Text(
+                "These entries are in Screen Time but not in your current plans. Sync will remove them from Apple’s lists."
+            )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    entries("Restricted entries to remove", overwrite.restricted)
+                    entries("Allowed entries to remove", overwrite.allowed)
+                }.frame(maxWidth: .infinity, alignment: .leading)
             }
-            if model.snapshot?.phase != .pendingSetup {
-                Toggle("Use Apple's adult website filter", isOn: $enableAdultFilter)
-                SecureField("Current Screen Time code, if set", text: $currentCode)
-                    .textFieldStyle(.roundedBorder)
-                Text(
-                    "The code stays on while plans that use Screen Time are active. Hard Pause removes it after the last such plan ends. Existing filters are kept."
-                )
-                .font(.caption).foregroundStyle(PauseTheme.muted)
-            } else {
-                Text(
-                    "First choose Verify setup. If your original code is still set, enter it below to continue with the saved new code."
-                )
-            }
-            if model.snapshot?.phase == .pendingSetup {
-                SecureField("Original Screen Time code, if still set", text: $currentCode)
-                    .textFieldStyle(.roundedBorder)
-            }
-            if let message = model.message { Text(message).font(.callout) }
             HStack {
-                Button("Close") {
-                    currentCode = ""
-                    dismiss()
-                }
+                Button("Keep Apple entries") { model.cancelWebsiteOverwrite() }
+                    .buttonStyle(PauseButtonStyle())
                 Spacer()
-                if model.isBusy { ProgressView().controlSize(.small) }
-                Button(model.snapshot?.phase == .pendingSetup ? "Continue setup" : "Save and set up code") {
-                    let oldCode = currentCode
-                    currentCode = ""
-                    Task {
-                        if model.snapshot?.phase == .pendingSetup {
-                            await model.retrySetup(existingPasscode: oldCode)
-                        } else {
-                            await model.setUp(
-                                enablesAdultFilter: enableAdultFilter, existingPasscode: oldCode
-                            )
-                        }
-                        if model.snapshot?.phase == .active { dismiss() }
-                    }
+                Button("Replace and sync") {
+                    Task { await model.syncWebsites(approving: overwrite, presentingResult: true) }
                 }
-                .buttonStyle(.borderedProminent).tint(PauseTheme.coral)
-            }
-            .disabled(model.isBusy)
+                .buttonStyle(PauseButtonStyle(primary: true))
+            }.disabled(model.isBusy)
         }
-        .padding(24).frame(width: 480)
+        .padding(24).frame(width: 520, height: 360)
         .background(PauseTheme.background)
         .interactiveDismissDisabled(model.isBusy)
+    }
+
+    private func entries(_ title: String, _ values: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(title) (\(values.count))").font(.headline)
+            ForEach(values, id: \.self) { Text($0).textSelection(.enabled) }
+        }
+    }
+}
+
+struct AppleProtectionSetupView: View {
+    @ObservedObject var model: AppleProtectionModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var hasInspected = false
+    @State private var showsRetry = false
+    @State private var enableAdultFilter = true
+    @State private var currentCode = ""
+    @State private var hasAccessibilityAccess = AXIsProcessTrusted()
+
+    var body: some View {
+        Group {
+            if hasAccessibilityAccess {
+                setupSteps
+            } else {
+                accessibilityStep
+            }
+        }
+        .padding(24).frame(width: 540)
+        .background(PauseTheme.background)
+        .interactiveDismissDisabled(model.isBusy)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            hasAccessibilityAccess = AXIsProcessTrusted()
+        }
         .onDisappear { currentCode = "" }
+    }
+
+    private var accessibilityStep: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Allow access to System Settings")
+                .font(PauseFont.display(24, relativeTo: .title))
+            Text("Hard Pause needs Accessibility access to enter the private code and manage Screen Time for you.")
+            Text("Turn on Hard Pause in Accessibility settings, then return here. Setup will continue automatically.")
+                .foregroundStyle(PauseTheme.muted)
+            HStack {
+                Button("Close") { dismiss() }.buttonStyle(PauseButtonStyle())
+                Spacer()
+                Button("Open Accessibility Settings") {
+                    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+                    hasAccessibilityAccess = AXIsProcessTrustedWithOptions(options)
+                    if !hasAccessibilityAccess,
+                        let url = URL(
+                            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                    {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .buttonStyle(PauseButtonStyle(primary: true))
+            }.disabled(model.isBusy)
+        }
+    }
+
+    private var setupSteps: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(isPending ? "Finish Screen Time setup" : "Set a private Screen Time code")
+                .font(PauseFont.display(24, relativeTo: .title))
+            if isPending {
+                Text(
+                    "Hard Pause saved the private code before setup stopped. Check whether macOS accepted it before you try again."
+                )
+            } else if !hasInspected {
+                Text(
+                    "Hard Pause will open System Settings, check for an existing code, then ask you to continue. It saves a random code before entering it for you."
+                )
+                Text(
+                    "Leave the keyboard and mouse alone while setup runs. Hard Pause does not display the code, but macOS may show digits during entry. Look away during that step if you do not want to see them."
+                )
+                .foregroundStyle(PauseTheme.muted)
+                Text(
+                    "The code stays until the last plan that uses Screen Time ends. You can remove an unused setup at any time."
+                )
+                .font(.callout)
+                Text(
+                    "Setup uses your own Screen Time settings on this Mac. Protection on other devices is not verified. Apple account recovery can still reset the code."
+                )
+                .foregroundStyle(PauseTheme.muted)
+            } else {
+                Toggle("Use Apple’s adult website filter and sync websites", isOn: $enableAdultFilter)
+                if enableAdultFilter {
+                    Text(
+                        "Content & Privacy must already be on in Screen Time. Review Apple’s settings before you enable it. Apple’s filter and synced limits stay on during breaks."
+                    )
+                    .foregroundStyle(PauseTheme.muted)
+                }
+                if model.codeCheck == true {
+                    Text("Screen Time already has a code. Enter it once so Hard Pause can replace it.")
+                    SecureField("Current Screen Time code", text: $currentCode)
+                        .textFieldStyle(.roundedBorder)
+                }
+                Text(
+                    "When you continue, look away if you want to avoid seeing any digits in System Settings. Hard Pause will return here when it finishes."
+                )
+                .font(.callout).foregroundStyle(PauseTheme.muted)
+            }
+            if isPending && showsRetry {
+                Text(
+                    "If your original code is still set, enter it below. Leave this empty if Screen Time has no code. Hard Pause will reuse its saved private code."
+                )
+                .font(.callout).foregroundStyle(PauseTheme.muted)
+                SecureField("Original Screen Time code", text: $currentCode)
+                    .textFieldStyle(.roundedBorder)
+            }
+            if let activity = model.activity {
+                ProgressView(activity.label).controlSize(.small)
+            } else if model.hasError, let message = model.message {
+                Text(message).font(.callout).foregroundStyle(.orange)
+            }
+            HStack {
+                Button("Close") { dismiss() }.buttonStyle(PauseButtonStyle())
+                Spacer()
+                if isPending {
+                    if showsRetry {
+                        Button("Retry setup") { runSetup(retry: true) }
+                            .buttonStyle(PauseButtonStyle())
+                            .disabled(!currentCode.isEmpty && !AppleScreenTimeAutomation.validCode(currentCode))
+                    }
+                    Button("Verify setup") {
+                        Task {
+                            await model.verifySetup()
+                            if model.snapshot?.phase == .active { dismiss() } else { showsRetry = true }
+                        }
+                    }
+                    .buttonStyle(PauseButtonStyle(primary: true))
+                } else if !hasInspected {
+                    Button("Continue") {
+                        Task {
+                            await model.inspectSettings()
+                            hasInspected = model.codeCheck != nil && !model.hasError
+                        }
+                    }
+                    .buttonStyle(PauseButtonStyle(primary: true))
+                } else {
+                    Button("Set private code") { runSetup(retry: false) }
+                        .buttonStyle(PauseButtonStyle(primary: true))
+                        .disabled(model.codeCheck == true && !AppleScreenTimeAutomation.validCode(currentCode))
+                }
+            }.disabled(model.isBusy)
+        }
+    }
+
+    private var isPending: Bool { model.snapshot?.phase == .pendingSetup }
+
+    private func runSetup(retry: Bool) {
+        let oldCode = currentCode
+        currentCode = ""
+        Task {
+            if retry {
+                await model.retrySetup(existingPasscode: oldCode.isEmpty ? nil : oldCode)
+            } else {
+                await model.setUp(
+                    enablesAdultFilter: enableAdultFilter, existingPasscode: oldCode.isEmpty ? nil : oldCode)
+            }
+            if model.snapshot?.phase == .active { dismiss() }
+        }
     }
 }

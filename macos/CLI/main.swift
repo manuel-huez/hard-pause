@@ -303,6 +303,7 @@ private func usage() -> String {
     Usage:
       hard-pause --version
       hard-pause list
+      hard-pause apple-status
       hard-pause create <request.json|->
       hard-pause update <request.json|->
       hard-pause delete <block-id> <expected-revision>
@@ -370,18 +371,11 @@ private func revision(_ value: String) throws -> Int {
     return revision
 }
 
-private func writeSnapshot(_ snapshot: ProtectedServiceSnapshot) throws {
+private func writeSnapshot<T: Encodable>(_ snapshot: T) throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
     let data = try encoder.encode(snapshot)
     FileHandle.standardOutput.write(data)
-    FileHandle.standardOutput.write(Data("\n".utf8))
-}
-
-private func writeLiveStatus(_ status: ProtectedLiveUpdateStatus) throws {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    FileHandle.standardOutput.write(try encoder.encode(status))
     FileHandle.standardOutput.write(Data("\n".utf8))
 }
 
@@ -414,9 +408,14 @@ private func run() throws {
     }
 
     let client = ProtectedServiceCLIClient()
+    if command == "apple-status" {
+        guard arguments.count == 1 else { throw CLIError.usage(usage()) }
+        try writeSnapshot(client.appleLockdownStatus())
+        return
+    }
     if command == "begin-live-update" {
         guard arguments.count == 3 else { throw CLIError.usage(usage()) }
-        try writeLiveStatus(
+        try writeSnapshot(
             client.beginLiveUpdate(
                 ProtectedLiveUpdateBeginRequest(
                     token: try identifier(arguments[1]),
@@ -438,7 +437,7 @@ private func run() throws {
         case "cancel-live-update": status = try client.cancelLiveUpdate(request)
         default: status = try client.retireStandby(request)
         }
-        try writeLiveStatus(status)
+        try writeSnapshot(status)
         return
     }
     let snapshot: ProtectedServiceSnapshot

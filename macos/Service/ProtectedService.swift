@@ -43,7 +43,8 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
 
     func update(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
         handle(request, as: ProtectedUpdateRequest.self, reply: reply) {
-            try engine.update($0)
+            try appleLockdown.requireNoWebsiteSync()
+            return try engine.update($0)
         }
     }
 
@@ -56,6 +57,7 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
     func activate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
         handle(request, as: ProtectedRevisionRequest.self, reply: reply) { request in
             try coordinator.perform {
+                try appleLockdown.requireNoWebsiteSync()
                 let readiness = appleLockdown.activationReadiness()
                 guard !readiness.blocksAnyActivation else {
                     throw AppleLockdownError.releaseInProgress
@@ -260,7 +262,17 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
 
     func requestAppleLockdownEnd(withReply reply: @escaping (NSData) -> Void) {
         do {
-            reply(encoded(.success(try coordinator.perform { try appleLockdown.requestEnd() })))
+            let snapshot = try coordinator.perform {
+                let protectedSnapshot = engine.list()
+                try reconcileApplePlanUse(protectedSnapshot)
+                let appleStatus = try appleLockdown.status()
+                let allowUnusedZeroDelayRemoval =
+                    appleStatus.fullUnlockDelay == 0
+                    && Self.isSafeForAppleRelease(protectedSnapshot, appleStatus: appleStatus)
+                return try appleLockdown.requestEnd(
+                    allowUnusedZeroDelayRemoval: allowUnusedZeroDelayRemoval)
+            }
+            reply(encoded(.success(snapshot)))
         } catch {
             reply(encoded(appleFailure(for: error)))
         }
@@ -382,6 +394,7 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         case ProtectedStateError.updateUnavailable: code = "update_unavailable"
         case ProtectedStateError.updateInProgress: code = "update_in_progress"
         case ProtectedStateError.updateNotOwned: code = "update_not_owned"
+        case AppleLockdownError.websiteSyncPending: code = "website_sync_pending"
         default: code = "service_error"
         }
         return .failure(
@@ -411,6 +424,10 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         case AppleLockdownError.credentialStoreFailed: code = "credential_store_failed"
         case AppleLockdownError.stateUnavailable, AppleLockdownError.unavailable:
             code = "state_unavailable"
+        case AppleLockdownError.websiteSyncPending: code = "website_sync_pending"
+        case AppleLockdownError.websiteSyncTargetsChanged: code = "website_sync_targets_changed"
+        case AppleLockdownError.websiteSyncWriterUnavailable: code = "website_sync_writer_unavailable"
+        case AppleLockdownError.websiteSyncOwnedByAnotherApp: code = "website_sync_owned_by_another_app"
         default: code = "service_error"
         }
         return .failure(
@@ -567,32 +584,27 @@ final class ProtectedServiceUpdateEndpoint: NSObject, ProtectedServiceUpdateXPC 
     private let engine: ProtectedServiceEngine
     private let appleLockdown: AppleLockdownEngine
     private let coordinator: ProtectedServiceCoordinator
+    private let websiteSyncWriter: () throws -> AppleWebsiteSyncWriter
 
     init(
         trigger: PrivilegedServiceUpdateTrigger,
         engine: ProtectedServiceEngine,
         appleLockdown: AppleLockdownEngine,
-        coordinator: ProtectedServiceCoordinator
+        coordinator: ProtectedServiceCoordinator,
+        websiteSyncWriter: @escaping () throws -> AppleWebsiteSyncWriter = AppleWebsiteSyncProcess.currentWriter
     ) {
         self.trigger = trigger
         self.engine = engine
         self.appleLockdown = appleLockdown
         self.coordinator = coordinator
+        self.websiteSyncWriter = websiteSyncWriter
     }
 
-    func beginWebsiteSync(withReply reply: @escaping (NSData) -> Void) {
+    func inspectWebsiteSync(withReply reply: @escaping (NSData) -> Void) {
         let response: AppleWebsiteSyncReply
         do {
             let operation = try coordinator.perform {
-                let credential = try appleLockdown.websiteSyncCredential()
-                let targets = activeWebsiteTargets()
-                return AppleWebsiteSyncOperation(
-                    passcode: credential.passcode,
-                    activeDomains: targets.restricted,
-                    activeAllowedDomains: targets.allowed,
-                    mirroredDomains: credential.mirroredDomains,
-                    mirroredAllowedDomains: credential.mirroredAllowedDomains
-                )
+                try appleLockdown.websiteSyncOperation(targets: activeWebsiteTargets())
             }
             response = AppleWebsiteSyncReply(operation: operation, error: nil)
         } catch {
@@ -609,11 +621,9 @@ final class ProtectedServiceUpdateEndpoint: NSObject, ProtectedServiceUpdateXPC 
         let response: AppleLockdownServiceReply
         do {
             let completion = try ProtectedServiceCodec.decode(AppleWebsiteSyncCompletion.self, from: request)
+            let writer = try websiteSyncWriter()
             response = try coordinator.perform {
-                try appleLockdown.recordMirroredDomains(
-                    completion.mirroredDomains, required: Set(activeWebsiteTargets().restricted),
-                    allowed: completion.mirroredAllowedDomains,
-                    requiredAllowed: Set(activeWebsiteTargets().allowed))
+                try appleLockdown.completeWebsiteSync(completion, writer: writer)
                 return .success(try appleLockdown.status())
             }
         } catch {
@@ -623,18 +633,19 @@ final class ProtectedServiceUpdateEndpoint: NSObject, ProtectedServiceUpdateXPC 
     }
 
     func claimWebsiteSync(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
-        let response: AppleLockdownServiceReply
+        let response: AppleWebsiteSyncReply
         do {
             let claim = try ProtectedServiceCodec.decode(AppleWebsiteSyncClaim.self, from: request)
-            response = try coordinator.perform {
-                let targets = activeWebsiteTargets()
-                try appleLockdown.claimMirroredDomains(
-                    claim.domains, required: Set(targets.restricted),
-                    allowed: claim.allowedDomains, requiredAllowed: Set(targets.allowed))
-                return .success(try appleLockdown.status())
+            let writer = try websiteSyncWriter()
+            let operation = try coordinator.perform {
+                try appleLockdown.prepareWebsiteSync(claim, targets: activeWebsiteTargets(), writer: writer)
             }
+            response = AppleWebsiteSyncReply(operation: operation, error: nil)
         } catch {
-            response = .failure(code: "website_sync_unavailable", message: error.localizedDescription)
+            response = AppleWebsiteSyncReply(
+                operation: nil,
+                error: ProtectedServiceErrorPayload(
+                    code: "website_sync_unavailable", message: error.localizedDescription))
         }
         reply((try? ProtectedServiceCodec.encode(response)) ?? NSData())
     }
@@ -663,6 +674,7 @@ final class ProtectedServiceUpdateEndpoint: NSObject, ProtectedServiceUpdateXPC 
     func requestUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
         do {
             let decoded = try ProtectedServiceCodec.decode(ProtectedServiceUpdateRequest.self, from: request)
+            try coordinator.perform { try appleLockdown.requireNoWebsiteSync() }
             trigger.request(decoded) { result in
                 reply((try? ProtectedServiceCodec.encode(result)) ?? NSData())
             }

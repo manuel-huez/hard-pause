@@ -51,6 +51,7 @@ struct AppleLockdownSnapshot: Codable, Equatable, Sendable {
     let mirroredDomains: [String]?
     let mirroredAllowedDomains: [String]?
     let operationID: UUID?
+    var websiteSyncOperationID: UUID? = nil
 }
 
 struct AppleLockdownCredentialOperation: Codable, Equatable, Sendable,
@@ -98,11 +99,25 @@ struct AppleLockdownServiceReply: Codable, Equatable, Sendable {
 struct AppleWebsiteSyncOperation: Codable, Equatable, Sendable,
     CustomStringConvertible, CustomDebugStringConvertible
 {
+    let operationID: UUID?
     let passcode: String
     let activeDomains: [String]
     let activeAllowedDomains: [String]
     let mirroredDomains: [String]
     let mirroredAllowedDomains: [String]
+
+    init(
+        operationID: UUID? = nil, passcode: String,
+        activeDomains: [String], activeAllowedDomains: [String],
+        mirroredDomains: [String], mirroredAllowedDomains: [String]
+    ) {
+        self.operationID = operationID
+        self.passcode = passcode
+        self.activeDomains = activeDomains
+        self.activeAllowedDomains = activeAllowedDomains
+        self.mirroredDomains = mirroredDomains
+        self.mirroredAllowedDomains = mirroredAllowedDomains
+    }
 
     var description: String { "AppleWebsiteSyncOperation(passcode: <redacted>)" }
     var debugDescription: String { description }
@@ -114,6 +129,9 @@ struct AppleWebsiteSyncReply: Codable, Equatable, Sendable {
 }
 
 struct AppleWebsiteSyncCompletion: Codable, Equatable, Sendable {
+    let operationID: UUID
+    let verifiedDomains: [String]
+    let verifiedAllowedDomains: [String]
     let mirroredDomains: [String]
     let mirroredAllowedDomains: [String]
 }
@@ -121,11 +139,30 @@ struct AppleWebsiteSyncCompletion: Codable, Equatable, Sendable {
 struct AppleWebsiteSyncClaim: Codable, Equatable, Sendable {
     let domains: [String]
     let allowedDomains: [String]
+    let expectedDomains: [String]
+    let expectedAllowedDomains: [String]
 }
 
-struct AppleWebsiteSyncTargets: Equatable, Sendable {
+struct AppleWebsiteSyncPermit: Codable, Equatable, Sendable {
+    let operationID: UUID
+    let targets: AppleWebsiteSyncTargets
+    let writer: AppleWebsiteSyncWriter
+}
+
+struct AppleWebsiteSyncWriter: Codable, Equatable, Sendable {
+    let processID: Int32
+    let startedAtSeconds: UInt64
+    let startedAtMicroseconds: UInt64
+}
+
+struct AppleWebsiteSyncTargets: Codable, Equatable, Sendable {
     let restricted: [String]
     let allowed: [String]
+
+    init(restricted: [String], allowed: [String]) {
+        self.restricted = restricted
+        self.allowed = allowed
+    }
 
     static func usesScreenTime(_ block: ProtectedBlockSnapshot, websitesEnabled: Bool) -> Bool {
         guard block.phase != .inactive else { return false }
@@ -141,10 +178,8 @@ struct AppleWebsiteSyncTargets: Equatable, Sendable {
         var allowed = Set<String>()
         var activeRules: [ProtectedRules] = []
         for block in blocks {
-            switch block.phase {
-            case .inactive, .breakActive: continue
-            case .active, .waitingForBreak, .waitingForFullUnlock: break
-            }
+            // Native Screen Time settings stay in force through temporary breaks.
+            guard block.phase != .inactive else { continue }
             let rules = block.draft.rules
             activeRules.append(rules)
             restricted.formUnion(Set(rules.blockedDomains).subtracting(rules.allowedDomains))
@@ -190,6 +225,10 @@ enum AppleLockdownError: LocalizedError, Equatable {
     case credentialUnavailable
     case credentialStoreFailed
     case stateUnavailable
+    case websiteSyncPending
+    case websiteSyncTargetsChanged
+    case websiteSyncWriterUnavailable
+    case websiteSyncOwnedByAnotherApp
 
     var errorDescription: String? {
         switch self {
@@ -213,6 +252,15 @@ enum AppleLockdownError: LocalizedError, Equatable {
             return "The Screen Time protection credential could not be saved safely."
         case .stateUnavailable:
             return "The Screen Time protection state is unavailable."
+        case .websiteSyncPending:
+            return
+                "Finish or retry Screen Time website sync before changing a plan, removing the code, or updating protection."
+        case .websiteSyncTargetsChanged:
+            return "Plans changed while Screen Time websites were being checked. Retry website sync."
+        case .websiteSyncWriterUnavailable:
+            return "Hard Pause could not confirm the app that is syncing Screen Time. Keep one copy open and retry."
+        case .websiteSyncOwnedByAnotherApp:
+            return "Another copy of Hard Pause is syncing Screen Time. Finish sync in that copy before you retry."
         }
     }
 }

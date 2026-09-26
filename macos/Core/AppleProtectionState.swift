@@ -49,6 +49,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
     private(set) var mirroredDomains: [String]?
     private(set) var mirroredAllowedDomains: [String]?
     private(set) var hasUsedPlan: Bool?
+    private(set) var pendingWebsiteSync: AppleWebsiteSyncPermit?
 
     init() {
         schemaVersion = Self.currentSchemaVersion
@@ -67,6 +68,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         // live handoff when no Apple state file exists. Keep its encoding the
         // same as older services until a new setup starts.
         hasUsedPlan = nil
+        pendingWebsiteSync = nil
     }
 
     mutating func beginSetup(
@@ -157,7 +159,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         self = AppleLockdownState()
     }
 
-    mutating func recordMirroredDomains(
+    private mutating func recordMirroredDomains(
         _ domains: [String], required: Set<String>, allowed: [String], requiredAllowed: Set<String>
     ) throws {
         guard isConfirmedActive, configuration?.enablesAdultFilter == true,
@@ -174,7 +176,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         mirroredAllowedDomains = allowed
     }
 
-    mutating func claimMirroredDomains(
+    private mutating func claimMirroredDomains(
         _ additions: [String], required: Set<String>, allowed: [String], requiredAllowed: Set<String>
     ) throws {
         guard isConfirmedActive, configuration?.enablesAdultFilter == true,
@@ -187,6 +189,52 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         else { throw AppleLockdownError.invalidRequest("Screen Time website sync is not available.") }
         mirroredDomains = Array(Set(mirroredDomains ?? []).union(additions)).sorted()
         mirroredAllowedDomains = Array(Set(mirroredAllowedDomains ?? []).union(allowed)).sorted()
+    }
+
+    mutating func prepareWebsiteSync(
+        _ claim: AppleWebsiteSyncClaim, targets: AppleWebsiteSyncTargets, writer: AppleWebsiteSyncWriter
+    ) throws {
+        let captured = pendingWebsiteSync?.targets ?? targets
+        guard claim.expectedDomains == captured.restricted,
+            claim.expectedAllowedDomains == captured.allowed
+        else { throw AppleLockdownError.websiteSyncTargetsChanged }
+        try claimMirroredDomains(
+            claim.domains, required: Set(captured.restricted),
+            allowed: claim.allowedDomains, requiredAllowed: Set(captured.allowed))
+        // A delayed reply from a dead writer must not finish its replacement's work.
+        let operationID = pendingWebsiteSync?.writer == writer ? pendingWebsiteSync?.operationID : nil
+        pendingWebsiteSync = AppleWebsiteSyncPermit(
+            operationID: operationID ?? UUID(), targets: captured, writer: writer)
+    }
+
+    mutating func completeWebsiteSync(
+        _ completion: AppleWebsiteSyncCompletion, writer: AppleWebsiteSyncWriter
+    ) throws {
+        guard let permit = pendingWebsiteSync, permit.operationID == completion.operationID,
+            permit.writer == writer
+        else {
+            throw AppleLockdownError.operationMismatch
+        }
+        guard
+            [completion.verifiedDomains, completion.verifiedAllowedDomains].allSatisfy({ domains in
+                domains == Array(Set(domains)).sorted() && domains.allSatisfy { DomainRule.normalize($0) == $0 }
+            })
+        else { throw AppleLockdownError.invalidRequest("Screen Time website verification is incomplete.") }
+        if phase == .releaseInProgress {
+            guard permit.targets.restricted.isEmpty, permit.targets.allowed.isEmpty,
+                completion.mirroredDomains.isEmpty, completion.mirroredAllowedDomains.isEmpty,
+                Set(completion.verifiedDomains).isDisjoint(with: mirroredDomains ?? []),
+                Set(completion.verifiedAllowedDomains).isDisjoint(with: mirroredAllowedDomains ?? [])
+            else { throw AppleLockdownError.invalidRequest("Screen Time website removal is incomplete.") }
+        } else {
+            guard completion.verifiedDomains == permit.targets.restricted,
+                completion.verifiedAllowedDomains == permit.targets.allowed
+            else { throw AppleLockdownError.invalidRequest("Screen Time website verification is incomplete.") }
+        }
+        try recordMirroredDomains(
+            completion.mirroredDomains, required: Set(permit.targets.restricted),
+            allowed: completion.mirroredAllowedDomains, requiredAllowed: Set(permit.targets.allowed))
+        pendingWebsiteSync = nil
     }
 
     mutating func advance(to reading: ClockReading) {
@@ -249,7 +297,8 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
             mirroredDomains: mirroredDomains ?? [],
             mirroredAllowedDomains: mirroredAllowedDomains ?? [],
             operationID: publicPhase == .pendingSetup || publicPhase == .releaseInProgress
-                ? operationID : nil
+                ? operationID : nil,
+            websiteSyncOperationID: pendingWebsiteSync?.operationID
         )
     }
 
@@ -267,6 +316,18 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         }
         guard anchorBootIdentifier?.utf8.count ?? 0 <= 256 else {
             throw AppleLockdownError.stateUnavailable
+        }
+        if let permit = pendingWebsiteSync {
+            guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(phase),
+                configuration?.enablesAdultFilter == true,
+                permit.writer.processID > 0, permit.writer.startedAtSeconds > 0,
+                permit.writer.startedAtMicroseconds < 1_000_000,
+                [permit.targets.restricted, permit.targets.allowed].allSatisfy({ domains in
+                    domains == Array(Set(domains)).sorted() && domains.allSatisfy { DomainRule.normalize($0) == $0 }
+                }),
+                Set(permit.targets.restricted).isDisjoint(with: permit.targets.allowed),
+                phase != .releaseInProgress || (permit.targets.restricted.isEmpty && permit.targets.allowed.isEmpty)
+            else { throw AppleLockdownError.stateUnavailable }
         }
         if let mirroredDomains, let mirroredAllowedDomains {
             guard mirroredDomains == Array(Set(mirroredDomains)).sorted(),

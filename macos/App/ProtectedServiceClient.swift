@@ -70,8 +70,11 @@ protocol ProtectedServiceServing {
     func beginAppleLockdownRelease() async throws -> AppleLockdownCredentialOperation
     func completeAppleLockdownRelease(operationID: UUID) async throws -> AppleLockdownSnapshot
     func beginAppleWebsiteSync() async throws -> AppleWebsiteSyncOperation
-    func claimAppleWebsiteSync(domains: [String], allowedDomains: [String]) async throws
+    func claimAppleWebsiteSync(
+        domains: [String], allowedDomains: [String], expectedDomains: [String], expectedAllowedDomains: [String]
+    ) async throws -> AppleWebsiteSyncOperation
     func completeAppleWebsiteSync(
+        operationID: UUID, verifiedDomains: [String], verifiedAllowedDomains: [String],
         mirroredDomains: [String], mirroredAllowedDomains: [String]
     ) async throws
 }
@@ -143,11 +146,14 @@ extension ProtectedServiceServing {
         throw ProtectedServiceClientError.unavailable("Screen Time website sync is unavailable.")
     }
 
-    func claimAppleWebsiteSync(domains: [String], allowedDomains: [String]) async throws {
+    func claimAppleWebsiteSync(
+        domains: [String], allowedDomains: [String], expectedDomains: [String], expectedAllowedDomains: [String]
+    ) async throws -> AppleWebsiteSyncOperation {
         throw ProtectedServiceClientError.unavailable("Screen Time website sync is unavailable.")
     }
 
     func completeAppleWebsiteSync(
+        operationID: UUID, verifiedDomains: [String], verifiedAllowedDomains: [String],
         mirroredDomains: [String], mirroredAllowedDomains: [String]
     ) async throws {
         throw ProtectedServiceClientError.unavailable("Screen Time website sync is unavailable.")
@@ -234,28 +240,38 @@ final class ProtectedServiceClient: ProtectedServiceServing {
 
     func beginAppleWebsiteSync() async throws -> AppleWebsiteSyncOperation {
         let reply: AppleWebsiteSyncReply = try await performUpdate { service, callback in
-            service.beginWebsiteSync(withReply: callback)
+            service.inspectWebsiteSync(withReply: callback)
         }
         if let error = reply.error { throw ProtectedServiceClientError.service(error.message) }
         guard let operation = reply.operation else { throw ProtectedServiceClientError.invalidReply }
         return operation
     }
 
-    func claimAppleWebsiteSync(domains: [String], allowedDomains: [String]) async throws {
+    func claimAppleWebsiteSync(
+        domains: [String], allowedDomains: [String], expectedDomains: [String], expectedAllowedDomains: [String]
+    ) async throws -> AppleWebsiteSyncOperation {
         let payload = try ProtectedServiceCodec.encode(
-            AppleWebsiteSyncClaim(domains: domains, allowedDomains: allowedDomains))
-        let reply: AppleLockdownServiceReply = try await performUpdate { service, callback in
+            AppleWebsiteSyncClaim(
+                domains: domains, allowedDomains: allowedDomains,
+                expectedDomains: expectedDomains, expectedAllowedDomains: expectedAllowedDomains))
+        let reply: AppleWebsiteSyncReply = try await performUpdate { service, callback in
             service.claimWebsiteSync(payload, withReply: callback)
         }
         if let error = reply.error { throw ProtectedServiceClientError.service(error.message) }
-        guard reply.snapshot != nil else { throw ProtectedServiceClientError.invalidReply }
+        guard let operation = reply.operation, operation.operationID != nil else {
+            throw ProtectedServiceClientError.invalidReply
+        }
+        return operation
     }
 
     func completeAppleWebsiteSync(
+        operationID: UUID, verifiedDomains: [String], verifiedAllowedDomains: [String],
         mirroredDomains: [String], mirroredAllowedDomains: [String]
     ) async throws {
         let payload = try ProtectedServiceCodec.encode(
             AppleWebsiteSyncCompletion(
+                operationID: operationID, verifiedDomains: verifiedDomains,
+                verifiedAllowedDomains: verifiedAllowedDomains,
                 mirroredDomains: mirroredDomains, mirroredAllowedDomains: mirroredAllowedDomains))
         let reply: AppleLockdownServiceReply = try await performUpdate { service, callback in
             service.completeWebsiteSync(payload, withReply: callback)

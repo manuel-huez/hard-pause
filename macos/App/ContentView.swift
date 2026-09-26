@@ -33,6 +33,7 @@ struct ContentView: View {
     @State private var activationTarget: ProtectedBlockSnapshot?
     @State private var deletionTarget: ProtectedBlockSnapshot?
     @State private var unlockGuidance: UnlockGuidancePresentation?
+    @State private var showsAppleProtectionSetup = false
     @State private var caretPosition: CGPoint?
     @State private var sidebarMascotFrame: CGRect = .zero
     @State private var hoveredControl: CGPoint?
@@ -96,7 +97,7 @@ struct ContentView: View {
                             case .blocks:
                                 BlocksPane(
                                     edit: { editor = BlockEditorPresentation(block: $0) },
-                                    activate: { activationTarget = $0 },
+                                    activate: requestActivation,
                                     delete: { deletionTarget = $0 },
                                     addBlock: { editor = BlockEditorPresentation(block: nil) },
                                     showUnlockGuidance: { unlockGuidance = UnlockGuidancePresentation(id: $0) }
@@ -142,10 +143,18 @@ struct ContentView: View {
             BlockEditorView(block: presentation.block)
                 .environmentObject(model)
         }
+        .sheet(isPresented: $showsAppleProtectionSetup) {
+            AppleProtectionSetupView(model: model.appleProtection)
+        }
         .sheet(item: $unlockGuidance) { presentation in
             UnlockGuidanceView(blockID: presentation.id)
                 .environmentObject(model)
         }
+        .screenTimeWebsiteOverwriteSheet(
+            model: model.appleProtection,
+            isActive: editor == nil && !showsAppleProtectionSetup && unlockGuidance == nil
+                && activationTarget == nil && deletionTarget == nil && selection != .settings
+        )
         .alert(
             "Start \(activationTarget?.draft.name ?? "this plan")?",
             isPresented: Binding(
@@ -201,6 +210,22 @@ struct ContentView: View {
         // Resting keeps the idle mascot awake; every active block uses calm, closed eyes.
         return model.activeBlocks.isEmpty ? .resting : .calm
     }
+
+    private func requestActivation(_ block: ProtectedBlockSnapshot) {
+        guard !block.draft.protectionMode.allowsBreaks,
+            model.appleProtection.snapshot?.phase != .active
+        else {
+            activationTarget = block
+            return
+        }
+
+        switch model.appleProtection.snapshot?.phase {
+        case .inactive, .pendingSetup, nil:
+            showsAppleProtectionSetup = true
+        default:
+            selection = .settings
+        }
+    }
 }
 
 private struct HomePane: View {
@@ -225,13 +250,11 @@ private struct HomePane: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Text(model.activeBlocks.isEmpty ? "No plans are active." : "Your pause is active.")
                         .font(PauseFont.display(26, relativeTo: .title))
-                    Text(
-                        model.activeBlocks.isEmpty
-                            ? "Open Plans to create one or start a saved plan."
-                            : "The controls for your active plan are below."
-                    )
-                    .font(.body)
-                    .foregroundStyle(PauseTheme.muted)
+                    if model.activeBlocks.isEmpty {
+                        Text("Open Plans to create one or start a saved plan.")
+                            .font(.body)
+                            .foregroundStyle(PauseTheme.muted)
+                    }
 
                     if model.activeBlocks.isEmpty && model.serviceAvailability == .ready {
                         Button("Go to Plans", action: showBlocks)
@@ -794,6 +817,7 @@ private struct BlockEditorView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let block: ProtectedBlockSnapshot?
+    @State private var showsAppleProtectionSetup = false
 
     @AccessibilityFocusState private var headerFocused: Bool
     @AccessibilityFocusState private var errorFocused: Bool
@@ -918,6 +942,7 @@ private struct BlockEditorView: View {
                     mascotTracking.isScrolling = phase != .idle
                     if phase != .idle { mascotTracking.hover = nil }
                 }
+                .id(step)
             }
 
             Divider()
@@ -945,6 +970,13 @@ private struct BlockEditorView: View {
         .onChange(of: intention) { _, _ in mascotGreetingTrigger += 1 }
         .onChange(of: validationMessage) { _, message in
             if message != nil { errorFocused = true }
+        }
+        .screenTimeWebsiteOverwriteSheet(
+            model: model.appleProtection,
+            isActive: !showsAppleProtectionSetup
+        )
+        .sheet(isPresented: $showsAppleProtectionSetup) {
+            AppleProtectionSetupView(model: model.appleProtection)
         }
         .onDisappear { mascotTracking.caret = nil }
     }
@@ -1208,23 +1240,27 @@ private struct BlockEditorView: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .mascotHoverTarget()
-                VStack(alignment: .leading, spacing: 8) {
-                    adultFilterDetail(
-                        "list.bullet",
-                        "Downloads The Block List Project’s adult website list daily. Checks domains and their subdomains on this Mac."
-                    )
-                    adultFilterDetail(
-                        "tag",
-                        "Checks RTA adult-content tags in Chrome and Safari. Requires Allow JavaScript from Apple Events."
-                    )
-                    adultFilterDetail(
-                        "lock", "Remembers detected pages on this Mac for 24 hours. No browsing history is uploaded.")
-                    adultFilterDetail(
-                        "info.circle", "Firefox uses the list and saved results. No filter catches every adult site.")
+                DisclosureGroup("How adult website blocking works") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        adultFilterDetail(
+                            "list.bullet",
+                            "Downloads The Block List Project’s adult website list daily. Checks domains and their subdomains on this Mac."
+                        )
+                        adultFilterDetail(
+                            "tag",
+                            "Checks RTA adult-content tags in Chrome and Safari. Requires Allow JavaScript from Apple Events."
+                        )
+                        adultFilterDetail(
+                            "lock",
+                            "Remembers detected pages on this Mac for 24 hours. No browsing history is uploaded.")
+                        adultFilterDetail(
+                            "info.circle",
+                            "Firefox uses the list and saved results. No filter catches every adult site.")
+                    }
+                    .padding(.top, 8)
                 }
                 .font(.caption)
                 .foregroundStyle(PauseTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
             }
 
             editorSection("Applications") {
@@ -1296,7 +1332,8 @@ private struct BlockEditorView: View {
                                 }
                             }
                             .labelsHidden()
-                            .fixedSize()
+                            .pickerStyle(.menu)
+                            .frame(width: 170, alignment: .trailing)
                             .mascotHoverTarget()
                             .accessibilityIdentifier("plan-fixed-duration")
                         }
@@ -1328,6 +1365,15 @@ private struct BlockEditorView: View {
                 .font(.caption)
                 .foregroundStyle(PauseTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
+                if protectionMode.allowsBreaks,
+                    model.appleProtection.snapshot?.enablesAdultFilter == true,
+                    !reviewWebsites.isEmpty || blocksAdultWebsites
+                {
+                    Text("Screen Time website limits stay on during breaks.")
+                        .font(.caption)
+                        .foregroundStyle(PauseTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             if !applications.isEmpty {
@@ -1391,14 +1437,48 @@ private struct BlockEditorView: View {
 
     private var reviewTargetSummary: String {
         let sites = reviewWebsites.count
-        return
-            "\(sites) website\(sites == 1 ? "" : "s") · \(applications.count) app\(applications.count == 1 ? "" : "s")"
+        var parts: [String] = []
+        if sites > 0 {
+            parts.append("\(sites) website\(sites == 1 ? "" : "s")")
+        }
+        if blocksAdultWebsites {
+            parts.append("Adult websites")
+        }
+        if !applications.isEmpty {
+            parts.append("\(applications.count) app\(applications.count == 1 ? "" : "s")")
+        }
+        return parts.isEmpty ? "No websites or apps" : parts.joined(separator: " · ")
+    }
+
+    private var canSetUpScreenTime: Bool {
+        switch model.appleProtection.snapshot?.phase {
+        case .inactive, .pendingSetup, nil: true
+        default: false
+        }
+    }
+
+    private var screenTimePrerequisiteMessage: String {
+        switch model.appleProtection.snapshot?.phase {
+        case .waitingForFullUnlock:
+            return "Wait for the Screen Time release to finish before starting this plan."
+        case .readyForRelease, .releaseInProgress:
+            return "Finish the current Screen Time change before starting this plan."
+        case .active:
+            return "Screen Time protection is ready."
+        case .inactive, .pendingSetup, nil:
+            return "Set up Screen Time before starting a Hard Pause plan."
+        }
+    }
+
+    private var canStartPlan: Bool {
+        canWrite && (protectionMode.allowsBreaks || model.appleProtection.snapshot?.phase == .active)
     }
 
     private var planRuleReview: some View {
         VStack(alignment: .leading, spacing: 8) {
             if domains.isEmpty && urlPatterns.isEmpty {
-                Text("No websites").foregroundStyle(PauseTheme.muted)
+                Text(blocksAdultWebsites ? "No individual websites" : "No websites")
+                    .foregroundStyle(PauseTheme.muted)
             } else {
                 Text("Websites").font(.body.weight(.semibold))
                 PagedPlanRules(reviewWebsites) { website in
@@ -1435,6 +1515,25 @@ private struct BlockEditorView: View {
                     .font(.caption)
                     .foregroundStyle(PauseTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
+                if !protectionMode.allowsBreaks, model.appleProtection.snapshot?.phase != .active {
+                    HStack(spacing: 12) {
+                        Text(screenTimePrerequisiteMessage)
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 8)
+                        if canSetUpScreenTime {
+                            Button(
+                                model.appleProtection.snapshot?.phase == .pendingSetup
+                                    ? "Continue setup" : "Set up Screen Time"
+                            ) {
+                                showsAppleProtectionSetup = true
+                            }
+                            .buttonStyle(PauseButtonStyle())
+                            .disabled(model.appleProtection.isBusy)
+                        }
+                    }
+                }
             }
             if let validationMessage {
                 Label(validationMessage, systemImage: "exclamationmark.triangle")
@@ -1442,7 +1541,7 @@ private struct BlockEditorView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityFocused($errorFocused)
             } else if step == .boundaries && !canContinue {
-                Text("Add a plan name and at least one website or app to continue.")
+                Text("Add a plan name and at least one website, app, or adult website filter to continue.")
                     .font(.caption)
                     .foregroundStyle(PauseTheme.muted)
             }
@@ -1473,7 +1572,7 @@ private struct BlockEditorView: View {
                                 .disabled(!canWrite)
                             Button("Start plan") { save(startNow: true) }
                                 .buttonStyle(PauseButtonStyle(primary: true))
-                                .disabled(!canWrite)
+                                .disabled(!canStartPlan)
                                 .keyboardShortcut(.return, modifiers: .command)
                         } else {
                             Button("Save changes") { save(startNow: false) }
@@ -1491,7 +1590,7 @@ private struct BlockEditorView: View {
             }
             .disabled(isSubmitting || model.isBusy)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 24)
         .padding(.vertical, 16)
     }
 
@@ -1759,6 +1858,10 @@ private struct BlockEditorView: View {
 
     private func save(startNow: Bool) {
         guard !isReadOnly, !isSubmitting, !model.isBusy else { return }
+        guard !startNow || protectionMode.allowsBreaks || model.appleProtection.snapshot?.phase == .active else {
+            if canSetUpScreenTime { showsAppleProtectionSetup = true }
+            return
+        }
         guard commitPendingWebsite() else { return }
         do {
             let draft = try validatedDraft()
@@ -2352,7 +2455,7 @@ private struct SetupChecklistView: View {
             Text("Browser access")
                 .font(PauseFont.display(18, relativeTo: .headline))
             ForEach(model.browserReadiness) { browser in
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
                     Label(browser.name, systemImage: "globe")
                     Spacer()
                     if !browser.isInstalled {
@@ -2402,21 +2505,26 @@ private struct ProtectionSettingsPane: View {
                 Text("Settings")
                     .font(PauseFont.display(26, relativeTo: .title))
                 Text(
-                    model.setupReady
-                        ? "Everything is ready on this Mac."
+                    model.setupServiceReady && !model.browserReadiness.isEmpty
+                        && model.browserReadiness.allSatisfy(\.isReady)
+                        ? "Browser protection is ready on this Mac."
                         : model.serviceUpdateIsOnlySetupGap
-                            ? "Your active plan is protected. Update protection before starting a new plan."
-                            : "Finish setup before starting a new plan."
+                            ? "Browser protection needs a service update before you start a new plan."
+                            : "Complete setup before starting a new plan."
                 )
                 .foregroundStyle(PauseTheme.muted)
 
                 SetupChecklistView(showsService: !model.setupServiceReady)
 
-                AppleProtectionCard(model: model.appleProtection)
-                    .settingsPanel()
-
-                ScreenTimeWebsitesCard(model: model.appleProtection)
-                    .settingsPanel()
+                AppleProtectionCard(
+                    model: model.appleProtection,
+                    canRemoveCode: model.serviceIsHealthy
+                        && !model.activeBlocks.contains {
+                            AppleWebsiteSyncTargets.usesScreenTime(
+                                $0, websitesEnabled: model.appleProtection.snapshot?.enablesAdultFilter == true)
+                        }
+                )
+                .settingsPanel()
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Adult website database")
@@ -2424,24 +2532,28 @@ private struct ProtectionSettingsPane: View {
                     Text(model.adultDatabaseStatus)
                         .foregroundStyle(PauseTheme.muted)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Update website list") {
-                        Task { await model.refreshAdultDatabase() }
-                    }
-                    .disabled(model.isBusy)
-                    ForEach(model.browserReadiness.filter(\.isInstalled)) { browser in
-                        if let status = model.browserStatuses[browser.id] {
-                            Text("\(browser.name): \(status)")
-                                .font(.caption)
-                                .foregroundStyle(PauseTheme.muted)
-                                .fixedSize(horizontal: false, vertical: true)
+                    DisclosureGroup("List and browser details") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(model.browserReadiness.filter(\.isInstalled)) { browser in
+                                if let status = model.browserStatuses[browser.id] {
+                                    Text("\(browser.name): \(status)")
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Text(
+                                "Chrome and Safari RTA checks need Allow JavaScript from Apple Events. Firefox cannot read RTA labels. Detected pages are cached on this device for 24 hours."
+                            )
+                            .fixedSize(horizontal: false, vertical: true)
+                            Button("Update website list") {
+                                Task { await model.refreshAdultDatabase() }
+                            }
+                            .buttonStyle(PauseButtonStyle(compact: true))
+                            .disabled(model.isBusy)
                         }
+                        .font(.caption)
+                        .foregroundStyle(PauseTheme.muted)
+                        .padding(.top, 8)
                     }
-                    Text(
-                        "Chrome and Safari RTA checks need Allow JavaScript from Apple Events. Firefox cannot read RTA labels. Detected pages are cached on this device for 24 hours."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(PauseTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
                 }
                 .settingsPanel()
 
@@ -2459,9 +2571,12 @@ private struct ProtectionSettingsPane: View {
 
     private var serviceReadyPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Service connected", systemImage: "checkmark.shield.fill")
-                .font(PauseFont.display(18, relativeTo: .headline))
-                .foregroundStyle(PauseTheme.coral)
+            Label(
+                model.serviceIsHealthy ? "Service connected" : "Service needs attention",
+                systemImage: model.serviceIsHealthy ? "checkmark.shield.fill" : "exclamationmark.triangle.fill"
+            )
+            .font(PauseFont.display(18, relativeTo: .headline))
+            .foregroundStyle(model.serviceIsHealthy ? PauseTheme.coral : .orange)
             if let protection = model.snapshot?.protection {
                 LabeledContent(
                     "Service version",
@@ -2495,8 +2610,11 @@ private struct ProtectionSettingsPane: View {
                     }
                 }
             }
-            Button("Check service now") { Task { await model.refresh() } }
-                .disabled(model.isBusy)
+            if !model.serviceIsHealthy {
+                Button("Retry service connection") { Task { await model.refresh() } }
+                    .buttonStyle(PauseButtonStyle())
+                    .disabled(model.isBusy)
+            }
         }
     }
 }
@@ -2527,7 +2645,7 @@ private struct SettingsPanelModifier: ViewModifier {
     }
 }
 
-private struct PauseButtonStyle: ButtonStyle {
+struct PauseButtonStyle: ButtonStyle {
     var primary = false
     var compact = false
     @Environment(\.isEnabled) private var isEnabled
@@ -2601,8 +2719,33 @@ private struct MascotHoverTarget: ViewModifier {
 }
 
 extension View {
+    func screenTimeWebsiteOverwriteSheet(
+        model: AppleProtectionModel, isActive: Bool = true
+    ) -> some View {
+        modifier(ScreenTimeWebsiteOverwriteSheetModifier(model: model, isActive: isActive))
+    }
+
     fileprivate func mascotHoverTarget() -> some View { modifier(MascotHoverTarget()) }
     fileprivate func settingsPanel() -> some View { modifier(SettingsPanelModifier()) }
+}
+
+private struct ScreenTimeWebsiteOverwriteSheetModifier: ViewModifier {
+    @ObservedObject var model: AppleProtectionModel
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        content.sheet(
+            item: Binding(
+                get: { isActive ? model.pendingWebsiteOverwrite : nil },
+                set: { value in
+                    guard isActive, value == nil else { return }
+                    model.cancelWebsiteOverwrite()
+                }
+            )
+        ) { overwrite in
+            ScreenTimeWebsiteOverwriteView(model: model, overwrite: overwrite)
+        }
+    }
 }
 
 extension ProtectedBlockSnapshot {

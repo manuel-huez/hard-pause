@@ -460,6 +460,17 @@ run_enrolled_cli() {
         "${cli}" "$@" >"${output}" 2>"${output}.stderr"
 }
 
+verify_native_update_compatibility() {
+    [[ "${installed_service_version}" -lt 11 ]] || return 0
+    local output="${stage}/apple-update-status.json" phase
+    run_enrolled_cli "${cli_source}" "${output}" apple-status \
+        || fail "Screen Time status could not be checked before the update"
+    phase=$(/usr/bin/plutil -extract phase raw -expect string -o - "${output}" 2>/dev/null) \
+        || fail "Screen Time status is unreadable"
+    [[ "${phase}" == inactive ]] \
+        || fail "this upgrade requires older managed Screen Time protection to finish normally first"
+}
+
 verify_live_status() {
     local output=$1
     local expected_phase=$2
@@ -640,6 +651,7 @@ fi
 if [[ ${live_update} -eq 1 ]]; then
     [[ -n "${installed_build}" && "${app_build}" -gt "${installed_build}" ]] \
         || fail "a live update requires a newer signed app build"
+    verify_native_update_compatibility
 elif [[ ${update_existing} -eq 1 && -n "${installed_build}" ]]; then
     [[ "${app_build}" -ge "${installed_build}" ]] \
         || fail "the signed app build is older than the installed build"
@@ -820,6 +832,8 @@ run_live_update() {
         begin-live-update "${live_token}" "${live_stage}/new/hard-pause-service" \
         || fail "the running service did not freeze for live update"
     verify_live_status "${live_stage}/begin.json" frozen
+    # Older services did not reserve native writes. Recheck after setup is frozen.
+    verify_native_update_compatibility
     /usr/bin/install -o root -g wheel -m 0644 "${standby_plist}" "${standby_plist_destination}"
     /bin/launchctl bootstrap system "${standby_plist_destination}" \
         || fail "the standby service could not start"

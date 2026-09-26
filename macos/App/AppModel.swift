@@ -51,6 +51,8 @@ final class AppModel: ObservableObject {
     private var secondsSinceIdleRefresh = 0
     private var lastWebsiteTargets: AppleWebsiteSyncTargets?
     private var websiteSyncPending = false
+    private var lastWebsiteSyncAttempt = Date.distantPast
+    private var websiteSyncRetryInterval: TimeInterval = 30
     private var isReconcilingAppleProtection = false
     private var lastAutomaticAppleRelease = Date.distantPast
     private var automaticAppleReleaseRetryInterval: TimeInterval = 30
@@ -61,7 +63,7 @@ final class AppModel: ObservableObject {
     var blocks: [ProtectedBlockSnapshot] { snapshot?.blocks ?? [] }
     var activeBlocks: [ProtectedBlockSnapshot] { blocks.filter { $0.phase != .inactive } }
     var canChangeBlocks: Bool {
-        setupReady && canRequestUnlock
+        setupReady && canRequestUnlock && !appleProtection.isBusy
     }
     var canRequestUnlock: Bool {
         serviceAvailability == .ready && !isBusy && !hasPendingMutation && !isInstallingService
@@ -110,6 +112,9 @@ final class AppModel: ObservableObject {
         self.service = client
         appleProtection = AppleProtectionModel(service: client)
         self.setupProbe = setupProbe
+        appleProtection.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
         guard automaticallyRefreshes else { return }
         Task {
             await refreshAdultDatabase(force: false)
@@ -615,7 +620,8 @@ final class AppModel: ObservableObject {
         await appleProtection.refresh()
         guard let status = appleProtection.snapshot else { return }
         if status.fullUnlockDelay == 0,
-            status.phase == .readyForRelease || status.phase == .releaseInProgress
+            status.phase == .readyForRelease || status.phase == .releaseInProgress,
+            status.websiteSyncOperationID == nil || status.phase == .releaseInProgress
         {
             guard Date().timeIntervalSince(lastAutomaticAppleRelease) >= automaticAppleReleaseRetryInterval
             else { return }
@@ -626,7 +632,14 @@ final class AppModel: ObservableObject {
                 ? 30 : min(automaticAppleReleaseRetryInterval * 2, 900)
             return
         }
-        guard websiteSyncPending else { return }
+        guard appleProtection.pendingWebsiteOverwrite == nil,
+            websiteSyncPending || appleProtection.websiteSyncNeedsRetry || status.websiteSyncOperationID != nil
+        else { return }
+        if !websiteSyncPending,
+            Date().timeIntervalSince(lastWebsiteSyncAttempt) < websiteSyncRetryInterval
+        {
+            return
+        }
         websiteSyncPending = false
         if [.active, .waitingForFullUnlock, .readyForRelease].contains(status.phase),
             status.enablesAdultFilter,
@@ -634,8 +647,11 @@ final class AppModel: ObservableObject {
             !targets.restricted.isEmpty || !targets.allowed.isEmpty
                 || status.mirroredDomains?.isEmpty == false
                 || status.mirroredAllowedDomains?.isEmpty == false
+                || status.websiteSyncOperationID != nil
         {
-            await appleProtection.syncWebsites()
+            lastWebsiteSyncAttempt = Date()
+            let synced = await appleProtection.syncWebsites()
+            websiteSyncRetryInterval = synced ? 30 : min(websiteSyncRetryInterval * 2, 300)
         }
     }
 

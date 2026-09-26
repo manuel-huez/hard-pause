@@ -116,6 +116,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
             let model,
             model.serviceIsHealthy,
             !model.isBusy,
+            !model.appleProtection.isBusy,
             !model.hasPendingMutation,
             !model.isInstallingService,
             let snapshot = model.snapshot
