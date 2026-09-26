@@ -3,6 +3,11 @@ import Combine
 import Darwin
 import Foundation
 
+enum ProLicense {
+    // Keep Pro enabled until paid license validation is available.
+    static let isActive = true
+}
+
 struct AppleWebsiteOverwrite: Equatable, Identifiable {
     let restricted: [String]
     let allowed: [String]
@@ -36,6 +41,7 @@ final class AppleProtectionModel: ObservableObject {
     @Published private(set) var websiteSyncNeedsRetry = false
     @Published private(set) var nativeWebsites: AppleScreenTimeWebsites?
     @Published private(set) var pendingWebsiteOverwrite: AppleWebsiteOverwrite?
+    let hasProAccess: Bool
     private let service: any ProtectedServiceServing
     private let automation: any AppleScreenTimeAutomating
     private let operationLockURL: URL
@@ -47,10 +53,11 @@ final class AppleProtectionModel: ObservableObject {
 
     init(
         service: any ProtectedServiceServing, automation: (any AppleScreenTimeAutomating)? = nil,
-        operationLockURL: URL? = nil
+        operationLockURL: URL? = nil, hasProAccess: Bool = ProLicense.isActive
     ) {
         self.service = service
         self.automation = automation ?? AppleScreenTimeAutomation()
+        self.hasProAccess = hasProAccess
         self.operationLockURL =
             operationLockURL
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -82,6 +89,11 @@ final class AppleProtectionModel: ObservableObject {
 
     func setUp(enablesAdultFilter: Bool, existingPasscode: String?) async {
         guard !isBusy else { return }
+        guard hasProAccess else {
+            message = "Pro access is required to set up Screen Time."
+            hasError = true
+            return
+        }
         await perform(.checking) {
             if let existingPasscode, !AppleScreenTimeAutomation.validCode(existingPasscode) {
                 throw AppleScreenTimeAutomationError.existingPasscodeRequired

@@ -2,6 +2,30 @@ import AppKit
 import ApplicationServices
 import SwiftUI
 
+struct ProBadge: View {
+    var body: some View {
+        Text("PRO")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(PauseTheme.coral)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(PauseTheme.coral.opacity(0.12), in: Capsule())
+            .accessibilityLabel("Pro feature")
+    }
+}
+
+struct ScreenTimeBenefits: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Add Apple’s built-in website blocking, with a private code kept by Hard Pause.")
+            Text(
+                "Turn on Share Across Devices in Screen Time to sync its settings across your Mac, iPhone, and iPad on the same Apple Account."
+            )
+            .foregroundStyle(PauseTheme.muted)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 struct AppleProtectionCard: View {
     @ObservedObject var model: AppleProtectionModel
     var canRemoveCode = false
@@ -12,6 +36,7 @@ struct AppleProtectionCard: View {
             HStack {
                 Text("Screen Time protection")
                     .font(PauseFont.display(18, relativeTo: .headline))
+                ProBadge()
                 Spacer()
                 Text(stateLabel)
                     .font(.caption.weight(.medium))
@@ -20,6 +45,9 @@ struct AppleProtectionCard: View {
             Text(statusText)
                 .foregroundStyle(PauseTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
+            if model.snapshot?.phase == .inactive {
+                ScreenTimeBenefits().font(.callout)
+            }
             if let activity = model.activity {
                 ProgressView(activity.label).controlSize(.small)
             } else {
@@ -48,7 +76,7 @@ struct AppleProtectionCard: View {
                             }
                         }
                         Text(
-                            "This status is saved on this Mac. iPhone protection and device sharing are not verified. Apple account recovery can still reset the code."
+                            "Screen Time settings sync across devices on the same Apple Account when Share Across Devices is on."
                         )
                     }
                     .font(.caption).foregroundStyle(PauseTheme.muted)
@@ -113,7 +141,7 @@ struct AppleProtectionCard: View {
     private var statusText: String {
         switch model.snapshot?.phase {
         case .inactive:
-            return "Let Hard Pause keep a private code for Apple’s Screen Time settings."
+            return model.hasProAccess ? "Automatic setup is included with Pro." : "Automatic setup requires Pro."
         case .pendingSetup:
             return "The private code is saved. Finish setup so Hard Pause can verify it."
         case .active:
@@ -196,7 +224,17 @@ struct AppleProtectionSetupView: View {
 
     var body: some View {
         Group {
-            if hasAccessibilityAccess {
+            if !model.hasProAccess && !isPending {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Available with Pro")
+                        .font(PauseFont.display(24, relativeTo: .title))
+                    Text("Automatic Screen Time setup requires a Pro license.")
+                    HStack {
+                        Spacer()
+                        Button("OK") { dismiss() }.buttonStyle(PauseButtonStyle(primary: true))
+                    }
+                }
+            } else if hasAccessibilityAccess {
                 setupSteps
             } else {
                 accessibilityStep
@@ -238,27 +276,21 @@ struct AppleProtectionSetupView: View {
 
     private var setupSteps: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(isPending ? "Finish Screen Time setup" : "Set a private Screen Time code")
-                .font(PauseFont.display(24, relativeTo: .title))
+            HStack {
+                Text(isPending ? "Finish Screen Time setup" : "Add Screen Time protection")
+                    .font(PauseFont.display(24, relativeTo: .title))
+                ProBadge()
+            }
             if isPending {
                 Text(
                     "Hard Pause saved the private code before setup stopped. Check whether macOS accepted it before you try again."
                 )
             } else if !hasInspected {
+                ScreenTimeBenefits()
                 Text(
-                    "Hard Pause will open System Settings, check for an existing code, then ask you to continue. It saves a random code before entering it for you."
-                )
-                Text(
-                    "Leave the keyboard and mouse alone while setup runs. Hard Pause does not display the code, but macOS may show digits during entry. Look away during that step if you do not want to see them."
-                )
-                .foregroundStyle(PauseTheme.muted)
-                Text(
-                    "The code stays until the last plan that uses Screen Time ends. You can remove an unused setup at any time."
+                    "Setup opens System Settings. Leave the keyboard and mouse alone while it runs."
                 )
                 .font(.callout)
-                Text(
-                    "Setup uses your own Screen Time settings on this Mac. Protection on other devices is not verified. Apple account recovery can still reset the code."
-                )
                 .foregroundStyle(PauseTheme.muted)
             } else {
                 Toggle("Use Apple’s adult website filter and sync websites", isOn: $enableAdultFilter)

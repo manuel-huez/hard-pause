@@ -75,10 +75,15 @@ struct ContentView: View {
                             } action: {
                                 sidebarMascotFrame = $0
                             }
-                            Text("hard pause")
-                                .font(PauseFont.display(15))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
+                            HStack(spacing: 6) {
+                                Text("hard pause")
+                                    .font(PauseFont.display(15))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                if model.appleProtection.hasProAccess {
+                                    ProBadge().accessibilityLabel("Pro license active")
+                                }
+                            }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 12)
@@ -284,7 +289,7 @@ private struct HomePane: View {
                 }
                 .foregroundStyle(PauseTheme.muted)
                 .help(
-                    "Rules and protection state stay on this Mac. Adult website list updates contact a public provider. Browser checks read tab addresses only when page protection is active. Chrome and Safari RTA checks read rating tags only; Firefox cannot read RTA labels. Positive RTA detections are cached locally for 24 hours. No browsing history is uploaded."
+                    "Hard Pause stores plans on this Mac. Screen Time can sync its settings through your Apple Account. Adult website list updates contact a public provider. Browser checks read tab addresses only when page protection is active. Chrome and Safari RTA checks read rating tags only; Firefox cannot read RTA labels. Positive RTA detections are cached locally for 24 hours. Hard Pause does not upload browsing history."
                 )
                 .padding(.top, 12)
             }
@@ -1307,6 +1312,7 @@ private struct BlockEditorView: View {
                         }
                     }
                 }
+                screenTimePlanSetup
                 Divider()
                 VStack(spacing: 10) {
                     if protectionMode.allowsBreaks {
@@ -1400,9 +1406,12 @@ private struct BlockEditorView: View {
         } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(mode.displayName)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(PauseTheme.ink)
+                    HStack(spacing: 6) {
+                        Text(mode.displayName)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(PauseTheme.ink)
+                        if !mode.allowsBreaks { ProBadge() }
+                    }
                     Text(mode.shortDetail)
                         .font(.caption)
                         .foregroundStyle(PauseTheme.muted)
@@ -1457,6 +1466,36 @@ private struct BlockEditorView: View {
         }
     }
 
+    private var screenTimePlanSetup: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Screen Time protection", systemImage: "lock.shield")
+                    .font(.body.weight(.semibold))
+                ProBadge()
+                Spacer()
+                if model.appleProtection.snapshot?.phase == .active {
+                    Label("Ready", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(PauseTheme.coral)
+                } else if canSetUpScreenTime {
+                    Button(model.appleProtection.snapshot?.phase == .pendingSetup ? "Continue setup" : "Set up") {
+                        showsAppleProtectionSetup = true
+                    }
+                    .buttonStyle(PauseButtonStyle(primary: !protectionMode.allowsBreaks))
+                    .accessibilityLabel("Set up Screen Time")
+                    .disabled(model.appleProtection.isBusy)
+                }
+            }
+            ScreenTimeBenefits().font(.callout)
+            if model.appleProtection.snapshot?.phase != .active {
+                Text(screenTimePrerequisiteMessage)
+                    .font(.callout.weight(.medium))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PauseTheme.coral.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+    }
+
     private var screenTimePrerequisiteMessage: String {
         switch model.appleProtection.snapshot?.phase {
         case .waitingForFullUnlock:
@@ -1466,7 +1505,12 @@ private struct BlockEditorView: View {
         case .active:
             return "Screen Time protection is ready."
         case .inactive, .pendingSetup, nil:
-            return "Set up Screen Time before starting a Hard Pause plan."
+            if !model.appleProtection.hasProAccess && model.appleProtection.snapshot?.phase != .pendingSetup {
+                return "Pro is required for automatic setup."
+            }
+            return protectionMode.allowsBreaks
+                ? "Optional for this plan."
+                : "Required for Hard Pause."
         }
     }
 
@@ -1515,25 +1559,6 @@ private struct BlockEditorView: View {
                     .font(.caption)
                     .foregroundStyle(PauseTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
-                if !protectionMode.allowsBreaks, model.appleProtection.snapshot?.phase != .active {
-                    HStack(spacing: 12) {
-                        Text(screenTimePrerequisiteMessage)
-                            .font(.caption)
-                            .foregroundStyle(PauseTheme.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 8)
-                        if canSetUpScreenTime {
-                            Button(
-                                model.appleProtection.snapshot?.phase == .pendingSetup
-                                    ? "Continue setup" : "Set up Screen Time"
-                            ) {
-                                showsAppleProtectionSetup = true
-                            }
-                            .buttonStyle(PauseButtonStyle())
-                            .disabled(model.appleProtection.isBusy)
-                        }
-                    }
-                }
             }
             if let validationMessage {
                 Label(validationMessage, systemImage: "exclamationmark.triangle")

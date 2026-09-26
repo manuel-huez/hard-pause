@@ -16,6 +16,26 @@ final class AppleProtectionModelTests: XCTestCase {
         XCTAssertTrue(model.hasError)
     }
 
+    func testSetupRequiresProWithoutScreenTimeOrServiceOperations() async {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let events = AppleProtectionEventLog()
+        let service = FakeAppleProtectionService(events: events, snapshot: makeSnapshot(phase: .inactive))
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        let model = AppleProtectionModel(
+            service: service, automation: automation,
+            operationLockURL: directory.appendingPathComponent("native.lock"), hasProAccess: false)
+
+        await model.setUp(enablesAdultFilter: true, existingPasscode: nil)
+
+        XCTAssertFalse(model.hasProAccess)
+        XCTAssertEqual(events.values, [])
+        XCTAssertNil(service.setupDelay)
+        XCTAssertNil(model.codeCheck)
+        XCTAssertEqual(model.message, "Pro access is required to set up Screen Time.")
+        XCTAssertTrue(model.hasError)
+    }
+
     func testNativeCheckCannotInterruptWebsiteSyncAcrossAppModels() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -36,7 +56,8 @@ final class AppleProtectionModelTests: XCTestCase {
                 entered.fulfill()
             }
         }
-        let model = AppleProtectionModel(service: service, automation: automation, operationLockURL: lockURL)
+        let model = AppleProtectionModel(
+            service: service, automation: automation, operationLockURL: lockURL, hasProAccess: false)
         let second = AppleProtectionModel(service: service, automation: automation, operationLockURL: lockURL)
         let sync = Task { await model.syncWebsites() }
         await fulfillment(of: [entered], timeout: 2)
@@ -98,6 +119,7 @@ final class AppleProtectionModelTests: XCTestCase {
 
         await model.setUp(enablesAdultFilter: true, existingPasscode: nil)
 
+        XCTAssertTrue(model.hasProAccess)
         XCTAssertEqual(
             events.values,
             ["inspect", "begin setup", "install", "verify", "complete setup"]
@@ -133,7 +155,7 @@ final class AppleProtectionModelTests: XCTestCase {
         XCTAssertEqual(model.message, AppleScreenTimeAutomationError.verificationRequired.localizedDescription)
     }
 
-    func testRetryResumesTheSameSetupOperation() async {
+    func testRetryResumesTheSameSetupOperationWithoutProAccess() async {
         let events = AppleProtectionEventLog()
         let operationID = UUID()
         let pending = makeSnapshot(phase: .pendingSetup, operationID: operationID)
@@ -158,7 +180,8 @@ final class AppleProtectionModelTests: XCTestCase {
             hasPasscode: true,
             adultFilterEnabled: false
         )
-        await model.retrySetup(existingPasscode: "4321")
+        let recoveryModel = AppleProtectionModel(service: service, automation: automation, hasProAccess: false)
+        await recoveryModel.retrySetup(existingPasscode: "4321")
 
         XCTAssertEqual(
             events.values,
@@ -167,7 +190,8 @@ final class AppleProtectionModelTests: XCTestCase {
         XCTAssertEqual(service.resumedSetupOperationIDs, [operationID])
         XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
         XCTAssertEqual(automation.installReplacementWasProvided, [false, true])
-        XCTAssertEqual(model.snapshot, active)
+        XCTAssertFalse(recoveryModel.hasProAccess)
+        XCTAssertEqual(recoveryModel.snapshot, active)
     }
 
     func testRetryWithExistingPasscodeRequiresAnExplicitCodeBeforeResume() async {
@@ -220,11 +244,12 @@ final class AppleProtectionModelTests: XCTestCase {
         )
         let automation = FakeAppleScreenTimeAutomation(events: events)
         automation.releaseError = AppleScreenTimeAutomationError.verificationRequired
-        let model = AppleProtectionModel(service: service, automation: automation)
+        let model = AppleProtectionModel(service: service, automation: automation, hasProAccess: false)
 
         await model.finishEnd()
 
         XCTAssertEqual(events.values, ["begin release", "release", "status"])
+        XCTAssertFalse(model.hasProAccess)
         XCTAssertTrue(service.completedReleaseOperationIDs.isEmpty)
         XCTAssertEqual(model.snapshot, releaseInProgress)
         XCTAssertEqual(model.message, AppleScreenTimeAutomationError.verificationRequired.localizedDescription)
