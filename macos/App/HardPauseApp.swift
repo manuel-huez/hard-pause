@@ -53,7 +53,7 @@ struct HardPauseApp: App {
     }
 
     private var isCompactSetupWindow: Bool {
-        model.activeBlocks.isEmpty && model.setupState == .incomplete
+        model.shouldShowInitialSetup
     }
 }
 

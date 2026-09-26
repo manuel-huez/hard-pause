@@ -337,6 +337,61 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.serviceAvailability, .ready)
     }
 
+    func testServiceOutageRetainsActivePlanBlocksWritesAndRecovers() async {
+        let active = makeBlock(draft: makeDraft(), phase: .active(naturalEndRemaining: nil))
+        let knownSnapshot = makeSnapshot(blocks: [active])
+        let service = ControlledProtectedService(snapshot: knownSnapshot)
+        let model = makeReadyModel(service: service)
+
+        await model.refresh()
+        await model.refreshSetup()
+        XCTAssertTrue(model.hasCompletedSetup)
+        XCTAssertFalse(model.shouldShowInitialSetup)
+        XCTAssertTrue(model.canRequestUnlock)
+
+        service.failNextList()
+        await model.refresh()
+
+        XCTAssertEqual(model.snapshot, knownSnapshot)
+        XCTAssertEqual(model.activeBlocks, [active])
+        XCTAssertEqual(model.serviceAvailability, .unavailable("State check failed."))
+        XCTAssertFalse(model.canRequestUnlock)
+        XCTAssertFalse(model.canChangeBlocks)
+        XCTAssertTrue(model.hasCompletedSetup)
+        XCTAssertFalse(model.shouldShowInitialSetup)
+
+        let saved = await model.create(makeDraft())
+        XCTAssertFalse(saved)
+        XCTAssertEqual(service.createCalls, 0)
+
+        await model.refresh()
+
+        XCTAssertEqual(model.snapshot, knownSnapshot)
+        XCTAssertEqual(model.activeBlocks, [active])
+        XCTAssertEqual(model.serviceAvailability, .ready)
+        XCTAssertTrue(model.canRequestUnlock)
+        XCTAssertFalse(model.shouldShowInitialSetup)
+    }
+
+    func testFreshInstallStillShowsInitialSetup() async {
+        let service = ControlledProtectedService(snapshot: makeSnapshot())
+        let model = AppModel(
+            service: service,
+            automaticallyRefreshes: false,
+            setupProbe: {
+                SetupAccessState(browsers: [], startsAtLogin: false)
+            }
+        )
+
+        await model.refresh()
+        XCTAssertFalse(model.shouldShowInitialSetup)
+
+        await model.refreshSetup()
+
+        XCTAssertFalse(model.hasCompletedSetup)
+        XCTAssertTrue(model.shouldShowInitialSetup)
+    }
+
     func testCancelBreakUsesServiceAndAcceptsActiveSnapshot() async {
         let draft = makeDraft()
         let id = UUID()
@@ -531,6 +586,10 @@ private final class ControlledProtectedService: ProtectedServiceServing {
     func resumeList() {
         continuation?.resume()
         continuation = nil
+    }
+
+    func failNextList() {
+        shouldFailNextList = true
     }
 
     func list() async throws -> ProtectedServiceSnapshot {

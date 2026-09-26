@@ -40,11 +40,11 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if model.setupState == .checking {
+            if model.setupState == .checking && !model.hasCompletedSetup {
                 ProgressView("Checking protection…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(LowLightBackground())
-            } else if shouldShowMandatorySetup {
+            } else if model.shouldShowInitialSetup {
                 MandatorySetupView()
             } else {
                 NavigationSplitView {
@@ -113,6 +113,11 @@ struct ContentView: View {
                         }
                         .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                         .background(LowLightBackground())
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            if case .unavailable = model.serviceAvailability {
+                                ServiceConnectionBanner()
+                            }
+                        }
                         .navigationTitle((selection ?? .home).rawValue)
                         .toolbar {
                             if selection == .blocks {
@@ -206,11 +211,6 @@ struct ContentView: View {
         }
     }
 
-    private var shouldShowMandatorySetup: Bool {
-        guard model.activeBlocks.isEmpty else { return false }
-        return model.setupState == .incomplete
-    }
-
     private var sidebarMascotMood: PauseSeedMood {
         // Resting keeps the idle mascot awake; every active block uses calm, closed eyes.
         return model.activeBlocks.isEmpty ? .resting : .calm
@@ -242,20 +242,21 @@ private struct HomePane: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if !model.activeBlocks.isEmpty && model.setupState == .incomplete
+                if (model.hasCompletedSetup || !model.activeBlocks.isEmpty) && model.setupState == .incomplete
+                    && model.serviceAvailability == .ready
                     && !model.serviceUpdateIsOnlySetupGap
                 {
                     SetupIncompleteBanner(showSetup: showSetup)
                 }
 
-                if case .unavailable = model.serviceAvailability {
-                    ServiceSetupPanel()
-                }
-
                 VStack(alignment: .leading, spacing: 18) {
-                    Text(model.activeBlocks.isEmpty ? "No plans are active." : "Your pause is active.")
-                        .font(PauseFont.display(26, relativeTo: .title))
-                    if model.activeBlocks.isEmpty {
+                    Text(
+                        model.serviceAvailability != .ready
+                            ? "Last known plan state"
+                            : model.activeBlocks.isEmpty ? "No plans are active." : "Your pause is active."
+                    )
+                    .font(PauseFont.display(26, relativeTo: .title))
+                    if model.activeBlocks.isEmpty && model.serviceAvailability == .ready {
                         Text("Open Plans to create one or start a saved plan.")
                             .font(.body)
                             .foregroundStyle(PauseTheme.muted)
@@ -370,44 +371,30 @@ private struct BlocksPane: View {
     let showUnlockGuidance: (UUID) -> Void
 
     var body: some View {
-        Group {
-            switch model.serviceAvailability {
-            case .checking:
-                ProgressView("Checking the Hard Pause service…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .unavailable:
-                ScrollView {
-                    ServiceSetupPanel()
-                        .frame(maxWidth: 680, alignment: .leading)
-                        .padding(24)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                Text("Plans")
+                    .font(PauseFont.display(26, relativeTo: .title))
+                if model.blocks.isEmpty && model.serviceAvailability == .ready {
+                    Text("Create a plan, choose its boundaries, and start it when you are ready.")
+                        .foregroundStyle(PauseTheme.muted)
+                    Button("New plan", action: addBlock)
+                        .buttonStyle(PauseButtonStyle(primary: true))
+                        .disabled(!model.canChangeBlocks)
                 }
-            case .ready:
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 18) {
-                        Text("Plans")
-                            .font(PauseFont.display(26, relativeTo: .title))
-                        if model.blocks.isEmpty {
-                            Text("Create a plan, choose its boundaries, and start it when you are ready.")
-                                .foregroundStyle(PauseTheme.muted)
-                            Button("New plan", action: addBlock)
-                                .buttonStyle(PauseButtonStyle(primary: true))
-                        }
-                        ForEach(model.activeBlocks + model.blocks.filter { $0.phase == .inactive }) { block in
-                            BlockPanel(
-                                block: block,
-                                edit: { edit(block) },
-                                activate: { activate(block) },
-                                delete: { delete(block) },
-                                showUnlockGuidance: { showUnlockGuidance(block.id) }
-                            )
-                        }
-                    }
-                    .frame(maxWidth: 680, alignment: .leading)
-                    .padding(24)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                ForEach(model.activeBlocks + model.blocks.filter { $0.phase == .inactive }) { block in
+                    BlockPanel(
+                        block: block,
+                        edit: { edit(block) },
+                        activate: { activate(block) },
+                        delete: { delete(block) },
+                        showUnlockGuidance: { showUnlockGuidance(block.id) }
+                    )
                 }
             }
+            .frame(maxWidth: 680, alignment: .leading)
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 }
@@ -421,14 +408,14 @@ private struct SetupIncompleteBanner: View {
                 .foregroundStyle(PauseTheme.coral)
                 .font(.title3)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Finish setup to keep protection ready")
+                Text("Setup needs attention")
                     .font(PauseFont.display(18, relativeTo: .headline))
                 Text(
-                    "Your active plan and its unlock delays remain in place. Complete the missing setup step when you can."
+                    "Complete the missing setup step before starting a new plan. Existing rules and waiting periods stay in place."
                 )
                 .foregroundStyle(PauseTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
-                Button("Open setup", action: showSetup)
+                Button("Open settings", action: showSetup)
                     .buttonStyle(PauseButtonStyle(primary: true))
             }
             Spacer(minLength: 0)
@@ -2455,7 +2442,10 @@ private struct SetupChecklistView: View {
                     setupReadyLabel
                 }
             }
-            if !model.setupServiceReady {
+            if model.serviceAvailability != .ready && (model.hasCompletedSetup || model.snapshot != nil) {
+                Text("Waiting for the protection service to reconnect.")
+                    .foregroundStyle(PauseTheme.muted)
+            } else if !model.setupServiceReady {
                 Text(
                     model.serviceCanUpdateWithoutApproval
                         ? "Protection can update with your existing approval."
@@ -2644,9 +2634,33 @@ private struct ProtectionSettingsPane: View {
     }
 }
 
-private struct ServiceSetupPanel: View {
+private struct ServiceConnectionBanner: View {
+    @EnvironmentObject private var model: AppModel
+
     var body: some View {
-        SetupChecklistView()
+        HStack(spacing: 12) {
+            ProgressView().controlSize(.small)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Reconnecting to protection…").font(.headline)
+                Text(
+                    model.snapshot == nil
+                        ? "Plan status is unavailable. Changes are paused until the connection returns."
+                        : "Showing the last known plan state. Changes are paused until the connection returns."
+                )
+                .font(.callout).foregroundStyle(PauseTheme.muted)
+            }
+            Spacer(minLength: 0)
+            Button("Retry") {
+                Task {
+                    await model.refresh()
+                    await model.refreshSetup()
+                }
+            }
+            .buttonStyle(PauseButtonStyle())
+            .disabled(model.isRefreshing)
+        }
+        .padding(16)
+        .background(PauseTheme.surface)
     }
 }
 

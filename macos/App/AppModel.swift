@@ -17,6 +17,7 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var browserStatuses: [String: String] = [:]
     @Published private(set) var setupState: SetupState = .checking
+    @Published private(set) var hasCompletedSetup = false
     @Published private(set) var browserReadiness: [BrowserSetupState] = []
     @Published private(set) var connectingBrowserID: String?
     @Published private(set) var browserConnectionMessages: [String: String] = [:]
@@ -69,6 +70,9 @@ final class AppModel: ObservableObject {
         serviceAvailability == .ready && !isBusy && !hasPendingMutation && !isInstallingService
     }
     var setupReady: Bool { setupState == .ready }
+    var shouldShowInitialSetup: Bool {
+        !hasCompletedSetup && activeBlocks.isEmpty && setupState == .incomplete
+    }
     var needsServiceUpdate: Bool {
         snapshot.map { $0.protection.serviceVersion != ProtectedServiceContract.serviceVersion } ?? false
     }
@@ -134,15 +138,19 @@ final class AppModel: ObservableObject {
         guard !isBusy, !isRefreshing, !hasPendingMutation else { return }
         isRefreshing = true
         defer { isRefreshing = false }
+        let requestStartedAt = SystemClock.read().continuousTime
         do {
             accept(try await service.list())
             serviceAvailability = .ready
             secondsSinceIdleRefresh = 0
+            updateSetupState()
         } catch {
-            snapshot = nil
-            serviceAvailability = .unavailable(error.localizedDescription)
+            markServiceUnavailable(
+                error.localizedDescription,
+                elapsed: SystemClock.read().continuousTime - requestStartedAt,
+                operation: "list"
+            )
         }
-        updateSetupState()
     }
 
     func create(_ draft: ProtectedBlockDraft) async -> Bool {
@@ -335,6 +343,7 @@ final class AppModel: ObservableObject {
         }
         isBusy = true
         defer { isBusy = false }
+        let requestStartedAt = SystemClock.read().continuousTime
         do {
             accept(try await operation())
             serviceAvailability = .ready
@@ -344,13 +353,13 @@ final class AppModel: ObservableObject {
         } catch {
             if let clientError = error as? ProtectedServiceClientError {
                 switch clientError {
-                case .unavailable(let message):
-                    snapshot = nil
-                    serviceAvailability = .unavailable(message)
-                case .timedOut:
-                    snapshot = nil
-                    serviceAvailability = .unavailable(error.localizedDescription)
-                case .service, .invalidReply:
+                case .unavailable(_), .timedOut, .invalidReply:
+                    markServiceUnavailable(
+                        error.localizedDescription,
+                        elapsed: SystemClock.read().continuousTime - requestStartedAt,
+                        operation: "mutation"
+                    )
+                case .service:
                     break
                 }
             }
@@ -543,11 +552,24 @@ final class AppModel: ObservableObject {
             setupState = .checking
             return
         }
-        setupState =
-            SetupReadiness.ready(
-                serviceReady: setupServiceReady,
-                access: SetupAccessState(browsers: browserReadiness, startsAtLogin: startsAtLogin)
-            ) ? .ready : .incomplete
+        let isReady = SetupReadiness.ready(
+            serviceReady: setupServiceReady,
+            access: SetupAccessState(browsers: browserReadiness, startsAtLogin: startsAtLogin)
+        )
+        if isReady { hasCompletedSetup = true }
+        setupState = isReady ? .ready : .incomplete
+    }
+
+    private func markServiceUnavailable(_ message: String, elapsed: TimeInterval, operation: String) {
+        let didDisconnect = serviceAvailability == .ready
+        serviceAvailability = .unavailable(message)
+        updateSetupState()
+        if didDisconnect {
+            NSLog(
+                "Hard Pause service disconnected during %@ after %.2fs: %@",
+                operation, elapsed, message
+            )
+        }
     }
 
     private func timerFired() async {
