@@ -48,8 +48,12 @@ struct HardPauseApp: App {
             }
         }
 
-        MenuBarExtra("Hard Pause", systemImage: "pause.circle") {
+        MenuBarExtra {
             HardPauseMenu(model: model, updater: updater)
+        } label: {
+            Image(model.activeBlocks.isEmpty ? "MenuBarInactive" : "MenuBarActive")
+                .accessibilityLabel(
+                    model.activeBlocks.isEmpty ? "Hard Pause: no active plans" : "Hard Pause: plan active")
         }
     }
 
