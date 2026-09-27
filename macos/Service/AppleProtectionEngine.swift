@@ -398,8 +398,11 @@ final class AppleLockdownEngine: @unchecked Sendable {
         withLock { frozenForLiveUpdate = false }
     }
 
-    func stateDigest() throws -> String {
-        try withLock { try ServiceStateDigest.hash(state) }
+    func stateDigest(requiringUnfrozen: Bool = false) throws -> String {
+        try withLock {
+            if requiringUnfrozen { try requireNotFrozen() }
+            return try ServiceStateDigest.hash(state)
+        }
     }
 
     private func requireNotFrozen() throws {

@@ -2,10 +2,10 @@ import Foundation
 
 enum ProtectedServiceContract {
     static let machServiceName = "org.hardpause.service"
-    static let serviceVersion = "13"
+    static let serviceVersion = "14"
     // Enable only after a native launchd/PF/hosts handoff and rollback proof.
     static let liveServiceHandoffEnabled = true
-    static let safeUpdateSourceVersions: Set<String> = ["4", "5", "6", "7", "8", "9", "10", "11", "12"]
+    static let safeUpdateSourceVersions: Set<String> = ["4", "5", "6", "7", "8", "9", "10", "11", "12", "13"]
     static let standbyMachServiceName = "org.hardpause.service.standby"
     static let updateMachServiceName = "org.hardpause.service.updates"
     static let maximumPayloadBytes = 1_048_576
@@ -103,6 +103,7 @@ struct ProtectedLiveUpdateRequest: Codable, Equatable, Sendable {
 }
 
 enum ProtectedLiveUpdatePhase: String, Codable, Sendable {
+    case idle
     case frozen
     case standbyReady = "standby_ready"
     case cancelled
@@ -111,10 +112,11 @@ enum ProtectedLiveUpdatePhase: String, Codable, Sendable {
 
 struct ProtectedLiveUpdateStatus: Codable, Equatable, Sendable {
     let phase: ProtectedLiveUpdatePhase
-    let generation: UUID
+    let generation: UUID?
     let stateDigest: String
     let appleStateDigest: String
-    let successorDigest: String
+    let successorDigest: String?
+    var runningServiceDigest: String? = nil
     let isEnforcing: Bool
     let issues: [ProtectionIssue]
 }

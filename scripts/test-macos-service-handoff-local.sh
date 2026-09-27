@@ -2,6 +2,13 @@
 set -euo pipefail
 
 repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
+service_contract=$(python3 - "$repo_root/macos/Core/ProtectedServiceIPC.swift" <<'PY'
+import re
+import sys
+from pathlib import Path
+print(re.search(r'static let serviceVersion = "([0-9]+)"', Path(sys.argv[1]).read_text()).group(1))
+PY
+)
 
 # The fixture uses separate service names, root storage, Keychain items, hosts
 # markers, and PF anchors. The existing Hard Pause installation is not changed.
@@ -55,10 +62,10 @@ done
     && fail "/etc/hosts already contains fixture rules"
 
 cat >"$artifact_dir/proof-limits.txt" <<'EOF'
-This fixture tests a version-8-to-version-8 live service update. It does not
-test migration from the installed version-2 service.
+This fixture tests the current source service contract with app builds 8 and 9.
+It does not test migration from an older installed service contract.
 
-The v8 baseline and v9 app-build successor use separate fixture service names,
+The build 8 baseline and build 9 successor use separate fixture service names,
 root storage, Keychain items, hosts markers, and PF anchors on this Mac. The
 successor app build number is higher so the signed build check runs.
 
@@ -229,7 +236,7 @@ assert_same_requirement() {
     printf '%s: %s\n' "$name" "$before_requirement" >>"$artifact_dir/signing-proof.txt"
 }
 
-echo "Building the temporary v8 live-handoff primary."
+echo "Building the temporary app build 8 live-handoff primary (contract $service_contract)."
 live_primary_source="$build_root/source-live-primary"
 live_successor_source="$build_root/source-live-successor"
 copy_source "$live_primary_source"
@@ -238,7 +245,7 @@ mkdir -p "$live_successor_source"
 build_app "$live_primary_source" "$build_root/derived-live-primary" 8
 live_primary_app=$BUILT_APP
 
-echo "Building the gate-enabled v8 successor with a higher signed app build number."
+echo "Building the successor with signed app build 9."
 patch_source_once "$live_successor_source/macos/Service/ServiceSupport.swift" \
     'org.hardpause.fixture.service.privileged-update' \
     'org.hardpause.fixture.service.privileged-update.successor'
@@ -329,7 +336,7 @@ for anchor in "$main_anchor" "$standby_anchor"; do
     [[ -z "$rules" ]] || fail "fixture PF anchor $anchor already has rules"
 done
 
-echo "Installing the active v8 handoff primary."
+echo "Installing the active app build 8 handoff primary."
 sudo -n "$live_primary_app/Contents/Resources/install-macos-service.sh"
 worker_executable="$helper_dir/BrowserWorker/HardPauseBrowserWorker-8.app/Contents/MacOS/HardPauseBrowserWorker"
 worker_label="org.hardpause.fixture.browser-worker.v8"
@@ -370,7 +377,7 @@ active_block_id=$(python3 -c \
     "$artifact_dir/active-created.json")
 run_cli activate "$active_block_id" 1 >"$artifact_dir/active-started.json"
 run_cli list >"$artifact_dir/active-before-handoff.json"
-assert_snapshot "$artifact_dir/active-before-handoff.json" "8" "$active_block_id" active
+assert_snapshot "$artifact_dir/active-before-handoff.json" "$service_contract" "$active_block_id" active
 
 observer="$build_root/handoff-observer.py"
 cat >"$observer" <<'PY'
@@ -494,6 +501,40 @@ trap fixture_exit EXIT
 sudo -n /usr/bin/python3 "$observer" "$fixture_hosts_file" watch "$watch_stop" "$watch_log" &
 watch_pid=$!
 
+echo "Checking automatic claim recovery after begin rejects before acquiring a gate."
+rejected_app="$build_root/HardPause-Rejected.app"
+/usr/bin/ditto "$live_successor_app" "$rejected_app"
+patch_source_once "$rejected_app/Contents/Resources/install-macos-service.sh" \
+    'begin-live-update "${live_token}" "${live_stage}/new/hard-pause-service"' \
+    'begin-live-update "${live_token}" "${live_stage}/old/hard-pause-service"'
+/usr/bin/codesign --force --sign "$signing_identity" --timestamp=none --options runtime "$rejected_app"
+/usr/bin/codesign --verify --deep --strict "$rejected_app"
+rejected_ticket=$(/usr/bin/uuidgen | /usr/bin/tr '[:upper:]' '[:lower:]')
+rejected_stage="$helper_dir/ServiceUpdates/$rejected_ticket"
+sudo -n /usr/bin/install -d -o root -g wheel -m 0755 "$rejected_stage"
+sudo -n /usr/bin/ditto "$rejected_app" "$rejected_stage/HardPause.app"
+sudo -n /bin/chmod -R a-w,a+rX "$rejected_stage/HardPause.app"
+printf '%s\n' "$rejected_ticket" >"$build_root/rejected-update-claim"
+sudo -n /usr/bin/install -d -o root -g wheel -m 0700 "$support_dir/service-updates"
+sudo -n /usr/bin/install -o root -g wheel -m 0600 "$build_root/rejected-update-claim" \
+    "$support_dir/service-updates/active"
+rejected_log="$artifact_dir/rejected-begin-installer.log"
+if sudo -n "$rejected_stage/HardPause.app/Contents/Resources/install-macos-service.sh" --live-update \
+    >"$rejected_log" 2>&1; then
+    fail "the rejected begin unexpectedly returned success"
+fi
+/bin/cat "$rejected_log"
+/usr/bin/grep -Fq 'the live update did not acquire a gate; the prior service remains healthy' "$rejected_log" \
+    || fail "the rejected begin did not prove safe recovery"
+sudo -n /usr/bin/test ! -e "$support_dir/service-updates/active" \
+    || fail "the rejected begin retained its update claim"
+run_cli list >"$artifact_dir/after-rejected-begin.json"
+assert_snapshot "$artifact_dir/after-rejected-begin.json" "$service_contract" "$active_block_id" active
+[[ $(shasum -a 256 "$helper_dir/hard-pause-service" | awk '{ print $1 }') \
+    == $(shasum -a 256 "$primary_service" | awk '{ print $1 }') ]] \
+    || fail "the rejected begin changed the installed service"
+sudo -n /usr/bin/python3 "$observer" "$fixture_hosts_file" main
+
 echo "Creating a successor app with a temporary pre-finalize installer failure."
 failure_app="$build_root/HardPause-Failure.app"
 /usr/bin/ditto "$live_successor_app" "$failure_app"
@@ -538,7 +579,7 @@ fi
 [[ -s "$artifact_dir/injected-overlap.json" ]] \
     || fail "the injected failure did not record simultaneous launchd, hosts, and PF evidence"
 run_cli list >"$artifact_dir/after-rollback.json"
-assert_snapshot "$artifact_dir/after-rollback.json" "8" "$active_block_id" active
+assert_snapshot "$artifact_dir/after-rollback.json" "$service_contract" "$active_block_id" active
 if /bin/launchctl print "system/$standby_label" >/dev/null 2>&1; then
     fail "rollback left the standby launch daemon loaded"
 fi
@@ -549,9 +590,9 @@ fi
     == $(shasum -a 256 "$primary_service" | awk '{ print $1 }') ]] \
     || fail "rollback did not restore the prior primary service binary"
 sudo -n /usr/bin/python3 "$observer" "$fixture_hosts_file" main
-echo "Injected rollback passed: the previous v8 primary resumed with active rules."
+echo "Injected rollback passed: the previous primary resumed with active rules."
 
-echo "Requesting the successful v8 active handoff from the signed successor app."
+echo "Requesting the successful active handoff from the signed successor app."
 /usr/bin/open -n -a "$live_successor_app"
 successor_sha=$(shasum -a 256 "$successor_service" | awk '{ print $1 }')
 update_result() {
@@ -602,7 +643,7 @@ for _ in {1..60}; do
     /bin/sleep 1
 done
 [[ "$healthy" -eq 1 ]] || fail "the updated service did not answer its health check"
-assert_snapshot "$artifact_dir/after-successful-handoff.json" "8" "$active_block_id" active
+assert_snapshot "$artifact_dir/after-successful-handoff.json" "$service_contract" "$active_block_id" active
 [[ $(shasum -a 256 "$helper_dir/hard-pause-service" | awk '{ print $1 }') \
     == "$successor_sha" ]] \
     || fail "the successful handoff did not install the signed successor binary"

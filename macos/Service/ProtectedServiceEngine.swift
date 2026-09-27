@@ -306,13 +306,29 @@ final class ProtectedServiceEngine: @unchecked Sendable {
 
     func liveUpdateStatus(
         appleStateDigest: String,
-        phase: ProtectedLiveUpdatePhase = .frozen
+        phase: ProtectedLiveUpdatePhase = .frozen,
+        runningServiceDigest: String? = nil
     ) throws -> ProtectedLiveUpdateStatus {
         try withLock {
+            let protection = snapshotLocked(at: clock.read().wallTime).protection
+            if phase == .idle {
+                guard state.liveUpdateGate == nil, state.updateGateToken == nil, !readOnlyUntilFinalize else {
+                    throw ProtectedStateError.updateInProgress
+                }
+                return ProtectedLiveUpdateStatus(
+                    phase: .idle,
+                    generation: nil,
+                    stateDigest: try ServiceStateDigest.hash(state),
+                    appleStateDigest: appleStateDigest,
+                    successorDigest: nil,
+                    runningServiceDigest: runningServiceDigest,
+                    isEnforcing: protection.isEnforcing && protection.lastAppliedAt != nil,
+                    issues: protection.issues
+                )
+            }
             guard let gate = state.liveUpdateGate else {
                 throw ProtectedStateError.updateUnavailable
             }
-            let protection = snapshotLocked(at: clock.read().wallTime).protection
             return ProtectedLiveUpdateStatus(
                 phase: phase,
                 generation: gate.generation,

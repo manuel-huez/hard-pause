@@ -721,6 +721,36 @@ done
 recover_live_update() {
     set +e
     local recovered=1
+    local never_frozen=0
+    if [[ ${live_old_stopped} -eq 0 && ${installed_service_version} -ge 14 ]]; then
+        local inspection="${live_stage}/recovery-inspection.json" phase running_digest old_digest
+        if ! run_enrolled_cli "${cli_destination}" "${inspection}" inspect-live-update "${live_token}"; then
+            recovered=0
+        else
+            phase=$(/usr/bin/plutil -extract phase raw -expect string -o - "${inspection}" 2>/dev/null)
+            if [[ "${phase}" == idle ]]; then
+                local standby_lookup="${live_stage}/recovery-standby.txt" standby_lookup_status
+                /bin/launchctl print "system/${label}.standby" >"${standby_lookup}" 2>&1
+                standby_lookup_status=$?
+                running_digest=$(/usr/bin/plutil -extract runningServiceDigest raw -expect string -o - \
+                    "${inspection}" 2>/dev/null)
+                old_digest=$(/usr/bin/shasum -a 256 "${live_stage}/old/hard-pause-service" | /usr/bin/awk '{print $1}')
+                if [[ ${live_finalization_started} -eq 0 && ! -e "${standby_plist_destination}" \
+                    && ! -L "${standby_plist_destination}" && "${running_digest}" =~ ^[0-9a-f]{64}$ \
+                    && "${running_digest}" == "${old_digest}" && ${standby_lookup_status} -eq 113 ]] \
+                    && /usr/bin/grep -Fxq "Could not find service \"${label}.standby\" in domain for system" \
+                        "${standby_lookup}" \
+                    && ! /usr/bin/plutil -extract generation raw -o - "${inspection}" >/dev/null 2>&1 \
+                    && ! /usr/bin/plutil -extract successorDigest raw -o - "${inspection}" >/dev/null 2>&1; then
+                    never_frozen=1
+                else
+                    recovered=0
+                fi
+            elif [[ "${phase}" != frozen ]]; then
+                recovered=0
+            fi
+        fi
+    fi
     if [[ ${live_old_stopped} -eq 1 ]]; then
         if /bin/launchctl print "system/${label}" >/dev/null 2>&1; then
             /bin/launchctl bootout "system/${label}" >/dev/null 2>&1 || recovered=0
@@ -740,7 +770,7 @@ recover_live_update() {
                 || recovered=0
         fi
     fi
-    if [[ ${recovered} -eq 1 ]]; then
+    if [[ ${recovered} -eq 1 && ${never_frozen} -eq 0 ]]; then
         run_enrolled_cli "${cli_destination}" "${live_stage}/cancel-live-update.json" \
             cancel-live-update "${live_token}" || recovered=0
     fi
@@ -757,6 +787,16 @@ recover_live_update() {
         issues=$(/usr/bin/plutil -extract protection.issues raw -expect array -o - \
             "${live_stage}/restored-health.plist" 2>/dev/null) || recovered=0
         [[ "${enforcing:-}" == true && "${issues:-}" == 0 ]] || recovered=0
+        if [[ ${never_frozen} -eq 1 ]]; then
+            local previous="${stage}/existing-health-check.plist" field before after
+            for field in serviceVersion releaseBuild; do
+                before=$(/usr/bin/plutil -extract "protection.${field}" raw -o - "${previous}" 2>/dev/null) \
+                    || recovered=0
+                after=$(/usr/bin/plutil -extract "protection.${field}" raw -o - \
+                    "${live_stage}/restored-health.plist" 2>/dev/null) || recovered=0
+                [[ -n "${before}" && "${before}" == "${after}" ]] || recovered=0
+            done
+        fi
     fi
     if [[ ${recovered} -eq 1 && -e "${standby_plist_destination:-}" ]]; then
         if /bin/launchctl print "system/${label}.standby" >/dev/null 2>&1; then
@@ -771,7 +811,11 @@ recover_live_update() {
         fi
     fi
     if [[ ${recovered} -eq 1 ]]; then
-        echo "hard-pause installer: the prior service resumed; the live update was cancelled." >&2
+        if [[ ${never_frozen} -eq 1 ]]; then
+            echo "hard-pause installer: the live update did not acquire a gate; the prior service remains healthy." >&2
+        else
+            echo "hard-pause installer: the prior service resumed; the live update was cancelled." >&2
+        fi
         return 0
     fi
     echo "hard-pause installer: automatic recovery is incomplete; standby and protected state were retained." >&2

@@ -154,7 +154,12 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
 
     func inspectLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
         handleLive(request, as: ProtectedLiveUpdateRequest.self, reply: reply) { request in
-            guard let gate = engine.liveUpdateGate(), gate.token == request.token else {
+            guard let gate = engine.liveUpdateGate() else {
+                return try engine.liveUpdateStatus(
+                    appleStateDigest: appleLockdown.stateDigest(requiringUnfrozen: true), phase: .idle,
+                    runningServiceDigest: runningDigest)
+            }
+            guard gate.token == request.token else {
                 throw ProtectedStateError.updateNotOwned
             }
             return try engine.liveUpdateStatus(

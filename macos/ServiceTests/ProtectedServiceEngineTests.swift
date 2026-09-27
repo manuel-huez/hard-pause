@@ -12,6 +12,7 @@ final class ProtectedServiceEngineTests: XCTestCase {
         let token = UUID()
 
         _ = try engine.prepareUpdate(ProtectedBlockRequest(id: token))
+        XCTAssertThrowsError(try engine.liveUpdateStatus(appleStateDigest: "", phase: .idle))
         let restarted = try ProtectedServiceEngine(
             stateStore: store,
             enforcer: FakeProtectionEnforcer(),
@@ -107,6 +108,7 @@ final class ProtectedServiceEngineTests: XCTestCase {
 
         XCTAssertThrowsError(try engine.beginLiveUpdate(gate))
         XCTAssertEqual(store.persisted.liveUpdateGate, gate)
+        XCTAssertThrowsError(try engine.liveUpdateStatus(appleStateDigest: "", phase: .idle))
         XCTAssertThrowsError(try engine.requestEnd(ProtectedBlockRequest(id: prepared.id))) {
             XCTAssertEqual($0 as? ProtectedStateError, .updateInProgress)
         }
@@ -191,12 +193,29 @@ final class ProtectedServiceEngineTests: XCTestCase {
             generation: UUID(),
             successorDigest: String(repeating: "a", count: 64)
         )
-        try engine.beginLiveUpdate(gate)
         let apple = try AppleLockdownEngine(
             stateStore: FakeAppleLockdownStateStore(),
             credentialVault: FakeAppleLockdownVault()
         )
         let request = try ProtectedServiceCodec.encode(ProtectedLiveUpdateRequest(token: gate.token))
+        let oldDigest = String(repeating: "b", count: 64)
+        let endpoint = ProtectedServiceEndpoint(
+            engine: engine, appleLockdown: apple,
+            coordinator: ProtectedServiceCoordinator(), runningDigest: oldDigest)
+        var response: NSData?
+        endpoint.inspectLiveUpdate(request) { response = $0 }
+        let idle = try ProtectedServiceCodec.decode(ProtectedLiveUpdateReply.self, from: XCTUnwrap(response))
+        XCTAssertEqual(idle.status?.phase, .idle)
+        XCTAssertNil(idle.status?.generation)
+        XCTAssertNil(idle.status?.successorDigest)
+        XCTAssertEqual(idle.status?.runningServiceDigest, oldDigest)
+
+        try engine.beginLiveUpdate(gate)
+        let foreign = try ProtectedServiceCodec.encode(ProtectedLiveUpdateRequest(token: UUID()))
+        endpoint.inspectLiveUpdate(foreign) { response = $0 }
+        let rejected = try ProtectedServiceCodec.decode(ProtectedLiveUpdateReply.self, from: XCTUnwrap(response))
+        XCTAssertNil(rejected.status)
+        XCTAssertEqual(rejected.error?.code, "update_not_owned")
 
         for (digest, phase) in [
             (String(repeating: "b", count: 64), ProtectedLiveUpdatePhase.frozen),
@@ -221,6 +240,48 @@ final class ProtectedServiceEngineTests: XCTestCase {
         }
     }
 
+    func testIdleInspectionPreservesNativePermitAfterFreezeRejectionAndRejectsNativeFreeze() throws {
+        var state = AppleLockdownState()
+        try state.beginSetup(
+            AppleLockdownSetupRequest(
+                fullUnlockDelay: 600, enablesAdultFilter: true, filterWasAlreadyEnabled: false,
+                shareAcrossDevicesVerified: true))
+        try state.markSetupCredentialReady()
+        try state.completeSetup(operationID: XCTUnwrap(state.operationID))
+        let targets = AppleWebsiteSyncTargets(restricted: ["example.com"], allowed: [])
+        try state.prepareWebsiteSync(
+            AppleWebsiteSyncClaim(
+                domains: targets.restricted, allowedDomains: [], expectedDomains: targets.restricted,
+                expectedAllowedDomains: []), targets: targets,
+            writer: AppleWebsiteSyncWriter(processID: 123, startedAtSeconds: 1, startedAtMicroseconds: 0))
+        let store = FakeAppleLockdownStateStore(state)
+        let pendingApple = try AppleLockdownEngine(
+            stateStore: store, credentialVault: FakeAppleLockdownVault(), websiteSyncWriterIsRunning: { _ in true })
+        XCTAssertThrowsError(try pendingApple.freezeForLiveUpdate()) {
+            XCTAssertEqual($0 as? AppleLockdownError, .websiteSyncPending)
+        }
+        let frozenApple = try AppleLockdownEngine(
+            stateStore: FakeAppleLockdownStateStore(), credentialVault: FakeAppleLockdownVault())
+        _ = try frozenApple.freezeForLiveUpdate()
+        let engine = try ProtectedServiceEngine(
+            stateStore: FakeProtectedStateStore(), enforcer: FakeProtectionEnforcer(),
+            clock: FakeServiceClock(serviceTestReading(0)))
+        for (apple, expectedPhase) in [(pendingApple, ProtectedLiveUpdatePhase.idle), (frozenApple, nil)] {
+            let endpoint = ProtectedServiceEndpoint(
+                engine: engine, appleLockdown: apple,
+                coordinator: ProtectedServiceCoordinator(), runningDigest: String(repeating: "b", count: 64))
+            var response: NSData?
+            endpoint.inspectLiveUpdate(try ProtectedServiceCodec.encode(ProtectedLiveUpdateRequest(token: UUID()))) {
+                response = $0
+            }
+            let reply = try ProtectedServiceCodec.decode(ProtectedLiveUpdateReply.self, from: XCTUnwrap(response))
+            XCTAssertEqual(reply.status?.phase, expectedPhase)
+            if expectedPhase == nil { XCTAssertEqual(reply.error?.code, "update_in_progress") }
+        }
+        XCTAssertEqual(store.persisted, state)
+        XCTAssertNoThrow(try frozenApple.checkpointForLiveUpdateFinalization())
+    }
+
     func testInactiveMigrationIsReadOnlyUntilTokenIsCommitted() throws {
         let store = FakeProtectedStateStore()
         let engine = try ProtectedServiceEngine(
@@ -230,6 +291,7 @@ final class ProtectedServiceEngineTests: XCTestCase {
         )
         let token = UUID()
         XCTAssertEqual(store.mainSaveCount, 0)
+        XCTAssertThrowsError(try engine.liveUpdateStatus(appleStateDigest: "", phase: .idle))
         XCTAssertThrowsError(try engine.create(ProtectedCreateRequest(draft: serviceTestDraft()))) {
             XCTAssertEqual($0 as? ProtectedStateError, .updateInProgress)
         }
