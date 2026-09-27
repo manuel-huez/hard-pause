@@ -26,7 +26,9 @@ struct ServiceFirstUpdate {
         guard let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
             let url = URL(string: feed), url.scheme == "https"
         else { throw Failure.invalidFeed }
-        let (data, _) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        let (data, _) = try await URLSession.shared.data(for: request)
         guard data.count <= 256 * 1_024 else { throw Failure.invalidFeed }
         let document = try XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever])
         let items = try document.nodes(forXPath: "/rss/channel/item")

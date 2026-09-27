@@ -1139,7 +1139,11 @@ private actor ScreenTimeAccessibilityWorker {
     }
 
     private func passcodeSwitch(in root: AXUIElement) throws -> AXUIElement {
-        let controls = try nodes(root)
+        let windows = try readAttribute(root, kAXWindowsAttribute) as? [AXUIElement] ?? [root]
+        // Settings can retain invalid elements in its virtualized sidebar.
+        let controls = try windows.flatMap {
+            try nodes($0, excluding: "com.apple.settings.sidebar.collectionView")
+        }
         guard
             try !controls.contains(where: { node in
                 try matchingLabels(node).contains { strings.matches($0, keys: ["Family Member"]) }
@@ -1169,10 +1173,11 @@ private actor ScreenTimeAccessibilityWorker {
         return matches[0]
     }
 
-    private func nodes(_ root: AXUIElement) throws -> [AXUIElement] {
+    private func nodes(_ root: AXUIElement, excluding identifier: String? = nil) throws -> [AXUIElement] {
         var result: [AXUIElement] = []
         var pending = [(root, 0)]
         while let (node, depth) = pending.popLast() {
+            if let identifier, try readAttribute(node, kAXIdentifierAttribute) as? String == identifier { continue }
             guard result.count < 1_500 else { throw AppleScreenTimeAutomationError.unsupportedScreen }
             result.append(node)
             if let value = try readAttribute(node, kAXChildrenAttribute) {
@@ -1197,6 +1202,8 @@ private actor ScreenTimeAccessibilityWorker {
         switch AXUIElementCopyAttributeValue(node, key as CFString, &value) {
         case .success: return value
         case .attributeUnsupported, .noValue: return nil
+        // Some Screen Time controls have other labels but fail to provide a description.
+        case .failure where key == kAXDescriptionAttribute: return nil
         case .cannotComplete: throw AppleScreenTimeAutomationError.settingsNotResponding
         default: throw AppleScreenTimeAutomationError.unsupportedScreen
         }
