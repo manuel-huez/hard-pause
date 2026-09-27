@@ -776,7 +776,16 @@ private actor ScreenTimeAccessibilityWorker {
             }
             return role == kAXSheetRole
         }
-        if sheets.count == 1 { return sheets[0] }
+        // Authorization can be a sheet inside the restriction settings sheet.
+        let frontSheets = try sheets.filter { sheet in
+            try nodes(sheet).dropFirst().allSatisfy {
+                guard let role = try readAttribute($0, kAXRoleAttribute) as? String else {
+                    throw AppleScreenTimeAutomationError.unsupportedScreen
+                }
+                return role != kAXSheetRole
+            }
+        }
+        if frontSheets.count == 1 { return frontSheets[0] }
         guard sheets.isEmpty else { throw AppleScreenTimeAutomationError.unsupportedScreen }
         let dialogs = try all.filter { node in
             guard try readAttribute(node, kAXSubroleAttribute) as? String == kAXDialogSubrole else { return false }
@@ -928,7 +937,8 @@ private actor ScreenTimeAccessibilityWorker {
                 return
             }
             if transition == .authenticated, samePrompt == nil,
-                (try? webFilter(in: prompt)) != nil || (try? websiteLists()) != nil || (try? websiteEntrySheet()) != nil
+                (try? webFilter(in: prompt)) != nil || (try? appAgeControl(in: prompt)) != nil
+                    || (try? websiteLists()) != nil || (try? websiteEntrySheet()) != nil
             {
                 return
             }
@@ -1058,8 +1068,8 @@ private actor ScreenTimeAccessibilityWorker {
         try await closeRestrictionSettings()
     }
 
-    private func appAgeControl() throws -> AXUIElement {
-        try unique(try application) {
+    private func appAgeControl(in root: AXUIElement? = nil) throws -> AXUIElement {
+        try unique(try root ?? application) {
             role($0) == kAXPopUpButtonRole && matches($0, keys: ["AppsSpecifierName"])
         }
     }
