@@ -324,6 +324,7 @@ private actor ScreenTimeAccessibilityWorker {
         let deadline = ContinuousClock.now + .seconds(8)
         readDeadline = deadline
         defer { readDeadline = nil }
+        var returnedFromContentPrivacy = false
         while ContinuousClock.now < deadline {
             try Task.checkCancellation()
             do {
@@ -333,7 +334,15 @@ private actor ScreenTimeAccessibilityWorker {
                 throw AppleScreenTimeAutomationError.personalSettingsRequired
             } catch AppleScreenTimeAutomationError.settingsNotResponding {
                 throw AppleScreenTimeAutomationError.settingsNotResponding
-            } catch {}
+            } catch {
+                // The pane URL can retain this subpage from a previous attempt.
+                if !returnedFromContentPrivacy, (try? contentPrivacySwitch()) != nil,
+                    try credentialPrompt() == nil
+                {
+                    returnedFromContentPrivacy = true
+                    try await goBack()
+                }
+            }
             try await Task.sleep(for: .milliseconds(100))
         }
         throw AppleScreenTimeAutomationError.unsupportedScreen
@@ -769,7 +778,15 @@ private actor ScreenTimeAccessibilityWorker {
         }
         if sheets.count == 1 { return sheets[0] }
         guard sheets.isEmpty else { throw AppleScreenTimeAutomationError.unsupportedScreen }
-        let dialogs = try all.filter { try readAttribute($0, kAXSubroleAttribute) as? String == kAXDialogSubrole }
+        let dialogs = try all.filter { node in
+            guard try readAttribute(node, kAXSubroleAttribute) as? String == kAXDialogSubrole else { return false }
+            guard let modal = try readAttribute(node, kAXModalAttribute) as? NSNumber,
+                let focusedWindow = element(try application, kAXFocusedWindowAttribute)
+            else { throw AppleScreenTimeAutomationError.unsupportedScreen }
+            if modal.boolValue || CFEqual(node, focusedWindow) { return true }
+            // Keep recognized code prompts even when another window has focus.
+            return try promptStage(in: nodes(node)) != nil
+        }
         guard dialogs.count <= 1 else { throw AppleScreenTimeAutomationError.unsupportedScreen }
         return dialogs.first
     }
@@ -993,18 +1010,19 @@ private actor ScreenTimeAccessibilityWorker {
         try press(try unique(root) { role($0) == kAXButtonRole && matches($0, keys: ["Content & Privacy"]) })
         try await settle()
         if let passcode { try await authorizeWebsiteChange(passcode: passcode) }
-        let toggle = try unique(try application) {
+        return try boolValue(contentPrivacySwitch())
+    }
+
+    private func contentPrivacySwitch() throws -> AXUIElement {
+        try unique(try application) {
             role($0) == kAXCheckBoxRole
                 && matches(
                     $0,
                     keys: [
-                        "Restrict explicit content, purchases, downloads, and privacy settings.", "ContentPrivacyTitle",
+                        "Restrict explicit content, purchases, downloads, and privacy settings.",
+                        "ContentPrivacyTitle", "Content & Privacy",
                     ])
         }
-        if try !boolValue(toggle) {
-            return false
-        }
-        return true
     }
 
     private func closeWebSettings() async throws {
@@ -1018,6 +1036,7 @@ private actor ScreenTimeAccessibilityWorker {
         try press(done)
         try await settle()
         try await goBack()
+        _ = try await screenTimeRoot()
     }
 
     private func openAppSettings(passcode: String?) async throws {
@@ -1065,15 +1084,11 @@ private actor ScreenTimeAccessibilityWorker {
     }
 
     private func dismissMenu() async throws {
-        var processID: pid_t = 0
-        guard AXUIElementGetPid(try appAgeControl(), &processID) == .success else {
+        let menu = try unique(appAgeControl()) { role($0) == kAXMenuRole }
+        guard AXUIElementPerformAction(menu, kAXCancelAction as CFString) == .success else {
             throw AppleScreenTimeAutomationError.unsupportedScreen
         }
-        try postKey(53, character: nil, into: processID)
         try await settle()
-        guard try nodes(application).allSatisfy({ role($0) != kAXMenuItemRole }) else {
-            throw AppleScreenTimeAutomationError.unsupportedScreen
-        }
     }
 
     private func selectAppAge(_ rating: AppleAppAgeRating, passcode: String?) async throws {
