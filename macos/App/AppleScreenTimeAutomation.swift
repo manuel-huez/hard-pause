@@ -110,7 +110,8 @@ struct ScreenTimeUIStrings {
         "Content & Privacy", "ContentPrivacyTitle",
         "ContentRestrictionsTitle", "ContentRestrictionsTitle_GreyMatterAlternate", "AADC_ContentRestrictionsTitle",
         "WebContentSpecifierName", "RestrictedTitle", "Allowed", "DoneButton", "Done",
-        "Access to Web Content", "Customize…", "Change Passcode…", "Add", "Remove", "Add Website",
+        "Access to Web Content", "Customize…", "Change Passcode…", "Add", "Remove", "Add Website", "Cancel",
+        "CancelButton",
         "Restrict explicit content, purchases, downloads, and privacy settings.",
         "Family Member",
         "StoreRestrictionsTitle", "AppsSpecifierName", "DontAllowLabel",
@@ -759,7 +760,7 @@ private actor ScreenTimeAccessibilityWorker {
     }
 
     private func credentialPrompt() throws -> AXUIElement? {
-        let all = try nodes(application)
+        let all = try settingsControls(in: application)
         let sheets = try all.filter {
             guard let role = try readAttribute($0, kAXRoleAttribute) as? String else {
                 throw AppleScreenTimeAutomationError.unsupportedScreen
@@ -831,13 +832,22 @@ private actor ScreenTimeAccessibilityWorker {
     }
 
     private func cancelCodePrompt() throws {
-        if let prompt = try credentialPrompt(),
-            let cancel = element(prompt, kAXCancelButtonAttribute)
-        {
+        guard let prompt = try credentialPrompt() else {
+            throw AppleScreenTimeAutomationError.unsupportedPasscodeFlow
+        }
+        if let cancel = element(prompt, kAXCancelButtonAttribute) {
             try press(cancel)
             return
         }
-        // Some Settings views do not publish AXCancelButton. Escape cancels the native sheet.
+        let buttons = try nodes(prompt).filter {
+            role($0) == kAXButtonRole && matches($0, keys: ["Cancel", "CancelButton"])
+        }
+        guard buttons.count <= 1 else { throw AppleScreenTimeAutomationError.unsupportedPasscodeFlow }
+        if let cancel = buttons.first {
+            try press(cancel)
+            return
+        }
+        // Some Settings views expose only the native keyboard action.
         try postKey(53, character: nil, into: try codePrompt().processID)
     }
 
@@ -1138,12 +1148,16 @@ private actor ScreenTimeAccessibilityWorker {
         }
     }
 
-    private func passcodeSwitch(in root: AXUIElement) throws -> AXUIElement {
+    private func settingsControls(in root: AXUIElement) throws -> [AXUIElement] {
         let windows = try readAttribute(root, kAXWindowsAttribute) as? [AXUIElement] ?? [root]
         // Settings can retain invalid elements in its virtualized sidebar.
-        let controls = try windows.flatMap {
+        return try windows.flatMap {
             try nodes($0, excluding: "com.apple.settings.sidebar.collectionView")
         }
+    }
+
+    private func passcodeSwitch(in root: AXUIElement) throws -> AXUIElement {
+        let controls = try settingsControls(in: root)
         guard
             try !controls.contains(where: { node in
                 try matchingLabels(node).contains { strings.matches($0, keys: ["Family Member"]) }
