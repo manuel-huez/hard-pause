@@ -12,12 +12,15 @@ struct ServiceFirstUpdate {
         case invalidFeed
         case invalidArchive
         case serviceDidNotUpdate
+        case restartNotSafe
 
         var errorDescription: String? {
             switch self {
             case .invalidFeed: "The signed update feed is invalid."
             case .invalidArchive: "The downloaded update did not pass signature checks."
             case .serviceDidNotUpdate: "Protection did not finish updating. The app was not replaced."
+            case .restartNotSafe:
+                "Protection could not be confirmed before restarting. Keep Hard Pause open and retry the update."
             }
         }
     }

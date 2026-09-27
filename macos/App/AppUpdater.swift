@@ -9,6 +9,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     private var controller: SPUStandardUpdaterController?
     private let service = ProtectedServiceClient()
     private var approvedUpdate: ServiceFirstUpdate?
+    private var installationCheck: Task<Void, Never>?
+    private var installationApproval: (build: UInt64, checkedAt: ContinuousClock.Instant)?
     private var recoveryObservation: AnyCancellable?
     private var recoveryTask: Task<Void, Never>?
     private var lastRecoveryCheck = Date.distantPast
@@ -35,6 +37,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         guard canCheckForUpdates else { return }
         isPreparingUpdate = true
         approvedUpdate = nil
+        installationApproval = nil
         Task { @MainActor in
             defer {
                 isPreparingUpdate = false
@@ -58,11 +61,36 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         installationIsStarting && (approvedUpdate == nil || !Self.canUpdate(model))
     }
 
-    func terminationWasCanceled() {
-        installationIsStarting = false
+    private func cancelInstallationCheck() {
+        installationCheck?.cancel()
+        installationCheck = nil
+        installationApproval = nil
     }
 
-    func mayFinishInstallation() async -> Bool {
+    /// Cancel the first quit so AppKit keeps running MainActor tasks during the safety check.
+    func mayFinishInstallation() -> Bool {
+        if let approval = installationApproval {
+            installationApproval = nil
+            return installationIsStarting && approvedUpdate?.build == approval.build
+                && approval.checkedAt.duration(to: .now) < .seconds(5) && Self.canUpdate(model)
+        }
+        guard installationIsStarting, installationCheck == nil else { return false }
+        installationCheck = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let safe = await self.checkInstallationSafety()
+            guard !Task.isCancelled else { return }
+            self.installationCheck = nil
+            guard safe, let update = self.approvedUpdate else {
+                self.showUpdateError(ServiceFirstUpdate.Failure.restartNotSafe)
+                return
+            }
+            self.installationApproval = (update.build, .now)
+            NSApplication.shared.terminate(nil)
+        }
+        return false
+    }
+
+    private func checkInstallationSafety() async -> Bool {
         guard
             installationIsStarting,
             let approvedUpdate,
@@ -71,7 +99,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
             status.installedAppBuild >= approvedUpdate.build,
             let latest = try? await service.list(),
             Self.isSafeToUpdate(latest),
-            await hasBrowserCoverage(for: latest)
+            await hasBrowserCoverage(for: latest),
+            !Task.isCancelled, installationIsStarting, Self.canUpdate(model)
         else { return false }
         return true
     }
@@ -262,6 +291,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
         installationIsStarting = false
+        cancelInstallationCheck()
     }
 
     func updater(
@@ -271,6 +301,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     ) {
         guard error != nil else { return }
         installationIsStarting = false
+        cancelInstallationCheck()
     }
 
     private static func canUpdate(_ model: AppModel?) -> Bool {
