@@ -62,6 +62,18 @@ final class BrowserProtection: ObservableObject {
 
     func requestPermission(for identifier: String) async {
         guard Self.browsers.contains(where: { $0.id == identifier }) else { return }
+        if identifier == "org.mozilla.firefox" {
+            firefox.requestPermission()
+            statuses[identifier] =
+                AXIsProcessTrusted() ? "Connected" : "Allow Hard Pause Browser Worker in Accessibility."
+            return
+        }
+        if await worker.wasDenied(identifier) {
+            openAutomationSettings()
+            statuses[identifier] =
+                "In System Settings, allow this browser under Hard Pause Browser Worker → Automation."
+            return
+        }
         if NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty {
             guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) else {
                 statuses[identifier] = "This browser is not installed."
@@ -76,20 +88,13 @@ final class BrowserProtection: ObservableObject {
                 return
             }
         }
-        if identifier == "org.mozilla.firefox" {
-            firefox.requestPermission()
-            statuses[identifier] = AXIsProcessTrusted() ? "Connected" : "Allow Hard Pause in Accessibility."
+        guard let application = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first else {
+            statuses[identifier] = "The browser closed before access could be requested. Try Allow access again."
             return
         }
         NSApp.activate()
-        let result = await worker.permission(identifier, prompt: true)
-        if result == errAEEventNotPermitted,
-            let settings = URL(
-                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
-            )
-        {
-            NSWorkspace.shared.open(settings)
-        }
+        let result = await worker.requestPermission(identifier, processIdentifier: application.processIdentifier)
+        if result == errAEEventNotPermitted { openAutomationSettings() }
         switch result {
         case noErr:
             statuses[identifier] = "Connected"
@@ -100,6 +105,21 @@ final class BrowserProtection: ObservableObject {
             statuses[identifier] =
                 "macOS could not confirm browser access (\(result)). Keep the browser open and try again."
         }
+    }
+
+    private func openAutomationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func permissionStatus(for identifier: String, processIdentifier: pid_t) async -> OSStatus {
+        guard Self.browsers.contains(where: { $0.id == identifier }) else { return OSStatus(paramErr) }
+        if identifier == "org.mozilla.firefox" {
+            // This queries permission itself, not the success of a tab read.
+            return AXIsProcessTrusted() ? noErr : OSStatus(errAEEventNotPermitted)
+        }
+        return await worker.permission(identifier, processIdentifier: processIdentifier)
     }
 
     func readiness() async -> [BrowserSetupState] {
@@ -113,6 +133,8 @@ final class BrowserProtection: ObservableObject {
                 permission = .unavailable
             } else if browser.id == "org.mozilla.firefox" {
                 permission = AXIsProcessTrusted() ? .granted : .denied
+            } else if NSRunningApplication.runningApplications(withBundleIdentifier: browser.id).isEmpty {
+                permission = await worker.closedPermission(browser.id)
             } else {
                 permission = await worker.readinessPermission(browser.id)
             }
@@ -161,7 +183,7 @@ final class BrowserProtection: ObservableObject {
                 }
                 continue
             }
-            let permission = await worker.permission(browser.id, prompt: false)
+            let permission = await worker.permission(browser.id)
             guard permission == noErr else {
                 statuses[browser.id] = "Connect this browser to enable page redirects."
                 continue
@@ -202,6 +224,7 @@ final class BrowserProtection: ObservableObject {
 
 private actor BrowserAutomationWorker {
     private let defaults = UserDefaults.standard
+    private var lastPermissionResults: [String: OSStatus] = [:]
 
     private func approvalKey(_ identifier: String) -> String {
         let workerPath =
@@ -210,20 +233,46 @@ private actor BrowserAutomationWorker {
         return "browserPreviouslyApproved.\(workerPath)\(identifier)"
     }
 
-    func permission(_ identifier: String, prompt: Bool) -> OSStatus {
-        let target = NSAppleEventDescriptor(bundleIdentifier: identifier)
-        let status = AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, prompt)
+    func permission(_ identifier: String, processIdentifier: pid_t? = nil) -> OSStatus {
+        let target =
+            processIdentifier.map(NSAppleEventDescriptor.init(processIdentifier:))
+            ?? NSAppleEventDescriptor(bundleIdentifier: identifier)
+        let status = AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, false)
+        recordPermission(status, for: identifier)
+        return status
+    }
+
+    func requestPermission(_ identifier: String, processIdentifier: pid_t) async -> OSStatus {
+        // A consent dialog can stay open indefinitely; it must not block normal tab checks.
+        let status = await Task.detached(priority: .userInitiated) {
+            let target = NSAppleEventDescriptor(processIdentifier: processIdentifier)
+            return AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, true)
+        }.value
+        recordPermission(status, for: identifier)
+        return status
+    }
+
+    private func recordPermission(_ status: OSStatus, for identifier: String) {
+        lastPermissionResults[identifier] = status
         let key = approvalKey(identifier)
         if status == noErr {
             defaults.set(true, forKey: key)
         } else if status == errAEEventNotPermitted || status == errAEEventWouldRequireUserConsent {
             defaults.removeObject(forKey: key)
         }
-        return status
+    }
+
+    func wasDenied(_ identifier: String) -> Bool {
+        lastPermissionResults[identifier] == OSStatus(errAEEventNotPermitted)
+    }
+
+    func closedPermission(_ identifier: String) -> BrowserPermissionState {
+        if wasDenied(identifier) { return .denied }
+        return defaults.bool(forKey: approvalKey(identifier)) ? .previouslyGranted : .unknown
     }
 
     func readinessPermission(_ identifier: String) -> BrowserPermissionState {
-        let status = permission(identifier, prompt: false)
+        let status = permission(identifier)
         if status == noErr { return .granted }
         // macOS cannot query a closed browser. This remembers setup only, never tab access.
         if status == procNotFound && defaults.bool(forKey: approvalKey(identifier)) {

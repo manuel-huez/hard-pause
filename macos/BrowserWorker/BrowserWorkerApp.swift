@@ -5,12 +5,33 @@ import Foundation
 private final class BrowserWorkerRuntime {
     private let service = ProtectedServiceClient()
     private let protection = BrowserProtection()
+    private let permissionGuard = BrowserPermissionGuard()
+    private let machServiceName: String
+
+    init(machServiceName: String) { self.machServiceName = machServiceName }
     private var cachedSnapshot: ProtectedServiceSnapshot?
     private var lastSuccessfulCheck: Date?
     private var retryServiceAfter = Date.distantPast
     private var drainingUntil: Date?
 
     func run() async {
+        let launches = Task { [self] in
+            for await _ in NSWorkspace.shared.notificationCenter.notifications(
+                named: NSWorkspace.didLaunchApplicationNotification)
+            {
+                await checkBrowserAccess()
+            }
+        }
+        let accessChecks = Task { [self] in
+            while !Task.isCancelled {
+                await checkBrowserAccess()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        defer {
+            launches.cancel()
+            accessChecks.cancel()
+        }
         while !Task.isCancelled {
             if let drainingUntil, Date() < drainingUntil {
                 try? await Task.sleep(for: .seconds(1))
@@ -68,7 +89,50 @@ private final class BrowserWorkerRuntime {
                     running: !NSRunningApplication.runningApplications(withBundleIdentifier: browser.id).isEmpty,
                     permission: Self.permissionName(browser.permission))
             },
-            browserStatuses: protection.statuses)
+            browserStatuses: protection.statuses,
+            checksPermissionsOnLaunch: serviceReady && live?.protection.isEnforcing == true
+                && live?.protection.issues.isEmpty == true,
+            browsersClosedForMissingAccess: Array(permissionGuard.blockedBrowsers).sorted())
+    }
+
+    private func checkBrowserAccess() async {
+        let current = try? await service.list()
+        let closed = await permissionGuard.check(
+            active: current.map(Self.hasActiveBrowserRestrictions) == true,
+            permission: { [self] process in
+                await protection.permissionStatus(
+                    for: process.signingIdentifier, processIdentifier: process.processIdentifier)
+            },
+            currentRules: { [self] in
+                guard let live = try? await service.list(), live.protection.isEnforcing,
+                    live.protection.issues.isEmpty
+                else { return nil }
+                return Self.hasActiveBrowserRestrictions(live)
+            },
+            otherWorkerAccess: { [self] identifier in
+                var unknown = false
+                for name in BrowserWorkerClient.installedMachServices() where name != machServiceName {
+                    guard let peer = BrowserWorkerClient(machServiceName: name),
+                        let report = await peer.readiness(),
+                        let browser = report.browserAccess.first(where: { $0.identifier == identifier }),
+                        browser.running
+                    else {
+                        unknown = true
+                        continue
+                    }
+                    if browser.permission == "granted" { return true }
+                    if browser.permission != "denied" { unknown = true }
+                }
+                return unknown ? nil : false
+            })
+        guard let identifier = closed.sorted().first,
+            let url = URL(string: "hardpause://browser-access/" + identifier)
+        else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        _ = try? await NSWorkspace.shared.open(
+            [url], withApplicationAt: URL(fileURLWithPath: "/Applications/HardPause.app"),
+            configuration: configuration)
     }
 
     private func latestSnapshot() async -> ProtectedServiceSnapshot? {
@@ -121,6 +185,7 @@ private final class BrowserWorkerRuntime {
         case .denied: "denied"
         case .granted: "granted"
         case .previouslyGranted: "previouslyGranted"
+        case .whenOpened: "unknown"
         }
     }
 }
@@ -236,7 +301,7 @@ enum BrowserWorkerMain {
         guard BrowserWorkerIdentity.acceptsMachService(name) else { exit(EX_USAGE) }
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
-        let runtime = BrowserWorkerRuntime()
+        let runtime = BrowserWorkerRuntime(machServiceName: name)
         let server = BrowserWorkerServer(runtime: runtime)
         let listener = NSXPCListener(machServiceName: name)
         listener.delegate = server

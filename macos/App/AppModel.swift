@@ -413,27 +413,37 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @Published var browserAccessRequests: Set<String> = []
+
+    func showBrowserAccess(_ url: URL) {
+        guard url.scheme == "hardpause", url.host == "browser-access",
+            url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+            BrowserProtection.browsers.contains(where: { url.path == "/" + $0.id })
+        else { return }
+        browserAccessRequests.insert(String(url.path.dropFirst()))
+    }
+
     func connectBrowser(_ identifier: String) async {
-        guard !isRecoveringAppAfterUpdate else { return }
-        guard connectingBrowserID == nil else { return }
+        guard !isRecoveringAppAfterUpdate, connectingBrowserID == nil else { return }
         connectingBrowserID = identifier
         browserConnectionMessages[identifier] = nil
         defer { connectingBrowserID = nil }
-        await browserProtection.requestPermission(for: identifier)
-        let hadBrowserWorker = browserWorkerReadiness != nil
-        if hadBrowserWorker {
+        if !BrowserWorkerClient.installedMachServices().isEmpty {
+            _ = await probeBrowserWorkerReadiness()
+            guard browserWorkerReadiness != nil else {
+                browserConnectionMessages[identifier] = "Hard Pause Browser Worker is unavailable. Try again."
+                return
+            }
             browserWorkerProbeGeneration += 1
             let generation = browserWorkerProbeGeneration
             let readiness = await browserWorker.requestPermission(for: identifier)
             if generation == browserWorkerProbeGeneration { browserWorkerReadiness = readiness }
-        }
-        browserStatuses = browserProtection.statuses
-        adultDatabaseStatus = browserProtection.adultDatabaseStatus
-        browserConnectionMessages[identifier] = browserProtection.statuses[identifier]
-        if hadBrowserWorker && browserWorkerReadiness == nil {
-            browserConnectionMessages[identifier] = "Hard Pause Browser Worker is unavailable."
-        } else if browserWorkerReadiness?.browserAccess.first(where: { $0.identifier == identifier })?.ready == false {
-            browserConnectionMessages[identifier] = "Allow Hard Pause Browser Worker to access this browser."
+            browserConnectionMessages[identifier] =
+                readiness?.browserStatuses[identifier]
+                ?? "Check the macOS permission prompt or try again."
+        } else {
+            await browserProtection.requestPermission(for: identifier)
+            browserConnectionMessages[identifier] = browserProtection.statuses[identifier]
         }
         await refreshSetup()
     }
@@ -502,17 +512,28 @@ final class AppModel: ObservableObject {
                 _ = await probeBrowserWorkerReadiness()
             }
             let browsers: [BrowserSetupState]
-            if let worker = browserWorkerReadiness, worker.isFresh(), worker.readyForHandoff {
+            if let worker = browserWorkerReadiness, worker.isFresh() {
                 browsers = worker.browserAccess.map { browser in
-                    BrowserSetupState(
+                    let permission: BrowserPermissionState
+                    if !browser.installed {
+                        permission = .unavailable
+                    } else if browser.permission == "granted" {
+                        permission = .granted
+                    } else if worker.browsersClosedForMissingAccess?.contains(browser.identifier) == true {
+                        permission = .denied
+                    } else if browser.accessCanBeCheckedOnOpen && worker.checksPermissionsOnLaunch == true {
+                        permission = .whenOpened
+                    } else if browser.permission == "previouslyGranted" && !browser.running {
+                        permission = .previouslyGranted
+                    } else {
+                        permission = browser.permission == "denied" ? .denied : .unknown
+                    }
+                    return BrowserSetupState(
                         id: browser.identifier,
                         name: BrowserProtection.browsers.first { $0.id == browser.identifier }?.name
                             ?? browser.identifier,
                         isInstalled: browser.installed,
-                        permission: !browser.installed
-                            ? .unavailable
-                            : browser.permission == "granted" ? .granted : .previouslyGranted
-                    )
+                        permission: permission)
                 }
             } else {
                 browsers = await browserProtection.readiness()
@@ -522,6 +543,7 @@ final class AppModel: ObservableObject {
                 startsAtLogin: loginStatus.value)
         }
         browserReadiness = access.browsers
+        browserAccessRequests.subtract(access.browsers.filter { $0.permission == .granted }.map(\.id))
         startsAtLogin = access.startsAtLogin
         hasCheckedSetup = true
         updateSetupState()

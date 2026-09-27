@@ -59,6 +59,44 @@ final class BrowserWorkerReadinessTests: XCTestCase {
         XCTAssertFalse(replacing(ready, browserAccess: [granted, absent]).readyForHandoff)
     }
 
+    func testLaunchGuardCoversClosedBrowsersButNeverRunningDeniedOrUnknownBrowsers() throws {
+        let identifiers = ["com.apple.Safari", "com.google.Chrome", "org.mozilla.firefox"]
+        var report = BrowserWorkerReadiness(
+            observedAt: Date(), serviceReady: true, serviceReachable: true, standbyReady: false,
+            cachedActiveRestrictions: true, pausePageReady: true, adultDatabaseReady: true,
+            pausePageURL: URL(string: "http://127.0.0.1:1234/BlockedPage/index.html"),
+            browserAccess: identifiers.map {
+                BrowserWorkerAccess(identifier: $0, installed: true, running: false, permission: "unknown")
+            }, browserStatuses: [:])
+        XCTAssertFalse(report.readyForHandoff)
+        report.checksPermissionsOnLaunch = true
+        XCTAssertFalse(report.readyForHandoff)
+        XCTAssertFalse(report.readyForRetirement)
+        let closedDenied = replacing(
+            report,
+            browserAccess: identifiers.map {
+                BrowserWorkerAccess(
+                    identifier: $0, installed: true, running: false,
+                    permission: "denied")
+            })
+        XCTAssertTrue(closedDenied.readyForHandoff)
+        XCTAssertTrue(closedDenied.readyForRetirement)
+        for permission in ["denied", "unknown", "previouslyGranted"] {
+            let reopened = replacing(
+                report,
+                browserAccess: identifiers.map {
+                    BrowserWorkerAccess(identifier: $0, installed: true, running: true, permission: permission)
+                })
+            XCTAssertFalse(reopened.readyForHandoff)
+            XCTAssertFalse(reopened.readyForRetirement)
+        }
+        // Old workers omit the capability; decoding them must retain the old safety gate.
+        report.checksPermissionsOnLaunch = nil
+        let oldReply = try JSONDecoder().decode(BrowserWorkerReadiness.self, from: JSONEncoder().encode(report))
+        XCTAssertNil(oldReply.checksPermissionsOnLaunch)
+        XCTAssertFalse(oldReply.readyForRetirement)
+    }
+
     func testReadinessMustBeFreshEvenWhenChecksWereReady() {
         let now = Date()
         let report = BrowserWorkerReadiness(
@@ -89,6 +127,7 @@ final class BrowserWorkerReadinessTests: XCTestCase {
             adultDatabaseReady: adultDatabaseReady ?? original.adultDatabaseReady,
             pausePageURL: original.pausePageURL,
             browserAccess: browserAccess ?? original.browserAccess,
-            browserStatuses: original.browserStatuses)
+            browserStatuses: original.browserStatuses,
+            checksPermissionsOnLaunch: original.checksPermissionsOnLaunch)
     }
 }

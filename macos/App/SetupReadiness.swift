@@ -11,6 +11,7 @@ enum BrowserPermissionState: Equatable, Sendable {
     case unknown
     case denied
     case granted
+    case whenOpened
     case previouslyGranted
 }
 
@@ -20,7 +21,9 @@ struct BrowserSetupState: Identifiable, Equatable, Sendable {
     let isInstalled: Bool
     let permission: BrowserPermissionState
 
-    var isReady: Bool { !isInstalled || permission == .granted || permission == .previouslyGranted }
+    var isReady: Bool {
+        !isInstalled || permission == .granted || permission == .previouslyGranted || permission == .whenOpened
+    }
 }
 
 struct SetupAccessState: Equatable, Sendable {

@@ -140,6 +140,14 @@ struct ContentView: View {
             }
         }
         .environment(\.mascotHoverChanged, { hoveredControl = editor == nil ? $0 : nil })
+        .onOpenURL { url in
+            model.showBrowserAccess(url)
+            if !model.browserAccessRequests.isEmpty {
+                selection = .settings
+                NSApp.activate()
+                NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
+            }
+        }
         .onChange(of: editor?.id) { _, _ in
             hoveredControl = nil
             caretPosition = nil
@@ -2472,6 +2480,10 @@ private struct SetupChecklistView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Browser access")
                 .font(PauseFont.display(18, relativeTo: .headline))
+            if !model.browserAccessRequests.isEmpty {
+                Text("Allow browser access in macOS Settings, then open your browser again.")
+                    .foregroundStyle(PauseTheme.muted)
+            }
             ForEach(model.browserReadiness) { browser in
                 HStack(alignment: .center, spacing: 10) {
                     Label(browser.name, systemImage: "globe")
@@ -2480,7 +2492,11 @@ private struct SetupChecklistView: View {
                         Text("Not installed")
                             .font(.caption)
                             .foregroundStyle(PauseTheme.muted)
-                    } else if browser.isReady {
+                    } else if browser.permission == .whenOpened && !model.browserAccessRequests.contains(browser.id) {
+                        Text("Checks on open")
+                            .font(.caption)
+                            .foregroundStyle(PauseTheme.muted)
+                    } else if browser.isReady && !model.browserAccessRequests.contains(browser.id) {
                         setupReadyLabel
                     } else {
                         Button("Allow access") {
@@ -2489,6 +2505,11 @@ private struct SetupChecklistView: View {
                         .buttonStyle(PauseButtonStyle())
                         .controlSize(.large)
                     }
+                }
+                if let message = model.browserConnectionMessages[browser.id] {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(PauseTheme.muted)
                 }
             }
         }
