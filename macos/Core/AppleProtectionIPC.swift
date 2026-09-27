@@ -48,6 +48,11 @@ struct AppleAppAgeRestriction: Codable, Equatable, Sendable {
     }
 }
 
+struct AppleAppAgeRestorationPermit: Codable, Equatable, Sendable {
+    let operationID: UUID
+    let writer: AppleWebsiteSyncWriter
+}
+
 struct AppleLockdownSetupRequest: Codable, Equatable, Sendable {
     // Zero links removal to the last Screen Time plan; positive values preserve older setup waits.
     let fullUnlockDelay: TimeInterval
@@ -87,6 +92,11 @@ struct AppleLockdownSnapshot: Codable, Equatable, Sendable {
     let operationID: UUID?
     var websiteSyncOperationID: UUID? = nil
     var appAgeRestriction: AppleAppAgeRestriction? = nil
+    var keepsCodeForLegacyPlans: Bool? = nil
+
+    var retainsCodeForLegacyPlans: Bool {
+        appAgeRestriction != nil || keepsCodeForLegacyPlans == true
+    }
 }
 
 struct AppleLockdownCredentialOperation: Codable, Equatable, Sendable,
@@ -200,10 +210,10 @@ struct AppleWebsiteSyncTargets: Codable, Equatable, Sendable {
     }
 
     static func usesScreenTime(
-        _ block: ProtectedBlockSnapshot, websitesEnabled: Bool, adultAppsEnabled: Bool = false
+        _ block: ProtectedBlockSnapshot, websitesEnabled: Bool, keepsCodeForLegacyPlans: Bool = false
     ) -> Bool {
         guard block.phase != .inactive else { return false }
-        if adultAppsEnabled { return true }
+        if keepsCodeForLegacyPlans { return true }
         if !block.draft.protectionMode.allowsBreaks { return true }
         let rules = block.draft.rules
         return websitesEnabled
@@ -267,6 +277,7 @@ enum AppleLockdownError: LocalizedError, Equatable {
     case credentialStoreFailed
     case stateUnavailable
     case websiteSyncPending
+    case appAgeRestorationPending
     case websiteSyncTargetsChanged
     case websiteSyncWriterUnavailable
     case websiteSyncOwnedByAnotherApp
@@ -293,6 +304,8 @@ enum AppleLockdownError: LocalizedError, Equatable {
             return "The Screen Time protection credential could not be saved safely."
         case .stateUnavailable:
             return "The Screen Time protection state is unavailable."
+        case .appAgeRestorationPending:
+            return "Finish or retry the Screen Time app age setting update before changing protection."
         case .websiteSyncPending:
             return
                 "Finish or retry Screen Time website sync before changing a plan, removing the code, or updating protection."

@@ -2,6 +2,53 @@ import XCTest
 
 @MainActor
 final class AppleProtectionModelTests: XCTestCase {
+    func testRefreshRestoresLegacyAgeSettingWithoutSetupReleaseOrWebsiteChanges() async {
+        let events = AppleProtectionEventLog()
+        let restriction = AppleAppAgeRestriction(baseline: .eighteen)
+        let snapshot = makeSnapshot(phase: .waitingForFullUnlock, appAgeRestriction: restriction)
+        let service = FakeAppleProtectionService(events: events, snapshot: snapshot)
+        let operationID = UUID()
+        service.ageRestorationOperation = makeOperation(id: operationID, snapshot: snapshot)
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        let model = AppleProtectionModel(service: service, automation: automation, hasProAccess: false)
+
+        await model.refresh()
+
+        XCTAssertEqual(
+            events.values, ["status", "begin app age restoration", "restore app age", "complete app age restoration"])
+        XCTAssertEqual(automation.restoredAgeRestrictions, [restriction])
+        XCTAssertEqual(service.ageRestorationProof?.operationID, operationID)
+        XCTAssertEqual(service.ageRestorationProof?.verifiedAppRating, .eighteen)
+        var expected = snapshot
+        expected.appAgeRestriction = nil
+        XCTAssertEqual(model.snapshot, expected)
+        XCTAssertFalse(model.hasError)
+    }
+
+    func testFailedAgeRestorationKeepsBaselineAndDoesNotCompleteOrRepeatOnEveryRefresh() async {
+        for completionFailure in [false, true] {
+            let events = AppleProtectionEventLog()
+            let snapshot = makeSnapshot(phase: .active, appAgeRestriction: AppleAppAgeRestriction(baseline: .unrated))
+            let service = FakeAppleProtectionService(events: events, snapshot: snapshot)
+            service.ageRestorationOperation = makeOperation(id: UUID(), snapshot: snapshot)
+            let automation = FakeAppleScreenTimeAutomation(events: events)
+            if completionFailure {
+                service.ageRestorationCompletionError = AppleLockdownError.stateUnavailable
+            } else {
+                automation.restoreAgeError = AppleScreenTimeAutomationError.appRestrictionNotVerified
+            }
+            let model = AppleProtectionModel(service: service, automation: automation)
+
+            await model.refresh()
+            await model.refresh()
+
+            XCTAssertEqual(model.snapshot, snapshot)
+            XCTAssertNil(service.ageRestorationProof)
+            XCTAssertEqual(events.values.filter { $0 == "restore app age" }.count, 1)
+            XCTAssertTrue(model.hasError)
+        }
+    }
+
     func testSharingStopsBeforeCredentialCreationForExistingSetupOrAppleWarning() async {
         for phase in [AppleLockdownPhase.active, .inactive] {
             let events = AppleProtectionEventLog()
@@ -10,7 +57,7 @@ final class AppleProtectionModelTests: XCTestCase {
             automation.sharingError = AppleScreenTimeAutomationError.sharingRequired
             let model = AppleProtectionModel(service: service, automation: automation)
 
-            await model.setUp(enablesAdultFilter: false, blocksAdultApps: true, existingPasscode: nil)
+            await model.setUp(enablesAdultFilter: false, existingPasscode: nil)
 
             XCTAssertNil(service.setupRequest)
             XCTAssertFalse(events.values.contains("inspect"))
@@ -124,10 +171,8 @@ final class AppleProtectionModelTests: XCTestCase {
     func testSetupBeginsProtectedOperationBeforeNativeInstallAndVerification() async {
         let events = AppleProtectionEventLog()
         let operationID = UUID()
-        let restriction = AppleAppAgeRestriction(baseline: .eighteen)
         let pending = makeSnapshot(
-            phase: .pendingSetup, operationID: operationID,
-            appAgeRestriction: restriction, shareAcrossDevicesVerified: true)
+            phase: .pendingSetup, operationID: operationID, shareAcrossDevicesVerified: true)
         let active = makeSnapshot(phase: .active)
         let service = FakeAppleProtectionService(
             events: events,
@@ -139,7 +184,7 @@ final class AppleProtectionModelTests: XCTestCase {
         automation.inspection.appAgeRating = .eighteen
         let model = AppleProtectionModel(service: service, automation: automation)
 
-        await model.setUp(enablesAdultFilter: true, blocksAdultApps: true, existingPasscode: nil)
+        await model.setUp(enablesAdultFilter: true, existingPasscode: nil)
 
         XCTAssertTrue(model.hasProAccess)
         XCTAssertEqual(
@@ -148,10 +193,10 @@ final class AppleProtectionModelTests: XCTestCase {
         )
         XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
         XCTAssertEqual(service.setupDelay, 0)
-        XCTAssertEqual(service.setupRequest?.appAgeRestriction, restriction)
+        XCTAssertNil(service.setupRequest?.appAgeRestriction)
         XCTAssertEqual(service.setupRequest?.shareAcrossDevicesVerified, true)
-        XCTAssertEqual(automation.installedAppRestrictions, [restriction])
-        XCTAssertEqual(service.setupProof?.verifiedAppRating, .sixteen)
+        XCTAssertEqual(automation.installedAppRestrictions, [nil])
+        XCTAssertNil(service.setupProof?.verifiedAppRating)
         XCTAssertEqual(service.setupProof?.shareAcrossDevicesVerified, true)
         XCTAssertEqual(model.snapshot, active)
         XCTAssertFalse(model.hasError)
@@ -465,6 +510,8 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
     var installError: Error?
     var verifyErrors: [Error] = []
     var releaseError: Error?
+    var restoreAgeError: Error?
+    private(set) var restoredAgeRestrictions: [AppleAppAgeRestriction] = []
     var websites: AppleScreenTimeWebsites?
     var websiteReadError: Error?
     var onInspectWebsites: (() async -> Void)?
@@ -511,7 +558,14 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
         if !verifyErrors.isEmpty { throw verifyErrors.removeFirst() }
         return AppleScreenTimeInspection(
             hasPasscode: true, adultFilterEnabled: requiresAdultFilter,
-            appAgeRating: appAgeRestriction?.applied, shareAcrossDevicesEnabled: true)
+            appAgeRating: appAgeRestriction?.baseline, shareAcrossDevicesEnabled: true)
+    }
+
+    func restoreAppAge(passcode: String, restriction: AppleAppAgeRestriction) async throws -> AppleAppAgeRating {
+        events.append("restore app age")
+        if let restoreAgeError { throw restoreAgeError }
+        restoredAgeRestrictions.append(restriction)
+        return restriction.baseline
     }
 
     func release(
@@ -556,6 +610,9 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
     var requestedEndSnapshot: AppleLockdownSnapshot?
     var completedReleaseSnapshot: AppleLockdownSnapshot?
     var websiteOperation: AppleWebsiteSyncOperation?
+    var ageRestorationOperation: AppleLockdownCredentialOperation?
+    var ageRestorationCompletionError: Error?
+    private(set) var ageRestorationProof: AppleLockdownOperationRequest?
     private(set) var resumedSetupOperationIDs: [UUID] = []
     private(set) var completedSetupOperationIDs: [UUID] = []
     private(set) var completedReleaseOperationIDs: [UUID] = []
@@ -584,6 +641,22 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
 
     func appleLockdownStatus() async throws -> AppleLockdownSnapshot {
         events.append("status")
+        return snapshot
+    }
+
+    func beginAppleAppAgeRestoration() async throws -> AppleLockdownCredentialOperation {
+        events.append("begin app age restoration")
+        return try required(ageRestorationOperation)
+    }
+
+    func completeAppleAppAgeRestoration(operationID: UUID, verifiedAppRating: AppleAppAgeRating) async throws
+        -> AppleLockdownSnapshot
+    {
+        events.append("complete app age restoration")
+        if let ageRestorationCompletionError { throw ageRestorationCompletionError }
+        ageRestorationProof = AppleLockdownOperationRequest(
+            operationID: operationID, verifiedAppRating: verifiedAppRating)
+        snapshot.appAgeRestriction = nil
         return snapshot
     }
 

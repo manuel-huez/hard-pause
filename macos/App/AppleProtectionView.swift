@@ -16,7 +16,7 @@ struct ProBadge: View {
 struct ScreenTimeBenefits: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Add Apple’s website and app restrictions, with a private code kept by Hard Pause.")
+            Text("Add Apple’s website restrictions, with a private code kept by Hard Pause.")
             Text(
                 "Setup turns on Share Across Devices on this Mac. Your iPhone and iPad must use the same Apple Account and have sharing on. Check the restrictions on each device."
             )
@@ -222,7 +222,6 @@ struct AppleProtectionSetupView: View {
     @State private var showsCodeStep = false
     @FocusState private var codeIsFocused: Bool
     @State private var enableAdultFilter = true
-    @State private var blockAdultApps = true
     @State private var currentCode = ""
     @State private var hasAccessibilityAccess = AXIsProcessTrusted()
 
@@ -301,15 +300,13 @@ struct AppleProtectionSetupView: View {
             } else if !showsCodeStep {
                 VStack(alignment: .leading, spacing: 16) {
                     restrictionOption(
-                        "Block 18+ apps", detail: "Limit apps with an adult age rating.", isOn: $blockAdultApps)
-                    restrictionOption(
                         "Filter adult websites", detail: "Use Apple’s filter and sync website limits.",
                         isOn: $enableAdultFilter)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(PauseTheme.surface, in: RoundedRectangle(cornerRadius: 14))
-                if enableAdultFilter || blockAdultApps {
+                if enableAdultFilter {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("These restrictions stay on during plan breaks.")
                         Text("Before setup, turn on Content & Privacy in Screen Time.")
@@ -378,12 +375,7 @@ struct AppleProtectionSetupView: View {
     }
 
     private var restrictionSummary: String {
-        switch (blockAdultApps, enableAdultFilter) {
-        case (true, true): "Protects: 18+ apps and adult websites."
-        case (true, false): "Protects: 18+ apps."
-        case (false, true): "Protects: adult websites."
-        case (false, false): "Keeps your current Screen Time restrictions."
-        }
+        enableAdultFilter ? "Protects: adult websites." : "Keeps your current Screen Time restrictions."
     }
 
     private func restrictionOption(_ title: String, detail: String, isOn: Binding<Bool>) -> some View {
@@ -428,7 +420,7 @@ struct AppleProtectionSetupView: View {
                 await model.continueSetup(existingPasscode: oldCode.isEmpty ? nil : oldCode)
             } else {
                 await model.setUp(
-                    enablesAdultFilter: enableAdultFilter, blocksAdultApps: blockAdultApps,
+                    enablesAdultFilter: enableAdultFilter,
                     existingPasscode: oldCode.isEmpty ? nil : oldCode)
             }
             if model.snapshot?.phase == .active { dismiss() }

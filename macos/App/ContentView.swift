@@ -2562,7 +2562,9 @@ private struct ProtectionSettingsPane: View {
                             AppleWebsiteSyncTargets.usesScreenTime(
                                 $0,
                                 websitesEnabled: model.appleProtection.snapshot?.enablesAdultFilter == true,
-                                adultAppsEnabled: model.appleProtection.snapshot?.appAgeRestriction != nil)
+                                keepsCodeForLegacyPlans: model.appleProtection.snapshot?.retainsCodeForLegacyPlans
+                                    == true
+                            )
                         }
                 )
                 .settingsPanel()

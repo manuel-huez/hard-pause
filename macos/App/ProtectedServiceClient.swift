@@ -56,6 +56,9 @@ protocol ProtectedServiceServing {
     func cancelBreak(id: UUID) async throws -> ProtectedServiceSnapshot
     func requestEnd(id: UUID) async throws -> ProtectedServiceSnapshot
     func appleLockdownStatus() async throws -> AppleLockdownSnapshot
+    func beginAppleAppAgeRestoration() async throws -> AppleLockdownCredentialOperation
+    func completeAppleAppAgeRestoration(operationID: UUID, verifiedAppRating: AppleAppAgeRating) async throws
+        -> AppleLockdownSnapshot
     func beginAppleLockdownSetup(
         _ request: AppleLockdownSetupRequest
     ) async throws -> AppleLockdownCredentialOperation
@@ -88,6 +91,16 @@ extension ProtectedServiceServing {
 
     func requestManagedUpdate(bundlePath: String) async throws -> UUID {
         throw ProtectedServiceClientError.unavailable("Automatic protection updates are unavailable.")
+    }
+
+    func beginAppleAppAgeRestoration() async throws -> AppleLockdownCredentialOperation {
+        throw ProtectedServiceClientError.unavailable("Screen Time app age setting update is unavailable.")
+    }
+
+    func completeAppleAppAgeRestoration(operationID: UUID, verifiedAppRating: AppleAppAgeRating) async throws
+        -> AppleLockdownSnapshot
+    {
+        throw ProtectedServiceClientError.unavailable("Screen Time app age setting update is unavailable.")
     }
 
     func appleLockdownStatus() async throws -> AppleLockdownSnapshot {
@@ -372,6 +385,28 @@ final class ProtectedServiceClient: ProtectedServiceServing {
     func cancelUpdate(id: UUID) async throws -> ProtectedServiceSnapshot {
         let payload = try ProtectedServiceCodec.encode(ProtectedBlockRequest(id: id))
         return try await perform { service, reply in service.cancelUpdate(payload, withReply: reply) }
+    }
+
+    func beginAppleAppAgeRestoration() async throws -> AppleLockdownCredentialOperation {
+        guard try await updateInstallationStatus().serviceVersion == ProtectedServiceContract.serviceVersion else {
+            throw ProtectedServiceClientError.unavailable(
+                "Update protection to restore the previous Screen Time app age setting.")
+        }
+        let reply = try await performApple { service, callback in
+            service.beginAppleAppAgeRestoration(withReply: callback)
+        }
+        return try appleCredential(from: reply)
+    }
+
+    func completeAppleAppAgeRestoration(operationID: UUID, verifiedAppRating: AppleAppAgeRating) async throws
+        -> AppleLockdownSnapshot
+    {
+        let payload = try ProtectedServiceCodec.encode(
+            AppleLockdownOperationRequest(operationID: operationID, verifiedAppRating: verifiedAppRating))
+        let reply = try await performApple { service, callback in
+            service.completeAppleAppAgeRestoration(payload, withReply: callback)
+        }
+        return try appleSnapshot(from: reply)
     }
 
     func appleLockdownStatus() async throws -> AppleLockdownSnapshot {

@@ -97,6 +97,10 @@ final class AppleLockdownEngine: @unchecked Sendable {
     ) throws -> AppleLockdownCredentialOperation {
         try withLock {
             try requireNotFrozen()
+            guard request.appAgeRestriction == nil else {
+                throw AppleLockdownError.invalidRequest(
+                    "Hard Pause no longer sets an app age limit. Update the app and retry.")
+            }
             guard try !credentialVault.containsAnyCredential() else {
                 throw AppleLockdownError.stateUnavailable
             }
@@ -135,16 +139,12 @@ final class AppleLockdownEngine: @unchecked Sendable {
     }
 
     func completeSetup(
-        _ request: AppleLockdownOperationRequest
+        _ request: AppleLockdownOperationRequest, hasActivePlans: Bool = false
     ) throws -> AppleLockdownSnapshot {
         try withLock {
             try requireNotFrozen()
             var candidate = state
-            if let restriction = state.configuration?.appAgeRestriction {
-                guard let verified = request.verifiedAppRating,
-                    verified.rawValue <= restriction.applied.rawValue
-                else { throw AppleLockdownError.invalidRequest("The Screen Time app age limit was not verified.") }
-            }
+            try candidate.clearAppAgeRestriction(verified: request.verifiedAppRating, hasActivePlans: hasActivePlans)
             if state.configuration?.shareAcrossDevicesVerified == true,
                 request.shareAcrossDevicesVerified != true
             {
@@ -155,6 +155,39 @@ final class AppleLockdownEngine: @unchecked Sendable {
                 throw AppleLockdownError.credentialUnavailable
             }
             _ = try credentialVault.read(credentialID: credentialID)
+            try stateStore.save(candidate)
+            state = candidate
+            return state.snapshot()
+        }
+    }
+
+    func beginAppAgeRestoration(writer: AppleWebsiteSyncWriter) throws -> AppleLockdownCredentialOperation {
+        try withLock {
+            try requireNotFrozen()
+            guard state.pendingWebsiteSync == nil else { throw AppleLockdownError.websiteSyncPending }
+            if let permit = state.pendingAppAgeRestoration, permit.writer != writer,
+                try websiteSyncWriterIsRunning(permit.writer)
+            {
+                throw AppleLockdownError.websiteSyncOwnedByAnotherApp
+            }
+            guard let credentialID = state.credentialID else { throw AppleLockdownError.credentialUnavailable }
+            let passcode = try credentialVault.read(credentialID: credentialID)
+            var candidate = state
+            let operationID = try candidate.prepareAppAgeRestoration(writer: writer)
+            try stateStore.save(candidate)
+            state = candidate
+            return AppleLockdownCredentialOperation(
+                operationID: operationID, passcode: passcode, snapshot: state.snapshot())
+        }
+    }
+
+    func completeAppAgeRestoration(
+        _ request: AppleLockdownOperationRequest, writer: AppleWebsiteSyncWriter, hasActivePlans: Bool = false
+    ) throws -> AppleLockdownSnapshot {
+        try withLock {
+            try requireNotFrozen()
+            var candidate = state
+            try candidate.completeAppAgeRestoration(request, writer: writer, hasActivePlans: hasActivePlans)
             try stateStore.save(candidate)
             state = candidate
             return state.snapshot()
@@ -202,10 +235,12 @@ final class AppleLockdownEngine: @unchecked Sendable {
     }
 
     private func requireNoWebsiteSyncLocked() throws {
+        guard state.pendingAppAgeRestoration == nil else { throw AppleLockdownError.appAgeRestorationPending }
         guard state.pendingWebsiteSync == nil else { throw AppleLockdownError.websiteSyncPending }
     }
 
     private func websiteSyncCredentialLocked() throws -> String {
+        guard state.pendingAppAgeRestoration == nil else { throw AppleLockdownError.appAgeRestorationPending }
         guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(state.phase),
             state.configuration?.enablesAdultFilter == true,
             let credentialID = state.credentialID
@@ -260,6 +295,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
     ) throws -> AppleLockdownCredentialOperation {
         try withLock {
             try requireNotFrozen()
+            guard state.pendingAppAgeRestoration == nil else { throw AppleLockdownError.appAgeRestorationPending }
             if state.phase != .releaseInProgress { try requireNoWebsiteSyncLocked() }
             guard normalProtectionIsInactiveAndHealthy else {
                 throw AppleLockdownError.normalProtectionActiveOrUnhealthy
@@ -322,6 +358,7 @@ final class AppleLockdownEngine: @unchecked Sendable {
                 || state.phase == .completingRelease
                 || endingWithPlans
                 || state.pendingWebsiteSync != nil
+                || state.pendingAppAgeRestoration != nil
             return (allowsLockdown, blocksAnyActivation)
         }
     }

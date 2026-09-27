@@ -2,10 +2,10 @@ import Foundation
 
 enum ProtectedServiceContract {
     static let machServiceName = "org.hardpause.service"
-    static let serviceVersion = "12"
+    static let serviceVersion = "13"
     // Enable only after a native launchd/PF/hosts handoff and rollback proof.
     static let liveServiceHandoffEnabled = true
-    static let safeUpdateSourceVersions: Set<String> = ["4", "5", "6", "7", "8", "9", "10", "11"]
+    static let safeUpdateSourceVersions: Set<String> = ["4", "5", "6", "7", "8", "9", "10", "11", "12"]
     static let standbyMachServiceName = "org.hardpause.service.standby"
     static let updateMachServiceName = "org.hardpause.service.updates"
     static let maximumPayloadBytes = 1_048_576
@@ -70,6 +70,8 @@ struct ProtectedServiceUpdateReply: Codable, Equatable, Sendable {
     func cancelLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func finalizeLiveUpdate(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func appleLockdownStatus(withReply reply: @escaping (NSData) -> Void)
+    func beginAppleAppAgeRestoration(withReply reply: @escaping (NSData) -> Void)
+    func completeAppleAppAgeRestoration(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func beginAppleLockdownSetup(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func resumeAppleLockdownSetup(_ request: NSData, withReply reply: @escaping (NSData) -> Void)
     func completeAppleLockdownSetup(_ request: NSData, withReply reply: @escaping (NSData) -> Void)

@@ -19,10 +19,11 @@ struct AppleWebsiteOverwrite: Equatable, Identifiable {
 @MainActor
 final class AppleProtectionModel: ObservableObject {
     enum Activity: Equatable {
-        case checking, settingCode, verifyingCode, removingCode, syncingWebsites
+        case checking, settingCode, verifyingCode, removingCode, syncingWebsites, restoringAppAge
 
         var label: String {
             switch self {
+            case .restoringAppAge: return "Restoring the app age setting…"
             case .checking: return "Checking Screen Time…"
             case .settingCode: return "Setting the private code…"
             case .verifyingCode: return "Verifying the code…"
@@ -33,6 +34,7 @@ final class AppleProtectionModel: ObservableObject {
 
         var failureLabel: String {
             switch self {
+            case .restoringAppAge: "Could not restore the app age setting."
             case .checking: "Could not check Screen Time."
             case .settingCode: "Could not finish Screen Time setup."
             case .verifyingCode: "Could not verify Screen Time setup."
@@ -59,6 +61,7 @@ final class AppleProtectionModel: ObservableObject {
     private let operationLockURL: URL
     private var websiteSyncRequestedWhileBusy = false
     private var statusUnavailable = false
+    private var nextAppAgeRestorationAttempt = Date.distantPast
 
     var isBusy: Bool { activity != nil }
     var isSyncingWebsites: Bool { activity == .syncingWebsites }
@@ -85,6 +88,24 @@ final class AppleProtectionModel: ObservableObject {
                 hasError = false
                 statusUnavailable = false
             }
+            if snapshot?.appAgeRestriction != nil,
+                [.active, .waitingForFullUnlock, .readyForRelease].contains(snapshot?.phase),
+                snapshot?.websiteSyncOperationID == nil, Date() >= nextAppAgeRestorationAttempt
+            {
+                // Keep the saved baseline until native verification and the durable completion both succeed.
+                await perform(.restoringAppAge) {
+                    let operation = try await self.service.beginAppleAppAgeRestoration()
+                    self.nextAppAgeRestorationAttempt = Date().addingTimeInterval(300)
+                    guard let restriction = operation.snapshot.appAgeRestriction else {
+                        throw AppleLockdownError.operationMismatch
+                    }
+                    let verified = try await self.automation.restoreAppAge(
+                        passcode: operation.passcode, restriction: restriction)
+                    self.snapshot = try await self.service.completeAppleAppAgeRestoration(
+                        operationID: operation.operationID, verifiedAppRating: verified)
+                    self.nextAppAgeRestorationAttempt = .distantPast
+                }
+            }
         } catch {
             statusUnavailable = true
             hasError = true
@@ -99,7 +120,7 @@ final class AppleProtectionModel: ObservableObject {
         }
     }
 
-    func setUp(enablesAdultFilter: Bool, blocksAdultApps: Bool = false, existingPasscode: String?) async {
+    func setUp(enablesAdultFilter: Bool, existingPasscode: String?) async {
         guard !isBusy else { return }
         guard hasProAccess else {
             message = "Pro access is required to set up Screen Time."
@@ -115,12 +136,9 @@ final class AppleProtectionModel: ObservableObject {
             }
             try await self.automation.enableSharing(passcode: existingPasscode)
             let baseline = try await self.automation.inspect(
-                checkAdultFilter: enablesAdultFilter, checkAdultApps: blocksAdultApps, passcode: existingPasscode)
+                checkAdultFilter: enablesAdultFilter, checkAdultApps: false, passcode: existingPasscode)
             guard baseline.shareAcrossDevicesEnabled == true else {
                 throw AppleScreenTimeAutomationError.sharingRequired
-            }
-            if blocksAdultApps && baseline.appAgeRating == nil {
-                throw AppleScreenTimeAutomationError.unsupportedAppAgeRating
             }
             self.codeCheck = baseline.hasPasscode
             if baseline.hasPasscode, existingPasscode?.isEmpty != false {
@@ -131,8 +149,7 @@ final class AppleProtectionModel: ObservableObject {
                     fullUnlockDelay: 0,
                     enablesAdultFilter: enablesAdultFilter,
                     filterWasAlreadyEnabled: baseline.adultFilterEnabled,
-                    shareAcrossDevicesVerified: true,
-                    appAgeRestriction: blocksAdultApps ? baseline.appAgeRating.map(AppleAppAgeRestriction.init) : nil
+                    shareAcrossDevicesVerified: true
                 )
             )
             self.snapshot = operation.snapshot

@@ -168,7 +168,7 @@ enum AppleScreenTimeAutomationError: LocalizedError {
                 "Turn on Share Across Devices in Screen Time and confirm Apple's settings warning, then try setup again."
         case .unsupportedAppAgeRating:
             return
-                "This Screen Time app rating system is not supported. Set up without Block 18+ apps, or choose a supported age limit in Apple's settings."
+                "The previous app age setting could not be read in Screen Time."
         case .operationInProgress:
             return "Screen Time is in use by another Hard Pause operation. Wait for it to finish, then try again."
         case .accessibilityRequired:
@@ -197,7 +197,7 @@ enum AppleScreenTimeAutomationError: LocalizedError {
                 "Screen Time website sync could not be verified. Check Content & Privacy in System Settings, then retry."
         case .contentRestrictionsRequired:
             return
-                "For website or app restrictions, turn on Content & Privacy in Screen Time first. Review Apple's settings before you turn it on. You can also set up Hard Pause without these restrictions."
+                "For website restrictions, turn on Content & Privacy in Screen Time first. Review Apple's settings before you turn it on. You can also set up Hard Pause without these restrictions."
         case .unsupportedWebsitePolicy:
             return
                 "Screen Time uses an allowed websites only policy. Hard Pause cannot sync website rules with this policy. You can set up Hard Pause without website sync."
@@ -226,6 +226,7 @@ protocol AppleScreenTimeAutomating {
         passcode: String, requiresAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?, requiresSharing: Bool
     ) async throws -> AppleScreenTimeInspection
     func release(passcode: String, restoreUnrestricted: Bool, appAgeRestriction: AppleAppAgeRestriction?) async throws
+    func restoreAppAge(passcode: String, restriction: AppleAppAgeRestriction) async throws -> AppleAppAgeRating
     func inspectWebsites(passcode: String) async throws -> AppleScreenTimeWebsites
     func updateWebsites(
         passcode: String, addRestricted: [String], removeRestricted: [String],
@@ -234,6 +235,10 @@ protocol AppleScreenTimeAutomating {
 }
 
 extension AppleScreenTimeAutomating {
+    func restoreAppAge(passcode: String, restriction: AppleAppAgeRestriction) async throws -> AppleAppAgeRating {
+        throw AppleScreenTimeAutomationError.appRestrictionNotVerified
+    }
+
     func inspectWebsites(passcode: String) async throws -> AppleScreenTimeWebsites {
         throw AppleScreenTimeAutomationError.websiteSyncUnavailable
     }
@@ -295,6 +300,11 @@ final class AppleScreenTimeAutomation: AppleScreenTimeAutomating {
         try await openScreenTime()
         try await worker.release(
             passcode: passcode, restoreUnrestricted: restoreUnrestricted, appAgeRestriction: appAgeRestriction)
+    }
+
+    func restoreAppAge(passcode: String, restriction: AppleAppAgeRestriction) async throws -> AppleAppAgeRating {
+        try await openScreenTime()
+        return try await worker.restoreAppAge(passcode: passcode, restriction: restriction)
     }
 
     func inspectWebsites(passcode: String) async throws -> AppleScreenTimeWebsites {
@@ -411,11 +421,6 @@ private actor ScreenTimeAccessibilityWorker {
         if checkAdultApps {
             try await openAppSettings(passcode: passcode)
             rating = try appAgeRating()
-            // Prove that the requested age choice exists before saving a new code.
-            if let rating, rating.rawValue > 16 {
-                _ = try await appAgeChoices()
-                try await dismissMenu()
-            }
             try await closeAppSettings()
         }
         return AppleScreenTimeInspection(
@@ -432,8 +437,8 @@ private actor ScreenTimeAccessibilityWorker {
         if let restriction = appAgeRestriction {
             try await openAppSettings(passcode: old)
             let current = try appAgeRating()
-            if current.rawValue > restriction.applied.rawValue {
-                try await selectAppAge(restriction.applied, passcode: old)
+            if let restored = restriction.restorationTarget(current: current) {
+                try await selectAppAge(restored, passcode: old)
             }
             try await closeAppSettings()
         }
@@ -467,6 +472,9 @@ private actor ScreenTimeAccessibilityWorker {
     func verify(
         passcode: String, requiresAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?, requiresSharing: Bool
     ) async throws -> AppleScreenTimeInspection {
+        if let restriction = appAgeRestriction {
+            _ = try await restoreAppAge(passcode: passcode, restriction: restriction)
+        }
         let inspection = try await inspect(
             checkAdultFilter: requiresAdultFilter, checkAdultApps: appAgeRestriction != nil, passcode: passcode)
         guard inspection.hasPasscode else { throw AppleScreenTimeAutomationError.verificationRequired }
@@ -474,7 +482,7 @@ private actor ScreenTimeAccessibilityWorker {
             throw AppleScreenTimeAutomationError.webFilterNotVerified
         }
         if let restriction = appAgeRestriction {
-            guard let current = inspection.appAgeRating, current.rawValue <= restriction.applied.rawValue else {
+            guard let current = inspection.appAgeRating, restriction.restorationTarget(current: current) == nil else {
                 throw AppleScreenTimeAutomationError.appRestrictionNotVerified
             }
         }
@@ -501,14 +509,23 @@ private actor ScreenTimeAccessibilityWorker {
         return inspection
     }
 
+    func restoreAppAge(passcode: String, restriction: AppleAppAgeRestriction) async throws -> AppleAppAgeRating {
+        try await openAppSettings(passcode: passcode)
+        if let target = restriction.restorationTarget(current: try appAgeRating()) {
+            try await selectAppAge(target, passcode: passcode)
+        }
+        let verified = try appAgeRating()
+        guard restriction.restorationTarget(current: verified) == nil else {
+            throw AppleScreenTimeAutomationError.appRestrictionNotVerified
+        }
+        try await closeAppSettings()
+        return verified
+    }
+
     func release(passcode: String, restoreUnrestricted: Bool, appAgeRestriction: AppleAppAgeRestriction?) async throws {
         // Caller obtains this credential only after the protected service authorizes full release.
         if let restriction = appAgeRestriction {
-            try await openAppSettings(passcode: passcode)
-            if let restored = restriction.restorationTarget(current: try appAgeRating()) {
-                try await selectAppAge(restored, passcode: passcode)
-            }
-            try await closeAppSettings()
+            _ = try await restoreAppAge(passcode: passcode, restriction: restriction)
         }
         if restoreUnrestricted {
             let hasContentRestrictions = try await openWebSettings(passcode: passcode)

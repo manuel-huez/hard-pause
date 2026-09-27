@@ -16,6 +16,8 @@ struct AppleLockdownConfiguration: Codable, Equatable, Sendable {
     let filterWasAlreadyEnabled: Bool
     let shareAcrossDevicesVerified: Bool?
     var appAgeRestriction: AppleAppAgeRestriction? = nil
+    // Preserve the older private-code lifetime after retiring its global app age limit.
+    var keepsCodeForLegacyPlans: Bool? = nil
 
     init(_ request: AppleLockdownSetupRequest) {
         fullUnlockDelay = request.fullUnlockDelay
@@ -53,6 +55,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
     private(set) var mirroredAllowedDomains: [String]?
     private(set) var hasUsedPlan: Bool?
     private(set) var pendingWebsiteSync: AppleWebsiteSyncPermit?
+    private(set) var pendingAppAgeRestoration: AppleAppAgeRestorationPermit?
 
     init() {
         schemaVersion = Self.currentSchemaVersion
@@ -72,6 +75,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         // same as older services until a new setup starts.
         hasUsedPlan = nil
         pendingWebsiteSync = nil
+        pendingAppAgeRestoration = nil
     }
 
     mutating func beginSetup(
@@ -106,6 +110,37 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         phase = .active
         self.operationID = nil
         resetClock()
+    }
+
+    mutating func prepareAppAgeRestoration(writer: AppleWebsiteSyncWriter) throws -> UUID {
+        guard [.active, .waitingForFullUnlock].contains(phase), configuration?.appAgeRestriction != nil else {
+            throw AppleLockdownError.protectionNotActive
+        }
+        let operationID = pendingAppAgeRestoration?.writer == writer ? pendingAppAgeRestoration?.operationID : nil
+        let permit = AppleAppAgeRestorationPermit(operationID: operationID ?? UUID(), writer: writer)
+        pendingAppAgeRestoration = permit
+        return permit.operationID
+    }
+
+    mutating func completeAppAgeRestoration(
+        _ request: AppleLockdownOperationRequest, writer: AppleWebsiteSyncWriter, hasActivePlans: Bool
+    ) throws {
+        guard let permit = pendingAppAgeRestoration, permit.operationID == request.operationID,
+            permit.writer == writer
+        else { throw AppleLockdownError.operationMismatch }
+        try clearAppAgeRestriction(verified: request.verifiedAppRating, hasActivePlans: hasActivePlans)
+        pendingAppAgeRestoration = nil
+    }
+
+    mutating func clearAppAgeRestriction(verified: AppleAppAgeRating?, hasActivePlans: Bool) throws {
+        guard let restriction = configuration?.appAgeRestriction else { return }
+        guard let verified, restriction.restorationTarget(current: verified) == nil else {
+            throw AppleLockdownError.invalidRequest("The previous Screen Time app age setting was not restored.")
+        }
+        configuration?.appAgeRestriction = nil
+        if configuration?.fullUnlockDelay == 0 && hasActivePlans {
+            configuration?.keepsCodeForLegacyPlans = true
+        }
     }
 
     mutating func requestEnd(at reading: ClockReading) throws {
@@ -302,7 +337,8 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
             operationID: publicPhase == .pendingSetup || publicPhase == .releaseInProgress
                 ? operationID : nil,
             websiteSyncOperationID: pendingWebsiteSync?.operationID,
-            appAgeRestriction: configuration?.appAgeRestriction
+            appAgeRestriction: configuration?.appAgeRestriction,
+            keepsCodeForLegacyPlans: configuration?.keepsCodeForLegacyPlans
         )
     }
 
@@ -320,6 +356,12 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         }
         guard anchorBootIdentifier?.utf8.count ?? 0 <= 256 else {
             throw AppleLockdownError.stateUnavailable
+        }
+        if let permit = pendingAppAgeRestoration {
+            guard [.active, .waitingForFullUnlock].contains(phase), configuration?.appAgeRestriction != nil,
+                pendingWebsiteSync == nil, permit.writer.processID > 0, permit.writer.startedAtSeconds > 0,
+                permit.writer.startedAtMicroseconds < 1_000_000
+            else { throw AppleLockdownError.stateUnavailable }
         }
         if let permit = pendingWebsiteSync {
             guard [.active, .waitingForFullUnlock, .releaseInProgress].contains(phase),

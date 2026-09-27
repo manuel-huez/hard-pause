@@ -220,6 +220,29 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         }
     }
 
+    func beginAppleAppAgeRestoration(withReply reply: @escaping (NSData) -> Void) {
+        do {
+            let writer = try AppleWebsiteSyncProcess.currentWriter()
+            reply(
+                encoded(.success(try coordinator.perform { try appleLockdown.beginAppAgeRestoration(writer: writer) })))
+        } catch {
+            reply(encoded(appleFailure(for: error)))
+        }
+    }
+
+    func completeAppleAppAgeRestoration(_ request: NSData, withReply reply: @escaping (NSData) -> Void) {
+        do {
+            let writer = try AppleWebsiteSyncProcess.currentWriter()
+            handleApple(request, as: AppleLockdownOperationRequest.self, reply: reply) {
+                .success(
+                    try appleLockdown.completeAppAgeRestoration(
+                        $0, writer: writer, hasActivePlans: engine.list().blocks.contains { $0.phase != .inactive }))
+            }
+        } catch {
+            reply(encoded(appleFailure(for: error)))
+        }
+    }
+
     func beginAppleLockdownSetup(
         _ request: NSData,
         withReply reply: @escaping (NSData) -> Void
@@ -244,7 +267,8 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
     ) {
         handleApple(request, as: AppleLockdownOperationRequest.self, reply: reply) { request in
             try coordinator.perform {
-                _ = try appleLockdown.completeSetup(request)
+                _ = try appleLockdown.completeSetup(
+                    request, hasActivePlans: engine.list().blocks.contains { $0.phase != .inactive })
                 try reconcileApplePlanUse(engine.list())
                 return .success(try appleLockdown.status())
             }
@@ -395,6 +419,7 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         case ProtectedStateError.updateInProgress: code = "update_in_progress"
         case ProtectedStateError.updateNotOwned: code = "update_not_owned"
         case AppleLockdownError.websiteSyncPending: code = "website_sync_pending"
+        case AppleLockdownError.appAgeRestorationPending: code = "app_age_restoration_pending"
         default: code = "service_error"
         }
         return .failure(
@@ -425,6 +450,7 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         case AppleLockdownError.stateUnavailable, AppleLockdownError.unavailable:
             code = "state_unavailable"
         case AppleLockdownError.websiteSyncPending: code = "website_sync_pending"
+        case AppleLockdownError.appAgeRestorationPending: code = "app_age_restoration_pending"
         case AppleLockdownError.websiteSyncTargetsChanged: code = "website_sync_targets_changed"
         case AppleLockdownError.websiteSyncWriterUnavailable: code = "website_sync_writer_unavailable"
         case AppleLockdownError.websiteSyncOwnedByAnotherApp: code = "website_sync_owned_by_another_app"
@@ -442,7 +468,8 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         try appleLockdown.reconcilePlanUse(
             hasDependentPlans: snapshot.blocks.contains {
                 AppleWebsiteSyncTargets.usesScreenTime(
-                    $0, websitesEnabled: status.enablesAdultFilter, adultAppsEnabled: status.appAgeRestriction != nil)
+                    $0, websitesEnabled: status.enablesAdultFilter,
+                    keepsCodeForLegacyPlans: status.retainsCodeForLegacyPlans)
             })
     }
 
@@ -454,7 +481,7 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
             noDependentPlans = !snapshot.blocks.contains {
                 AppleWebsiteSyncTargets.usesScreenTime(
                     $0, websitesEnabled: appleStatus.enablesAdultFilter,
-                    adultAppsEnabled: appleStatus.appAgeRestriction != nil)
+                    keepsCodeForLegacyPlans: appleStatus.retainsCodeForLegacyPlans)
             }
         } else {
             noDependentPlans =
