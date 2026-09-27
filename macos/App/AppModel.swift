@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var connectingBrowserID: String?
     @Published private(set) var browserConnectionMessages: [String: String] = [:]
     @Published private(set) var isInstallingService = false
+    @Published private(set) var isRecoveringAppAfterUpdate = false
     @Published private(set) var startsAtLogin = false
     private let browserProtection = BrowserProtection()
     private var browserWorker = BrowserWorkerClient()
@@ -36,6 +37,7 @@ final class AppModel: ObservableObject {
     private var lastServiceUpdateRequest = Date.distantPast
     private var serviceUpdateRetryInterval: TimeInterval = 300
     private var isRequestingServiceUpdate = false
+    private let serviceInstallAction: @MainActor (Bool, Bool, Bool) async throws -> Void
     @Published private(set) var adultDatabaseStatus = "Loading local adult website list…"
 
     func refreshAdultDatabase(force: Bool = true) async {
@@ -43,6 +45,7 @@ final class AppModel: ObservableObject {
         adultDatabaseStatus = browserProtection.adultDatabaseStatus
     }
     private let setupProbe: (@MainActor () async -> SetupAccessState)?
+    private let serviceInstallationCheck: () -> Bool
     private var isCheckingSetup = false
     private var hasCheckedSetup = false
 
@@ -68,11 +71,33 @@ final class AppModel: ObservableObject {
     }
     var canRequestUnlock: Bool {
         serviceAvailability == .ready && !isBusy && !hasPendingMutation && !isInstallingService
+            && !isRecoveringAppAfterUpdate
+    }
+    var isRecoveringServiceConnection: Bool {
+        serviceAvailability != .ready
+            && (serviceInstallationCheck() || snapshot != nil || hasCompletedSetup)
     }
     var setupReady: Bool { setupState == .ready }
     var shouldShowInitialSetup: Bool {
-        !hasCompletedSetup && activeBlocks.isEmpty && setupState == .incomplete
+        !isRecoveringServiceConnection && !hasCompletedSetup
+            && activeBlocks.isEmpty && setupState == .incomplete
     }
+    var canRecoverAppAfterUpdate: Bool {
+        guard case .unavailable = serviceAvailability else { return false }
+        return !isBusy && !hasPendingMutation && !isInstallingService && !isRefreshing
+            && !isRequestingServiceUpdate && !isReconcilingAppleProtection && !appleProtection.isBusy
+            && connectingBrowserID == nil && !browserProtection.isChecking
+            && !browserProtection.mayHaveLocalPauseTabs
+    }
+
+    /// The caller must first verify fresh coverage from the signed browser worker.
+    func beginAppUpdateRecovery() -> Bool {
+        guard !isRecoveringAppAfterUpdate, canRecoverAppAfterUpdate else { return false }
+        isRecoveringAppAfterUpdate = true
+        return true
+    }
+
+    func endAppUpdateRecovery() { isRecoveringAppAfterUpdate = false }
     var needsServiceUpdate: Bool {
         snapshot.map { $0.protection.serviceVersion != ProtectedServiceContract.serviceVersion } ?? false
     }
@@ -110,12 +135,26 @@ final class AppModel: ObservableObject {
     init(
         service: (any ProtectedServiceServing)? = nil,
         automaticallyRefreshes: Bool = true,
-        setupProbe: (@MainActor () async -> SetupAccessState)? = nil
+        setupProbe: (@MainActor () async -> SetupAccessState)? = nil,
+        serviceInstallationCheck: (() -> Bool)? = nil,
+        serviceInstallAction: (@MainActor (Bool, Bool, Bool) async throws -> Void)? = nil
     ) {
         let client = service ?? ProtectedServiceClient()
         self.service = client
         appleProtection = AppleProtectionModel(service: client)
         self.setupProbe = setupProbe
+        self.serviceInstallationCheck =
+            serviceInstallationCheck ?? {
+                FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/org.hardpause.service.plist")
+            }
+        self.serviceInstallAction =
+            serviceInstallAction ?? { updateExisting, liveUpdate, activeLegacyUpdate in
+                try await ServiceInstaller.install(
+                    updateExisting: updateExisting,
+                    liveUpdate: liveUpdate,
+                    activeLegacyUpdate: activeLegacyUpdate
+                )
+            }
         appleProtection.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -135,7 +174,7 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() async {
-        guard !isBusy, !isRefreshing, !hasPendingMutation else { return }
+        guard !isBusy, !isRefreshing, !hasPendingMutation, !isRecoveringAppAfterUpdate else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         let requestStartedAt = SystemClock.read().continuousTime
@@ -160,6 +199,7 @@ final class AppModel: ObservableObject {
     /// Returns true once the plan is saved, even if starting it fails. The editor
     /// must close in that case so a retry cannot create a duplicate plan.
     func createAndActivate(_ draft: ProtectedBlockDraft) async -> Bool {
+        guard !isRecoveringAppAfterUpdate else { return false }
         guard await screenTimeReady(for: draft) else { return false }
         guard await adultFilterReady(for: draft.rules) else { return false }
         while isCheckingSetup {
@@ -284,6 +324,7 @@ final class AppModel: ObservableObject {
         let requested = await mutate { try await service.requestEnd(id: block.id) }
         if requested, !block.draft.protectionMode.allowsBreaks {
             await appleProtection.refresh()
+            guard !isRecoveringAppAfterUpdate else { return requested }
             if appleProtection.snapshot?.fullUnlockDelay != 0 {
                 await appleProtection.requestEnd()
                 if let message = appleProtection.message,
@@ -327,8 +368,12 @@ final class AppModel: ObservableObject {
     private func mutate(
         _ operation: () async throws -> ProtectedServiceSnapshot
     ) async -> Bool {
+        guard !isRecoveringAppAfterUpdate else { return false }
         guard serviceAvailability == .ready else {
-            errorMessage = "Install and start the Hard Pause service before changing plans."
+            errorMessage =
+                isRecoveringServiceConnection
+                ? "The protection service is unavailable. Retry the connection before changing plans."
+                : "Install and start the Hard Pause service before changing plans."
             return false
         }
         guard !isBusy, !hasPendingMutation, !isInstallingService else { return false }
@@ -369,6 +414,7 @@ final class AppModel: ObservableObject {
     }
 
     func connectBrowser(_ identifier: String) async {
+        guard !isRecoveringAppAfterUpdate else { return }
         guard connectingBrowserID == nil else { return }
         connectingBrowserID = identifier
         browserConnectionMessages[identifier] = nil
@@ -395,6 +441,7 @@ final class AppModel: ObservableObject {
     /// Always asks the signed worker directly; the cached value is only for display and fallback polling.
     @discardableResult
     func probeBrowserWorkerReadiness() async -> Bool {
+        guard !isRecoveringAppAfterUpdate else { return false }
         lastBrowserWorkerProbe = Date()
         browserWorkerProbeGeneration += 1
         let generation = browserWorkerProbeGeneration
@@ -428,6 +475,7 @@ final class AppModel: ObservableObject {
     }
 
     func enableLoginStart() {
+        guard !isRecoveringAppAfterUpdate else { return }
         do {
             if SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
             if SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
@@ -436,7 +484,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshSetup() async {
-        guard !isCheckingSetup else { return }
+        guard !isCheckingSetup, !isRecoveringAppAfterUpdate else { return }
         isCheckingSetup = true
         defer { isCheckingSetup = false }
         let access: SetupAccessState
@@ -480,13 +528,19 @@ final class AppModel: ObservableObject {
     }
 
     func installService() async {
-        guard !isInstallingService, !isRequestingServiceUpdate, !isBusy, !hasPendingMutation else {
+        guard !isInstallingService, !isRequestingServiceUpdate, !isBusy, !hasPendingMutation,
+            !isRecoveringAppAfterUpdate
+        else {
             return
         }
         isInstallingService = true
         defer { isInstallingService = false }
         while isRefreshing {
             try? await Task.sleep(for: .milliseconds(25))
+        }
+        guard !isRecoveringServiceConnection else {
+            errorMessage = "The protection service is unavailable. Retry the connection before installing protection."
+            return
         }
         var liveUpdate = false
         var activeLegacyUpdate = false
@@ -530,11 +584,7 @@ final class AppModel: ObservableObject {
                 _ = try await service.requestManagedUpdate(bundlePath: Bundle.main.bundleURL.path)
                 lastServiceUpdateRequest = Date()
             } else {
-                try await ServiceInstaller.install(
-                    updateExisting: needsServiceUpdate,
-                    liveUpdate: liveUpdate,
-                    activeLegacyUpdate: activeLegacyUpdate
-                )
+                try await serviceInstallAction(needsServiceUpdate, liveUpdate, activeLegacyUpdate)
             }
             await refresh()
             await refreshSetup()
@@ -573,18 +623,20 @@ final class AppModel: ObservableObject {
     }
 
     private func timerFired() async {
-        guard !isBusy, !isRefreshing else { return }
+        guard !isBusy, !isRefreshing, !isRecoveringAppAfterUpdate else { return }
         displayElapsed = max(0, SystemClock.read().continuousTime - displayAnchor)
         secondsSinceIdleRefresh += 1
         if secondsSinceIdleRefresh >= 2 {
             await refresh()
             await refreshSetup()
         }
+        guard !isRecoveringAppAfterUpdate else { return }
         if Date().timeIntervalSince(lastBrowserWorkerProbe) >= (browserWorkerReadiness == nil ? 10 : 4) {
             lastBrowserWorkerProbe = Date()
             Task { _ = await probeBrowserWorkerReadiness() }
         }
         await requestAutomaticServiceUpdateIfReady()
+        guard !isRecoveringAppAfterUpdate else { return }
         if let worker = browserWorkerReadiness, worker.isFresh(), worker.readyForHandoff {
             browserStatuses = worker.browserStatuses
             return
@@ -595,7 +647,7 @@ final class AppModel: ObservableObject {
     }
 
     private func requestAutomaticServiceUpdateIfReady() async {
-        guard serviceCanUpdateWithoutApproval,
+        guard !isRecoveringAppAfterUpdate, serviceCanUpdateWithoutApproval,
             !isRequestingServiceUpdate, !isInstallingService, !isBusy, !hasPendingMutation,
             snapshot?.protection.isEnforcing == true,
             snapshot?.protection.issues.isEmpty == true,
@@ -634,7 +686,7 @@ final class AppModel: ObservableObject {
     }
 
     private func reconcileAppleProtection() async {
-        guard !isReconcilingAppleProtection, !appleProtection.isBusy,
+        guard !isRecoveringAppAfterUpdate, !isReconcilingAppleProtection, !appleProtection.isBusy,
             !appleProtection.isSyncingWebsites
         else { return }
         isReconcilingAppleProtection = true

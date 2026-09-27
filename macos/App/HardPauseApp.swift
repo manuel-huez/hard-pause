@@ -22,6 +22,7 @@ struct HardPauseApp: App {
         Window("Hard Pause", id: "main") {
             ContentView()
                 .environmentObject(model)
+                .environmentObject(updater)
                 .onAppear {
                     lifecycle.model = model
                     lifecycle.updater = updater
@@ -161,6 +162,9 @@ final class HardPauseLifecycle: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if let updater, updater.recoveryTerminationIsPending {
+            return updater.mayTerminateForRecovery() ? .terminateNow : .terminateCancel
+        }
         let event = NSAppleEventManager.shared().currentAppleEvent
         let reason =
             (event?.paramDescriptor(forKeyword: AEKeyword(kAEQuitReason))

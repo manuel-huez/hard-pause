@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import Sparkle
 
@@ -8,14 +9,25 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     private var controller: SPUStandardUpdaterController?
     private let service = ProtectedServiceClient()
     private var approvedUpdate: ServiceFirstUpdate?
+    private var recoveryObservation: AnyCancellable?
+    private var recoveryTask: Task<Void, Never>?
+    private var lastRecoveryCheck = Date.distantPast
+    private var recoveryWasAttempted = CommandLine.arguments.contains(AppUpdateRecovery.relaunchArgument)
+    private var successorWasLaunched = false
+    private var recoveryReplacement: AppUpdateRecovery.Replacement?
+    private var recoveredApplication: NSRunningApplication?
+    private var recoveryCoverage: BrowserWorkerReadiness?
     @Published private(set) var isPreparingUpdate = false
+    @Published private(set) var recoveryMessage: String?
     private(set) var installationIsStarting = false
+    private(set) var recoveryTerminationIsPending = false
 
     var isConfigured: Bool { controller != nil }
 
     var canCheckForUpdates: Bool {
         controller?.updater.canCheckForUpdates == true && Self.canUpdate(model)
             && !installationIsStarting && !isPreparingUpdate
+            && model?.isRecoveringAppAfterUpdate != true
     }
 
     func checkForUpdates() {
@@ -23,13 +35,20 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         isPreparingUpdate = true
         approvedUpdate = nil
         Task { @MainActor in
-            defer { isPreparingUpdate = false }
+            defer {
+                isPreparingUpdate = false
+                recoverAfterUpdateIfNeeded()
+            }
             do {
                 let update = try await ServiceFirstUpdate.latest()
                 try await prepareService(for: update)
                 controller?.checkForUpdates(nil)
             } catch {
-                showUpdateError(error)
+                if AppUpdateRecovery.currentImageWasRemoved() {
+                    recoveryMessage = "The running app copy was replaced. Select Retry to check the connection."
+                } else {
+                    showUpdateError(error)
+                }
             }
         }
     }
@@ -59,6 +78,10 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     func start(model: AppModel) {
         guard self.model == nil else { return }
         self.model = model
+        recoveryObservation = model.$serviceAvailability.sink { [weak self] availability in
+            guard case .unavailable = availability else { return }
+            Task { @MainActor [weak self] in self?.recoverAfterUpdateIfNeeded() }
+        }
         guard Self.hasReleaseConfiguration else { return }
         controller = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -66,6 +89,140 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
             userDriverDelegate: nil
         )
     }
+
+    private func recoverAfterUpdateIfNeeded(reusing existingApplication: NSRunningApplication? = nil) {
+        guard !recoveryWasAttempted || existingApplication != nil, recoveryTask == nil,
+            !recoveryTerminationIsPending,
+            !installationIsStarting, !isPreparingUpdate,
+            model?.canRecoverAppAfterUpdate == true,
+            Date().timeIntervalSince(lastRecoveryCheck) >= 60
+        else { return }
+        lastRecoveryCheck = Date()
+        guard let replacement = AppUpdateRecovery.replacement() else { return }
+        if let application = existingApplication {
+            guard recoveryReplacement == replacement,
+                AppUpdateRecovery.validates(application, replacement: replacement)
+            else { return }
+        }
+        recoveryMessage =
+            existingApplication == nil
+            ? "The app was updated. Checking protection before restarting Hard Pause…"
+            : "The updated app is running. Checking protection before closing this copy…"
+        recoveryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.recoveryTask = nil
+                if !self.recoveryTerminationIsPending { self.model?.endAppUpdateRecovery() }
+            }
+            guard let coverage = await AppUpdateRecovery.browserCoverage(for: replacement),
+                coverage.isFresh(), self.recoveryGuardsPass,
+                AppUpdateRecovery.replacement() == replacement,
+                self.model?.beginAppUpdateRecovery() == true
+            else {
+                self.recoveryMessage =
+                    "The app was updated, but a safe restart could not be confirmed. Keep Hard Pause open and select Retry."
+                return
+            }
+            self.recoveryWasAttempted = true
+            do {
+                guard self.recoveryGuardsPass, AppUpdateRecovery.replacement() == replacement else {
+                    throw RecoveryFailure.unsafe
+                }
+                let application: NSRunningApplication
+                if let existing = existingApplication {
+                    application = existing
+                } else {
+                    application = try await AppUpdateRecovery.launch(replacement)
+                }
+                self.successorWasLaunched =
+                    application.processIdentifier != NSRunningApplication.current.processIdentifier
+                self.recoveryReplacement = replacement
+                self.recoveredApplication = application
+                guard self.recoveryGuardsPass,
+                    AppUpdateRecovery.validates(application, replacement: replacement)
+                else { throw RecoveryFailure.unsafe }
+                self.recoveryMessage = "The updated app is running. Checking protection before closing this copy…"
+                guard let finalCoverage = await AppUpdateRecovery.browserCoverage(for: replacement) else {
+                    self.recoveryExitFailed()
+                    return
+                }
+                self.recoveryCoverage = finalCoverage
+                self.recoveryTerminationIsPending = true
+                guard self.mayTerminateForRecovery() else { return }
+                NSApplication.shared.terminate(nil)
+            } catch {
+                self.recoveryMessage =
+                    "Hard Pause could not restart safely after the update. Keep the app open and select Retry to check the connection."
+            }
+        }
+    }
+
+    func retryRecoveryAfterUpdate() {
+        guard recoveryTask == nil, !recoveryTerminationIsPending else { return }
+        if let application = recoveredApplication, let replacement = recoveryReplacement {
+            guard !application.isTerminated,
+                AppUpdateRecovery.validates(application, replacement: replacement),
+                AppUpdateRecovery.replacement() == replacement
+            else {
+                if application.isTerminated { successorWasLaunched = false }
+                recoveryReplacement = nil
+                recoveredApplication = nil
+                recoveryMessage =
+                    "The updated app is no longer available. Keep this app open and select Retry to check the connection."
+                return
+            }
+            lastRecoveryCheck = .distantPast
+            recoverAfterUpdateIfNeeded(reusing: application)
+            return
+        }
+        if !successorWasLaunched,
+            !CommandLine.arguments.contains(AppUpdateRecovery.relaunchArgument)
+        {
+            recoveryWasAttempted = false
+        }
+        lastRecoveryCheck = .distantPast
+        recoverAfterUpdateIfNeeded()
+    }
+
+    private var recoveryGuardsPass: Bool {
+        !Task.isCancelled && !installationIsStarting && !isPreparingUpdate
+            && model?.canRecoverAppAfterUpdate == true
+    }
+
+    /// Quit must stay synchronous: AppKit's termination loop can block MainActor tasks.
+    func mayTerminateForRecovery() -> Bool {
+        guard recoveryTerminationIsPending,
+            let replacement = recoveryReplacement, let application = recoveredApplication,
+            model?.isRecoveringAppAfterUpdate == true, recoveryGuardsPass,
+            recoveryCoverage?.isFresh() == true,
+            AppUpdateRecovery.replacement() == replacement,
+            AppUpdateRecovery.validates(application, replacement: replacement)
+        else {
+            recoveryExitFailed()
+            return false
+        }
+        return true
+    }
+
+    private func recoveryExitFailed() {
+        recoveryTerminationIsPending = false
+        recoveryCoverage = nil
+        let successorEnded = recoveredApplication?.isTerminated == true
+        if successorEnded { successorWasLaunched = false }
+        if let replacement = recoveryReplacement, let application = recoveredApplication,
+            !AppUpdateRecovery.validates(application, replacement: replacement)
+        {
+            recoveryReplacement = nil
+            recoveredApplication = nil
+        }
+        model?.endAppUpdateRecovery()
+        recoveryMessage =
+            successorEnded
+            ? "The updated app closed. Keep this app open and select Retry to check the connection."
+            : "The updated app opened, but protection could not be confirmed. Keep Hard Pause open and select Retry to check protection again."
+    }
+
+    private enum RecoveryFailure: Error { case unsafe, runningImageRemoved }
 
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
         guard approvedUpdate != nil, Self.canUpdate(model) else {
@@ -156,6 +313,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     private func waitForService(build: UInt64) async throws {
         for _ in 0..<90 {
+            if AppUpdateRecovery.currentImageWasRemoved() { throw RecoveryFailure.runningImageRemoved }
             if let status = try? await service.updateInstallationStatus(),
                 status.installedAppBuild >= build,
                 let snapshot = try? await service.list(),

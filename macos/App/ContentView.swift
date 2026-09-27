@@ -40,7 +40,9 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if model.setupState == .checking && !model.hasCompletedSetup {
+            if model.setupState == .checking && !model.hasCompletedSetup
+                && !model.isRecoveringServiceConnection
+            {
                 ProgressView("Checking protection…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(LowLightBackground())
@@ -114,7 +116,7 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                         .background(LowLightBackground())
                         .safeAreaInset(edge: .top, spacing: 0) {
-                            if case .unavailable = model.serviceAvailability {
+                            if model.isRecoveringServiceConnection {
                                 ServiceConnectionBanner()
                             }
                         }
@@ -209,6 +211,7 @@ struct ContentView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .disabled(model.isRecoveringAppAfterUpdate)
     }
 
     private var sidebarMascotMood: PauseSeedMood {
@@ -2442,7 +2445,7 @@ private struct SetupChecklistView: View {
                     setupReadyLabel
                 }
             }
-            if model.serviceAvailability != .ready && (model.hasCompletedSetup || model.snapshot != nil) {
+            if model.isRecoveringServiceConnection {
                 Text("Waiting for the protection service to reconnect.")
                     .foregroundStyle(PauseTheme.muted)
             } else if !model.setupServiceReady {
@@ -2636,16 +2639,19 @@ private struct ProtectionSettingsPane: View {
 
 private struct ServiceConnectionBanner: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updater: AppUpdater
 
     var body: some View {
         HStack(spacing: 12) {
             ProgressView().controlSize(.small)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Reconnecting to protection…").font(.headline)
+                Text(model.isRecoveringAppAfterUpdate ? "Finishing the app update…" : "Reconnecting to protection…")
+                    .font(.headline)
                 Text(
-                    model.snapshot == nil
-                        ? "Plan status is unavailable. Changes are paused until the connection returns."
-                        : "Showing the last known plan state. Changes are paused until the connection returns."
+                    updater.recoveryMessage
+                        ?? (model.snapshot == nil
+                            ? "Plan status is unavailable. Changes are paused until the connection returns."
+                            : "Showing the last known plan state. Changes are paused until the connection returns.")
                 )
                 .font(.callout).foregroundStyle(PauseTheme.muted)
             }
@@ -2654,6 +2660,7 @@ private struct ServiceConnectionBanner: View {
                 Task {
                     await model.refresh()
                     await model.refreshSetup()
+                    updater.retryRecoveryAfterUpdate()
                 }
             }
             .buttonStyle(PauseButtonStyle())

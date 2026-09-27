@@ -373,14 +373,59 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.shouldShowInitialSetup)
     }
 
-    func testFreshInstallStillShowsInitialSetup() async {
-        let service = ControlledProtectedService(snapshot: makeSnapshot())
+    func testInstalledServiceColdOutageKeepsRecoveryRouteAndDoesNotInstall() async {
+        let active = makeBlock(draft: makeDraft(), phase: .active(naturalEndRemaining: nil))
+        let service = ControlledProtectedService(snapshot: makeSnapshot(blocks: [active]))
+        service.failNextList()
+        var installCalls = 0
         let model = AppModel(
             service: service,
             automaticallyRefreshes: false,
             setupProbe: {
                 SetupAccessState(browsers: [], startsAtLogin: false)
-            }
+            },
+            serviceInstallationCheck: { true },
+            serviceInstallAction: { _, _, _ in installCalls += 1 }
+        )
+
+        await model.refresh()
+        await model.refreshSetup()
+
+        XCTAssertEqual(model.serviceAvailability, .unavailable("State check failed."))
+        XCTAssertTrue(model.isRecoveringServiceConnection)
+        XCTAssertFalse(model.shouldShowInitialSetup)
+        XCTAssertFalse(model.hasCompletedSetup)
+        XCTAssertFalse(model.canRequestUnlock)
+        XCTAssertFalse(model.canChangeBlocks)
+
+        await model.installService()
+        XCTAssertEqual(installCalls, 0)
+        XCTAssertFalse(model.isInstallingService)
+
+        XCTAssertTrue(model.beginAppUpdateRecovery())
+        await model.refresh()
+        XCTAssertNil(model.snapshot)
+        XCTAssertEqual(model.serviceAvailability, .unavailable("State check failed."))
+        model.endAppUpdateRecovery()
+        await model.refresh()
+
+        XCTAssertEqual(model.serviceAvailability, .ready)
+        XCTAssertEqual(model.activeBlocks, [active])
+        XCTAssertFalse(model.isRecoveringServiceConnection)
+        XCTAssertFalse(model.shouldShowInitialSetup)
+    }
+
+    func testFreshInstallStillShowsInitialSetup() async {
+        let service = ControlledProtectedService(snapshot: makeSnapshot())
+        service.failNextList()
+        var installationExists = false
+        let model = AppModel(
+            service: service,
+            automaticallyRefreshes: false,
+            setupProbe: {
+                SetupAccessState(browsers: [], startsAtLogin: false)
+            },
+            serviceInstallationCheck: { installationExists }
         )
 
         await model.refresh()
@@ -389,6 +434,13 @@ final class AppModelTests: XCTestCase {
         await model.refreshSetup()
 
         XCTAssertFalse(model.hasCompletedSetup)
+        XCTAssertTrue(model.shouldShowInitialSetup)
+
+        installationExists = true
+        XCTAssertTrue(model.isRecoveringServiceConnection)
+        XCTAssertFalse(model.shouldShowInitialSetup)
+        await model.refresh()
+        XCTAssertFalse(model.isRecoveringServiceConnection)
         XCTAssertTrue(model.shouldShowInitialSetup)
     }
 
