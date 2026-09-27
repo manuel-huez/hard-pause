@@ -15,12 +15,14 @@ struct AppleLockdownConfiguration: Codable, Equatable, Sendable {
     let enablesAdultFilter: Bool
     let filterWasAlreadyEnabled: Bool
     let shareAcrossDevicesVerified: Bool?
+    var appAgeRestriction: AppleAppAgeRestriction? = nil
 
     init(_ request: AppleLockdownSetupRequest) {
         fullUnlockDelay = request.fullUnlockDelay
         enablesAdultFilter = request.enablesAdultFilter
         filterWasAlreadyEnabled = request.filterWasAlreadyEnabled
         shareAcrossDevicesVerified = request.shareAcrossDevicesVerified
+        appAgeRestriction = request.appAgeRestriction
     }
 
     func validate() throws {
@@ -28,7 +30,8 @@ struct AppleLockdownConfiguration: Codable, Equatable, Sendable {
             fullUnlockDelay: fullUnlockDelay,
             enablesAdultFilter: enablesAdultFilter,
             filterWasAlreadyEnabled: filterWasAlreadyEnabled,
-            shareAcrossDevicesVerified: shareAcrossDevicesVerified
+            shareAcrossDevicesVerified: shareAcrossDevicesVerified,
+            appAgeRestriction: appAgeRestriction
         ).validate()
     }
 }
@@ -298,7 +301,8 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
             mirroredAllowedDomains: mirroredAllowedDomains ?? [],
             operationID: publicPhase == .pendingSetup || publicPhase == .releaseInProgress
                 ? operationID : nil,
-            websiteSyncOperationID: pendingWebsiteSync?.operationID
+            websiteSyncOperationID: pendingWebsiteSync?.operationID,
+            appAgeRestriction: configuration?.appAgeRestriction
         )
     }
 

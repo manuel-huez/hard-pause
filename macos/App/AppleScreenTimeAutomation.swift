@@ -20,12 +20,14 @@ struct ScreenTimeUIStrings {
             "/System/Library/PrivateFrameworks/ScreenTimeSettingsServicesUI.framework",
             "/System/Library/PrivateFrameworks/ScreenTimeSettingsUI.framework",
             "/System/Library/PrivateFrameworks/ScreenTimeUI.framework",
+            "/System/Library/PrivateFrameworks/ScreenTimeCore.framework",
+            "/System/Library/PrivateFrameworks/CloudFamilyRestrictions.framework",
             "/System/Library/PrivateFrameworks/ScreenTimeServiceUI.framework/Versions/A/XPCServices/ScreenTimeViewService.xpc",
         ]
         var result: [String: Set<String>] = [:]
         for path in paths {
             guard let bundle = Bundle(path: path) else { continue }
-            for table in ["Localizable", "Restrictions"] {
+            for table in ["Localizable", "Restrictions", "RatingProviders"] {
                 if let url = bundle.url(forResource: table, withExtension: "loctable"),
                     let data = try? Data(contentsOf: url),
                     let locales = try? PropertyListSerialization.propertyList(from: data, format: nil)
@@ -44,6 +46,10 @@ struct ScreenTimeUIStrings {
                     Self.collect(translations, into: &result)
                 }
             }
+        }
+        // New provider labels can be delivered without a local translation entry.
+        for label in ["4+", "9+", "13+", "16+", "18+", "Unrated"] {
+            result[label, default: []].insert(label)
         }
         values = result
     }
@@ -69,6 +75,17 @@ struct ScreenTimeUIStrings {
         let levels = Self.filterKeys.indices.filter { matches(label, keys: Self.filterKeys[$0]) }
         return levels.count == 1 ? levels[0] : nil
     }
+
+    func appAgeRating(_ label: String) -> AppleAppAgeRating? {
+        let ratings = Self.appRatingKeys.filter { matches(label, keys: $0.value) }.map(\.key)
+        return ratings.count == 1 ? ratings.first : nil
+    }
+
+    private static let appRatingKeys: [AppleAppAgeRating: [String]] = [
+        .disallowed: ["DontAllowLabel", "DontAllow", "APPS_DISALLOW_ALL"],
+        .four: ["4+"], .nine: ["9+"], .thirteen: ["13+"], .sixteen: ["16+"], .eighteen: ["18+"],
+        .unrated: ["Unrated", "AllowAll", "APPS_ALLOW_ALL"],
+    ]
 
     private static let stageKeys: [ScreenTimePasscodeStage: [String]] = [
         .authenticateChange: ["AuthenticateToUpdatePasscodeHelpText", "Enter old Screen Time passcode"],
@@ -96,10 +113,14 @@ struct ScreenTimeUIStrings {
         "Access to Web Content", "Customize…", "Change Passcode…", "Add", "Remove", "Add Website",
         "Restrict explicit content, purchases, downloads, and privacy settings.",
         "Family Member",
+        "StoreRestrictionsTitle", "AppsSpecifierName", "DontAllowLabel",
+        "Share Across Devices", "ShareAcrossDevicesFeatureName",
     ]
 
     private static func collect(_ translations: [String: Any], into result: inout [String: Set<String>]) {
-        for key in controlKeys + stageKeys.values.flatMap({ $0 }) + filterKeys.flatMap({ $0 }) {
+        for key in controlKeys + stageKeys.values.flatMap({ $0 }) + filterKeys.flatMap({ $0 })
+            + appRatingKeys.values.flatMap({ $0 })
+        {
             if let value = translations[key] as? String, !value.isEmpty {
                 result[key, default: []].insert(value.trimmingCharacters(in: .whitespacesAndNewlines))
             }
@@ -110,6 +131,8 @@ struct ScreenTimeUIStrings {
 struct AppleScreenTimeInspection: Equatable {
     let hasPasscode: Bool
     let adultFilterEnabled: Bool
+    var appAgeRating: AppleAppAgeRating? = nil
+    var shareAcrossDevicesEnabled: Bool? = nil
 }
 
 struct AppleScreenTimeWebsites: Equatable {
@@ -132,9 +155,17 @@ enum AppleScreenTimeAutomationError: LocalizedError {
     case personalSettingsRequired
     case settingsNotResponding
     case operationInProgress
+    case sharingRequired
+    case unsupportedAppAgeRating
 
     var errorDescription: String? {
         switch self {
+        case .sharingRequired:
+            return
+                "Turn on Share Across Devices in Screen Time and confirm Apple's settings warning, then try setup again."
+        case .unsupportedAppAgeRating:
+            return
+                "This Screen Time app rating system is not supported. Set up without Block 18+ apps, or choose a supported age limit in Apple's settings."
         case .operationInProgress:
             return "Screen Time is in use by another Hard Pause operation. Wait for it to finish, then try again."
         case .accessibilityRequired:
@@ -159,7 +190,7 @@ enum AppleScreenTimeAutomationError: LocalizedError {
                 "Screen Time website sync could not be verified. Check Content & Privacy in System Settings, then retry."
         case .contentRestrictionsRequired:
             return
-                "For website sync, turn on Content & Privacy in Screen Time first. Review Apple's settings before you turn it on. You can also set up Hard Pause without website sync."
+                "For website or app restrictions, turn on Content & Privacy in Screen Time first. Review Apple's settings before you turn it on. You can also set up Hard Pause without these restrictions."
         case .unsupportedWebsitePolicy:
             return
                 "Screen Time uses an allowed websites only policy. Hard Pause cannot sync website rules with this policy. You can set up Hard Pause without website sync."
@@ -177,10 +208,17 @@ enum AppleScreenTimeAutomationError: LocalizedError {
 @MainActor
 protocol AppleScreenTimeAutomating {
     func inspectCode() async throws -> Bool
-    func inspect(checkAdultFilter: Bool, passcode: String?) async throws -> AppleScreenTimeInspection
-    func install(passcode: String, replacing existingPasscode: String?, enableAdultFilter: Bool) async throws
-    func verify(passcode: String, requiresAdultFilter: Bool) async throws
-    func release(passcode: String, restoreUnrestricted: Bool) async throws
+    func enableSharing(passcode: String?) async throws
+    func inspect(checkAdultFilter: Bool, checkAdultApps: Bool, passcode: String?) async throws
+        -> AppleScreenTimeInspection
+    func install(
+        passcode: String, replacing existingPasscode: String?, enableAdultFilter: Bool,
+        appAgeRestriction: AppleAppAgeRestriction?
+    ) async throws
+    func verify(
+        passcode: String, requiresAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?, requiresSharing: Bool
+    ) async throws -> AppleScreenTimeInspection
+    func release(passcode: String, restoreUnrestricted: Bool, appAgeRestriction: AppleAppAgeRestriction?) async throws
     func inspectWebsites(passcode: String) async throws -> AppleScreenTimeWebsites
     func updateWebsites(
         passcode: String, addRestricted: [String], removeRestricted: [String],
@@ -214,24 +252,42 @@ final class AppleScreenTimeAutomation: AppleScreenTimeAutomating {
         return try await worker.inspectCode()
     }
 
-    func inspect(checkAdultFilter: Bool, passcode: String?) async throws -> AppleScreenTimeInspection {
+    func enableSharing(passcode: String?) async throws {
         try await openScreenTime()
-        return try await worker.inspect(checkAdultFilter: checkAdultFilter, passcode: passcode)
+        try await worker.enableSharing(passcode: passcode)
     }
 
-    func install(passcode: String, replacing existingPasscode: String?, enableAdultFilter: Bool) async throws {
+    func inspect(checkAdultFilter: Bool, checkAdultApps: Bool, passcode: String?) async throws
+        -> AppleScreenTimeInspection
+    {
         try await openScreenTime()
-        try await worker.install(passcode: passcode, replacing: existingPasscode, enableAdultFilter: enableAdultFilter)
+        return try await worker.inspect(
+            checkAdultFilter: checkAdultFilter, checkAdultApps: checkAdultApps, passcode: passcode)
     }
 
-    func verify(passcode: String, requiresAdultFilter: Bool) async throws {
+    func install(
+        passcode: String, replacing existingPasscode: String?, enableAdultFilter: Bool,
+        appAgeRestriction: AppleAppAgeRestriction?
+    ) async throws {
         try await openScreenTime()
-        try await worker.verify(passcode: passcode, requiresAdultFilter: requiresAdultFilter)
+        try await worker.install(
+            passcode: passcode, replacing: existingPasscode, enableAdultFilter: enableAdultFilter,
+            appAgeRestriction: appAgeRestriction)
     }
 
-    func release(passcode: String, restoreUnrestricted: Bool) async throws {
+    func verify(
+        passcode: String, requiresAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?, requiresSharing: Bool
+    ) async throws -> AppleScreenTimeInspection {
         try await openScreenTime()
-        try await worker.release(passcode: passcode, restoreUnrestricted: restoreUnrestricted)
+        return try await worker.verify(
+            passcode: passcode, requiresAdultFilter: requiresAdultFilter, appAgeRestriction: appAgeRestriction,
+            requiresSharing: requiresSharing)
+    }
+
+    func release(passcode: String, restoreUnrestricted: Bool, appAgeRestriction: AppleAppAgeRestriction?) async throws {
+        try await openScreenTime()
+        try await worker.release(
+            passcode: passcode, restoreUnrestricted: restoreUnrestricted, appAgeRestriction: appAgeRestriction)
     }
 
     func inspectWebsites(passcode: String) async throws -> AppleScreenTimeWebsites {
@@ -298,27 +354,72 @@ private actor ScreenTimeAccessibilityWorker {
         return try boolValue(passcodeSwitch(in: root))
     }
 
-    func inspect(checkAdultFilter: Bool, passcode: String?) async throws -> AppleScreenTimeInspection {
+    func enableSharing(passcode: String?) async throws {
+        let root = try await screenTimeRoot()
+        let toggle = try sharingSwitch(in: root)
+        if try !boolValue(toggle) {
+            try press(toggle)
+            try await settle()
+            if let passcode { try await authorizeWebsiteChange(passcode: passcode) }
+            // Sharing can replace local settings. The user must confirm that warning.
+            if let prompt = try credentialPrompt() {
+                if let cancel = element(prompt, kAXCancelButtonAttribute) { try press(cancel) }
+                throw AppleScreenTimeAutomationError.sharingRequired
+            }
+        }
+        guard try boolValue(sharingSwitch(in: application)) else {
+            throw AppleScreenTimeAutomationError.sharingRequired
+        }
+    }
+
+    func inspect(checkAdultFilter: Bool, checkAdultApps: Bool, passcode: String?) async throws
+        -> AppleScreenTimeInspection
+    {
         let root = try await screenTimeRoot()
         let lock = try passcodeSwitch(in: root)
         let hasPasscode = try boolValue(lock)
-        guard checkAdultFilter else {
-            return AppleScreenTimeInspection(hasPasscode: hasPasscode, adultFilterEnabled: false)
-        }
         if hasPasscode && passcode == nil { throw AppleScreenTimeAutomationError.existingPasscodeRequired }
-        guard try await openWebSettings(passcode: passcode) else {
-            try await goBack()
-            throw AppleScreenTimeAutomationError.contentRestrictionsRequired
+        let shared = try boolValue(sharingSwitch(in: root))
+        var adultFilterEnabled = false
+        if checkAdultFilter {
+            guard try await openWebSettings(passcode: passcode) else {
+                try await goBack()
+                throw AppleScreenTimeAutomationError.contentRestrictionsRequired
+            }
+            let level = try await webFilterLevel()
+            try await closeWebSettings()
+            guard level != 2 else { throw AppleScreenTimeAutomationError.unsupportedWebsitePolicy }
+            adultFilterEnabled = level == 1
         }
-        let level = try await webFilterLevel()
-        try await closeWebSettings()
-        guard level != 2 else { throw AppleScreenTimeAutomationError.unsupportedWebsitePolicy }
-        return AppleScreenTimeInspection(hasPasscode: hasPasscode, adultFilterEnabled: level == 1)
+        var rating: AppleAppAgeRating?
+        if checkAdultApps {
+            try await openAppSettings(passcode: passcode)
+            rating = try appAgeRating()
+            // Prove that the requested age choice exists before saving a new code.
+            if let rating, rating.rawValue > 16 {
+                _ = try await appAgeChoices()
+                try await dismissMenu()
+            }
+            try await closeAppSettings()
+        }
+        return AppleScreenTimeInspection(
+            hasPasscode: hasPasscode, adultFilterEnabled: adultFilterEnabled,
+            appAgeRating: rating, shareAcrossDevicesEnabled: shared)
     }
 
-    func install(passcode: String, replacing old: String?, enableAdultFilter: Bool) async throws {
+    func install(
+        passcode: String, replacing old: String?, enableAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?
+    ) async throws {
         guard AppleScreenTimeAutomation.validCode(passcode) else {
             throw AppleScreenTimeAutomationError.unsupportedScreen
+        }
+        if let restriction = appAgeRestriction {
+            try await openAppSettings(passcode: old)
+            let current = try appAgeRating()
+            if current.rawValue > restriction.applied.rawValue {
+                try await selectAppAge(restriction.applied, passcode: old)
+            }
+            try await closeAppSettings()
         }
         if enableAdultFilter {
             guard try await openWebSettings(passcode: old) else {
@@ -347,10 +448,21 @@ private actor ScreenTimeAccessibilityWorker {
         // Code acceptance must be proved by a separate native authentication, not a toggle alone.
     }
 
-    func verify(passcode: String, requiresAdultFilter: Bool) async throws {
-        let inspection = try await inspect(checkAdultFilter: requiresAdultFilter, passcode: passcode)
+    func verify(
+        passcode: String, requiresAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?, requiresSharing: Bool
+    ) async throws -> AppleScreenTimeInspection {
+        let inspection = try await inspect(
+            checkAdultFilter: requiresAdultFilter, checkAdultApps: appAgeRestriction != nil, passcode: passcode)
         guard inspection.hasPasscode, !requiresAdultFilter || inspection.adultFilterEnabled
         else { throw AppleScreenTimeAutomationError.verificationRequired }
+        if let restriction = appAgeRestriction {
+            guard let current = inspection.appAgeRating, current.rawValue <= restriction.applied.rawValue else {
+                throw AppleScreenTimeAutomationError.verificationRequired
+            }
+        }
+        guard !requiresSharing || inspection.shareAcrossDevicesEnabled == true else {
+            throw AppleScreenTimeAutomationError.sharingRequired
+        }
         try await openChangePasscode()
         try await enterCode(passcode, from: .authenticateChange, expecting: .prompt(.create))
         // Authentication succeeded. Never enter another code during verification.
@@ -360,10 +472,18 @@ private actor ScreenTimeAccessibilityWorker {
         guard try boolValue(passcodeSwitch(in: application)) else {
             throw AppleScreenTimeAutomationError.verificationRequired
         }
+        return inspection
     }
 
-    func release(passcode: String, restoreUnrestricted: Bool) async throws {
+    func release(passcode: String, restoreUnrestricted: Bool, appAgeRestriction: AppleAppAgeRestriction?) async throws {
         // Caller obtains this credential only after the protected service authorizes full release.
+        if let restriction = appAgeRestriction {
+            try await openAppSettings(passcode: passcode)
+            if let restored = restriction.restorationTarget(current: try appAgeRating()) {
+                try await selectAppAge(restored, passcode: passcode)
+            }
+            try await closeAppSettings()
+        }
         if restoreUnrestricted {
             let hasContentRestrictions = try await openWebSettings(passcode: passcode)
             if hasContentRestrictions {
@@ -841,6 +961,23 @@ private actor ScreenTimeAccessibilityWorker {
     }
 
     private func openWebSettings(passcode: String? = nil) async throws -> Bool {
+        guard try await openContentPrivacy(passcode: passcode) else { return false }
+        let content = try unique(try application) {
+            role($0) == kAXButtonRole
+                && matches(
+                    $0,
+                    keys: [
+                        "ContentRestrictionsTitle", "ContentRestrictionsTitle_GreyMatterAlternate",
+                        "AADC_ContentRestrictionsTitle",
+                    ])
+        }
+        try press(content)
+        try await settle()
+        if let passcode { try await authorizeWebsiteChange(passcode: passcode) }
+        return true
+    }
+
+    private func openContentPrivacy(passcode: String?) async throws -> Bool {
         let root = try application
         _ = try passcodeSwitch(in: root)
         try press(try unique(root) { role($0) == kAXButtonRole && matches($0, keys: ["Content & Privacy"]) })
@@ -857,28 +994,95 @@ private actor ScreenTimeAccessibilityWorker {
         if try !boolValue(toggle) {
             return false
         }
-        let content = try unique(try application) {
-            role($0) == kAXButtonRole
-                && matches(
-                    $0,
-                    keys: [
-                        "ContentRestrictionsTitle", "ContentRestrictionsTitle_GreyMatterAlternate",
-                        "AADC_ContentRestrictionsTitle",
-                    ])
-        }
-        try press(content)
-        try await settle()
-        if let passcode { try await authorizeWebsiteChange(passcode: passcode) }
         return true
     }
 
     private func closeWebSettings() async throws {
         _ = try webFilter()
+        try await closeRestrictionSettings()
+    }
+
+    private func closeRestrictionSettings() async throws {
         guard let sheet = try credentialPrompt() else { throw AppleScreenTimeAutomationError.unsupportedScreen }
         let done = try unique(sheet) { role($0) == kAXButtonRole && matches($0, keys: ["DoneButton", "Done"]) }
         try press(done)
         try await settle()
         try await goBack()
+    }
+
+    private func openAppSettings(passcode: String?) async throws {
+        guard try await openContentPrivacy(passcode: passcode) else {
+            try await goBack()
+            throw AppleScreenTimeAutomationError.contentRestrictionsRequired
+        }
+        try press(
+            try unique(try application) {
+                role($0) == kAXButtonRole && matches($0, keys: ["StoreRestrictionsTitle"])
+            })
+        try await settle()
+        if let passcode { try await authorizeWebsiteChange(passcode: passcode) }
+        _ = try appAgeRating()
+    }
+
+    private func closeAppSettings() async throws {
+        _ = try appAgeRating()
+        try await closeRestrictionSettings()
+    }
+
+    private func appAgeControl() throws -> AXUIElement {
+        try unique(try application) {
+            role($0) == kAXPopUpButtonRole && matches($0, keys: ["AppsSpecifierName"])
+        }
+    }
+
+    private func appAgeRating() throws -> AppleAppAgeRating {
+        guard let rating = strings.appAgeRating(text(try appAgeControl(), kAXValueAttribute)) else {
+            throw AppleScreenTimeAutomationError.unsupportedAppAgeRating
+        }
+        return rating
+    }
+
+    private func appAgeChoices() async throws -> [(AXUIElement, AppleAppAgeRating)] {
+        try press(try appAgeControl())
+        try await settle()
+        let choices = try nodes(application).filter { role($0) == kAXMenuItemRole }.compactMap { item in
+            strings.appAgeRating(text(item, kAXTitleAttribute)).map { (item, $0) }
+        }
+        guard choices.filter({ $0.1 == .sixteen }).count == 1,
+            Set(choices.map { $0.1.rawValue }).count == choices.count
+        else { throw AppleScreenTimeAutomationError.unsupportedAppAgeRating }
+        return choices
+    }
+
+    private func dismissMenu() async throws {
+        var processID: pid_t = 0
+        guard AXUIElementGetPid(try appAgeControl(), &processID) == .success else {
+            throw AppleScreenTimeAutomationError.unsupportedScreen
+        }
+        try postKey(53, character: nil, into: processID)
+        try await settle()
+        guard try nodes(application).allSatisfy({ role($0) != kAXMenuItemRole }) else {
+            throw AppleScreenTimeAutomationError.unsupportedScreen
+        }
+    }
+
+    private func selectAppAge(_ rating: AppleAppAgeRating, passcode: String?) async throws {
+        let choices = try await appAgeChoices()
+        guard let choice = choices.first(where: { $0.1 == rating }) else {
+            throw AppleScreenTimeAutomationError.unsupportedAppAgeRating
+        }
+        try press(choice.0)
+        try await settle()
+        if let passcode { try await authorizeWebsiteChange(passcode: passcode) }
+        guard try appAgeRating() == rating else { throw AppleScreenTimeAutomationError.verificationRequired }
+    }
+
+    private func sharingSwitch(in root: AXUIElement) throws -> AXUIElement {
+        try unique(root) {
+            role($0) == kAXCheckBoxRole
+                && (text($0, kAXIdentifierAttribute) == "Share across devices"
+                    || matches($0, keys: ["ShareAcrossDevicesFeatureName", "Share Across Devices"]))
+        }
     }
 
     private func goBack() async throws {

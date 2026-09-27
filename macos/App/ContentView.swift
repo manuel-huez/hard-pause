@@ -2539,7 +2539,9 @@ private struct ProtectionSettingsPane: View {
                     canRemoveCode: model.serviceIsHealthy
                         && !model.activeBlocks.contains {
                             AppleWebsiteSyncTargets.usesScreenTime(
-                                $0, websitesEnabled: model.appleProtection.snapshot?.enablesAdultFilter == true)
+                                $0,
+                                websitesEnabled: model.appleProtection.snapshot?.enablesAdultFilter == true,
+                                adultAppsEnabled: model.appleProtection.snapshot?.appAgeRestriction != nil)
                         }
                 )
                 .settingsPanel()

@@ -1,6 +1,19 @@
 import XCTest
 
 final class ScreenTimeUIStringsTests: XCTestCase {
+    func testAppRatingsUseLocalizedMeaningAndRejectUnknownOrAmbiguousScales() {
+        let strings = ScreenTimeUIStrings(values: [
+            "DontAllowLabel": ["許可しない"], "16+": ["فوق ١٦"], "18+": ["18+"],
+            "Unrated": ["Non classé"], "4+": ["Ambiguous"], "9+": ["Ambiguous"],
+        ])
+
+        XCTAssertEqual(strings.appAgeRating("許可しない"), .disallowed)
+        XCTAssertEqual(strings.appAgeRating("فوق ١٦"), .sixteen)
+        XCTAssertEqual(strings.appAgeRating("Non classé"), .unrated)
+        XCTAssertNil(strings.appAgeRating("17+"))
+        XCTAssertNil(strings.appAgeRating("Ambiguous"))
+    }
+
     func testAmbiguousSystemTranslationNeedsTheExpectedStep() {
         // Apple uses the same Russian title for these two non-adjacent steps.
         let title = "Введите код‑пароль Экранного времени"

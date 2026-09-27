@@ -18,12 +18,43 @@ enum AppleLockdownPhase: String, Codable, Equatable, Sendable {
     }
 }
 
+enum AppleAppAgeRating: Int, Codable, Equatable, Sendable {
+    case disallowed = 0
+    case four = 4
+    case nine = 9
+    case thirteen = 13
+    case sixteen = 16
+    case eighteen = 18
+    case unrated = 1000
+}
+
+struct AppleAppAgeRestriction: Codable, Equatable, Sendable {
+    let baseline: AppleAppAgeRating
+    let applied: AppleAppAgeRating
+
+    init(baseline: AppleAppAgeRating) {
+        self.baseline = baseline
+        applied = baseline.rawValue <= 16 ? baseline : .sixteen
+    }
+
+    func restorationTarget(current: AppleAppAgeRating) -> AppleAppAgeRating? {
+        current == applied && baseline != applied ? baseline : nil
+    }
+
+    func validate() throws {
+        guard applied == AppleAppAgeRestriction(baseline: baseline).applied else {
+            throw AppleLockdownError.invalidRequest("The Screen Time app age limit is invalid.")
+        }
+    }
+}
+
 struct AppleLockdownSetupRequest: Codable, Equatable, Sendable {
     // Zero links removal to the last Screen Time plan; positive values preserve older setup waits.
     let fullUnlockDelay: TimeInterval
     let enablesAdultFilter: Bool
     let filterWasAlreadyEnabled: Bool
     let shareAcrossDevicesVerified: Bool?
+    var appAgeRestriction: AppleAppAgeRestriction? = nil
 
     func validate() throws {
         guard fullUnlockDelay.isFinite,
@@ -34,11 +65,14 @@ struct AppleLockdownSetupRequest: Codable, Equatable, Sendable {
                 "The Screen Time protection full unlock delay is invalid."
             )
         }
+        try appAgeRestriction?.validate()
     }
 }
 
 struct AppleLockdownOperationRequest: Codable, Equatable, Sendable {
     let operationID: UUID
+    var verifiedAppRating: AppleAppAgeRating? = nil
+    var shareAcrossDevicesVerified: Bool? = nil
 }
 
 struct AppleLockdownSnapshot: Codable, Equatable, Sendable {
@@ -52,6 +86,7 @@ struct AppleLockdownSnapshot: Codable, Equatable, Sendable {
     let mirroredAllowedDomains: [String]?
     let operationID: UUID?
     var websiteSyncOperationID: UUID? = nil
+    var appAgeRestriction: AppleAppAgeRestriction? = nil
 }
 
 struct AppleLockdownCredentialOperation: Codable, Equatable, Sendable,
@@ -164,8 +199,11 @@ struct AppleWebsiteSyncTargets: Codable, Equatable, Sendable {
         self.allowed = allowed
     }
 
-    static func usesScreenTime(_ block: ProtectedBlockSnapshot, websitesEnabled: Bool) -> Bool {
+    static func usesScreenTime(
+        _ block: ProtectedBlockSnapshot, websitesEnabled: Bool, adultAppsEnabled: Bool = false
+    ) -> Bool {
         guard block.phase != .inactive else { return false }
+        if adultAppsEnabled { return true }
         if !block.draft.protectionMode.allowsBreaks { return true }
         let rules = block.draft.rules
         return websitesEnabled

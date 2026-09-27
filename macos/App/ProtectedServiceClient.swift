@@ -62,7 +62,9 @@ protocol ProtectedServiceServing {
     func resumeAppleLockdownSetup(
         operationID: UUID
     ) async throws -> AppleLockdownCredentialOperation
-    func completeAppleLockdownSetup(operationID: UUID) async throws -> AppleLockdownSnapshot
+    func completeAppleLockdownSetup(
+        operationID: UUID, verifiedAppRating: AppleAppAgeRating?, shareAcrossDevicesVerified: Bool?
+    ) async throws -> AppleLockdownSnapshot
     func confirmAppleLockdownSetupNotApplied(
         operationID: UUID
     ) async throws -> AppleLockdownSnapshot
@@ -110,7 +112,9 @@ extension ProtectedServiceServing {
         )
     }
 
-    func completeAppleLockdownSetup(operationID: UUID) async throws -> AppleLockdownSnapshot {
+    func completeAppleLockdownSetup(
+        operationID: UUID, verifiedAppRating: AppleAppAgeRating? = nil, shareAcrossDevicesVerified: Bool? = nil
+    ) async throws -> AppleLockdownSnapshot {
         throw ProtectedServiceClientError.unavailable(
             "Screen Time protection is unavailable in this service client."
         )
@@ -399,9 +403,13 @@ final class ProtectedServiceClient: ProtectedServiceServing {
         return try appleCredential(from: reply)
     }
 
-    func completeAppleLockdownSetup(operationID: UUID) async throws -> AppleLockdownSnapshot {
+    func completeAppleLockdownSetup(
+        operationID: UUID, verifiedAppRating: AppleAppAgeRating? = nil, shareAcrossDevicesVerified: Bool? = nil
+    ) async throws -> AppleLockdownSnapshot {
         let payload = try ProtectedServiceCodec.encode(
-            AppleLockdownOperationRequest(operationID: operationID)
+            AppleLockdownOperationRequest(
+                operationID: operationID, verifiedAppRating: verifiedAppRating,
+                shareAcrossDevicesVerified: shareAcrossDevicesVerified)
         )
         let reply = try await performApple { service, callback in
             service.completeAppleLockdownSetup(payload, withReply: callback)

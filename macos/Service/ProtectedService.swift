@@ -441,7 +441,8 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         guard status.fullUnlockDelay == 0 else { return }
         try appleLockdown.reconcilePlanUse(
             hasDependentPlans: snapshot.blocks.contains {
-                AppleWebsiteSyncTargets.usesScreenTime($0, websitesEnabled: status.enablesAdultFilter)
+                AppleWebsiteSyncTargets.usesScreenTime(
+                    $0, websitesEnabled: status.enablesAdultFilter, adultAppsEnabled: status.appAgeRestriction != nil)
             })
     }
 
@@ -451,7 +452,9 @@ final class ProtectedServiceEndpoint: NSObject, ProtectedServiceXPC {
         let noDependentPlans: Bool
         if appleStatus.fullUnlockDelay == 0 {
             noDependentPlans = !snapshot.blocks.contains {
-                AppleWebsiteSyncTargets.usesScreenTime($0, websitesEnabled: appleStatus.enablesAdultFilter)
+                AppleWebsiteSyncTargets.usesScreenTime(
+                    $0, websitesEnabled: appleStatus.enablesAdultFilter,
+                    adultAppsEnabled: appleStatus.appAgeRestriction != nil)
             }
         } else {
             noDependentPlans =

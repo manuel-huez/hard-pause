@@ -16,9 +16,9 @@ struct ProBadge: View {
 struct ScreenTimeBenefits: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Add Apple’s built-in website blocking, with a private code kept by Hard Pause.")
+            Text("Add Apple’s website and app restrictions, with a private code kept by Hard Pause.")
             Text(
-                "Turn on Share Across Devices in Screen Time to sync its settings across your Mac, iPhone, and iPad on the same Apple Account."
+                "Setup turns on Share Across Devices on this Mac. Your iPhone and iPad must use the same Apple Account and have sharing on. Check the restrictions on each device."
             )
             .foregroundStyle(PauseTheme.muted)
         }
@@ -219,6 +219,7 @@ struct AppleProtectionSetupView: View {
     @State private var hasInspected = false
     @State private var showsRetry = false
     @State private var enableAdultFilter = true
+    @State private var blockAdultApps = true
     @State private var currentCode = ""
     @State private var hasAccessibilityAccess = AXIsProcessTrusted()
 
@@ -293,10 +294,19 @@ struct AppleProtectionSetupView: View {
                 .font(.callout)
                 .foregroundStyle(PauseTheme.muted)
             } else {
+                Toggle("Block 18+ apps", isOn: $blockAdultApps)
+                if blockAdultApps {
+                    Text("Also limits installed apps. Stays on during plan breaks.")
+                        .foregroundStyle(PauseTheme.muted)
+                }
                 Toggle("Use Apple’s adult website filter and sync websites", isOn: $enableAdultFilter)
                 if enableAdultFilter {
+                    Text("Apple’s filter and synced website limits stay on during plan breaks.")
+                        .foregroundStyle(PauseTheme.muted)
+                }
+                if enableAdultFilter || blockAdultApps {
                     Text(
-                        "Content & Privacy must already be on in Screen Time. Review Apple’s settings before you enable it. Apple’s filter and synced limits stay on during breaks."
+                        "Content & Privacy must already be on in Screen Time. Review Apple’s settings before you enable it."
                     )
                     .foregroundStyle(PauseTheme.muted)
                 }
@@ -366,7 +376,8 @@ struct AppleProtectionSetupView: View {
                 await model.retrySetup(existingPasscode: oldCode.isEmpty ? nil : oldCode)
             } else {
                 await model.setUp(
-                    enablesAdultFilter: enableAdultFilter, existingPasscode: oldCode.isEmpty ? nil : oldCode)
+                    enablesAdultFilter: enableAdultFilter, blocksAdultApps: blockAdultApps,
+                    existingPasscode: oldCode.isEmpty ? nil : oldCode)
             }
             if model.snapshot?.phase == .active { dismiss() }
         }

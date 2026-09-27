@@ -2,6 +2,24 @@ import XCTest
 
 @MainActor
 final class AppleProtectionModelTests: XCTestCase {
+    func testSharingStopsBeforeCredentialCreationForExistingSetupOrAppleWarning() async {
+        for phase in [AppleLockdownPhase.active, .inactive] {
+            let events = AppleProtectionEventLog()
+            let service = FakeAppleProtectionService(events: events, snapshot: makeSnapshot(phase: phase))
+            let automation = FakeAppleScreenTimeAutomation(events: events)
+            automation.sharingError = AppleScreenTimeAutomationError.sharingRequired
+            let model = AppleProtectionModel(service: service, automation: automation)
+
+            await model.setUp(enablesAdultFilter: false, blocksAdultApps: true, existingPasscode: nil)
+
+            XCTAssertNil(service.setupRequest)
+            XCTAssertFalse(events.values.contains("inspect"))
+            XCTAssertFalse(events.values.contains("install"))
+            XCTAssertEqual(events.values.contains("enable sharing"), phase == .inactive)
+            XCTAssertTrue(model.hasError)
+        }
+    }
+
     func testMalformedOriginalCodeDoesNotCreateASetupOperation() async {
         let events = AppleProtectionEventLog()
         let service = FakeAppleProtectionService(events: events, snapshot: makeSnapshot(phase: .inactive))
@@ -106,7 +124,10 @@ final class AppleProtectionModelTests: XCTestCase {
     func testSetupBeginsProtectedOperationBeforeNativeInstallAndVerification() async {
         let events = AppleProtectionEventLog()
         let operationID = UUID()
-        let pending = makeSnapshot(phase: .pendingSetup, operationID: operationID)
+        let restriction = AppleAppAgeRestriction(baseline: .eighteen)
+        let pending = makeSnapshot(
+            phase: .pendingSetup, operationID: operationID,
+            appAgeRestriction: restriction, shareAcrossDevicesVerified: true)
         let active = makeSnapshot(phase: .active)
         let service = FakeAppleProtectionService(
             events: events,
@@ -115,17 +136,23 @@ final class AppleProtectionModelTests: XCTestCase {
             completedSetupSnapshot: active
         )
         let automation = FakeAppleScreenTimeAutomation(events: events)
+        automation.inspection.appAgeRating = .eighteen
         let model = AppleProtectionModel(service: service, automation: automation)
 
-        await model.setUp(enablesAdultFilter: true, existingPasscode: nil)
+        await model.setUp(enablesAdultFilter: true, blocksAdultApps: true, existingPasscode: nil)
 
         XCTAssertTrue(model.hasProAccess)
         XCTAssertEqual(
             events.values,
-            ["inspect", "begin setup", "install", "verify", "complete setup"]
+            ["status", "enable sharing", "inspect", "begin setup", "install", "verify", "complete setup"]
         )
         XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
         XCTAssertEqual(service.setupDelay, 0)
+        XCTAssertEqual(service.setupRequest?.appAgeRestriction, restriction)
+        XCTAssertEqual(service.setupRequest?.shareAcrossDevicesVerified, true)
+        XCTAssertEqual(automation.installedAppRestrictions, [restriction])
+        XCTAssertEqual(service.setupProof?.verifiedAppRating, .sixteen)
+        XCTAssertEqual(service.setupProof?.shareAcrossDevicesVerified, true)
         XCTAssertEqual(model.snapshot, active)
         XCTAssertFalse(model.hasError)
     }
@@ -148,7 +175,7 @@ final class AppleProtectionModelTests: XCTestCase {
 
         XCTAssertEqual(
             events.values,
-            ["inspect", "begin setup", "install", "verify", "status"]
+            ["status", "enable sharing", "inspect", "begin setup", "install", "verify", "status"]
         )
         XCTAssertTrue(service.completedSetupOperationIDs.isEmpty)
         XCTAssertEqual(model.snapshot, pending)
@@ -158,7 +185,10 @@ final class AppleProtectionModelTests: XCTestCase {
     func testRetryResumesTheSameSetupOperationWithoutProAccess() async {
         let events = AppleProtectionEventLog()
         let operationID = UUID()
-        let pending = makeSnapshot(phase: .pendingSetup, operationID: operationID)
+        let restriction = AppleAppAgeRestriction(baseline: .eighteen)
+        let pending = makeSnapshot(
+            phase: .pendingSetup, operationID: operationID,
+            appAgeRestriction: restriction, shareAcrossDevicesVerified: true)
         let active = makeSnapshot(phase: .active)
         let service = FakeAppleProtectionService(
             events: events,
@@ -167,10 +197,11 @@ final class AppleProtectionModelTests: XCTestCase {
             completedSetupSnapshot: active
         )
         let automation = FakeAppleScreenTimeAutomation(events: events)
+        automation.inspection.appAgeRating = .eighteen
         automation.installError = AppleScreenTimeAutomationError.unsupportedScreen
         let model = AppleProtectionModel(service: service, automation: automation)
 
-        await model.setUp(enablesAdultFilter: false, existingPasscode: nil)
+        await model.setUp(enablesAdultFilter: false, blocksAdultApps: true, existingPasscode: nil)
         XCTAssertEqual(model.snapshot, pending)
         XCTAssertTrue(service.completedSetupOperationIDs.isEmpty)
 
@@ -178,9 +209,16 @@ final class AppleProtectionModelTests: XCTestCase {
         automation.installError = nil
         automation.inspection = AppleScreenTimeInspection(
             hasPasscode: true,
-            adultFilterEnabled: false
+            adultFilterEnabled: false, appAgeRating: .thirteen, shareAcrossDevicesEnabled: true
         )
         let recoveryModel = AppleProtectionModel(service: service, automation: automation, hasProAccess: false)
+        automation.inspection.shareAcrossDevicesEnabled = false
+        await recoveryModel.retrySetup(existingPasscode: "4321")
+        XCTAssertTrue(service.resumedSetupOperationIDs.isEmpty)
+        XCTAssertEqual(automation.installedAppRestrictions, [restriction])
+        XCTAssertEqual(recoveryModel.message, AppleScreenTimeAutomationError.sharingRequired.localizedDescription)
+        events.removeAll()
+        automation.inspection.shareAcrossDevicesEnabled = true
         await recoveryModel.retrySetup(existingPasscode: "4321")
 
         XCTAssertEqual(
@@ -190,6 +228,7 @@ final class AppleProtectionModelTests: XCTestCase {
         XCTAssertEqual(service.resumedSetupOperationIDs, [operationID])
         XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
         XCTAssertEqual(automation.installReplacementWasProvided, [false, true])
+        XCTAssertEqual(automation.installedAppRestrictions, [restriction, restriction])
         XCTAssertFalse(recoveryModel.hasProAccess)
         XCTAssertEqual(recoveryModel.snapshot, active)
     }
@@ -315,7 +354,8 @@ final class AppleProtectionModelTests: XCTestCase {
         enablesAdultFilter: Bool = false,
         filterWasAlreadyEnabled: Bool = false,
         mirroredDomains: [String] = [],
-        operationID: UUID? = nil
+        operationID: UUID? = nil, appAgeRestriction: AppleAppAgeRestriction? = nil,
+        shareAcrossDevicesVerified: Bool? = nil
     ) -> AppleLockdownSnapshot {
         AppleLockdownSnapshot(
             phase: phase,
@@ -323,10 +363,10 @@ final class AppleProtectionModelTests: XCTestCase {
             remainingDelay: remainingDelay,
             enablesAdultFilter: enablesAdultFilter,
             filterWasAlreadyEnabled: filterWasAlreadyEnabled,
-            shareAcrossDevicesVerified: nil,
+            shareAcrossDevicesVerified: shareAcrossDevicesVerified,
             mirroredDomains: mirroredDomains,
             mirroredAllowedDomains: [],
-            operationID: operationID
+            operationID: operationID, appAgeRestriction: appAgeRestriction
         )
     }
 
@@ -355,8 +395,9 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
     let events: AppleProtectionEventLog
     var inspection = AppleScreenTimeInspection(
         hasPasscode: false,
-        adultFilterEnabled: false
+        adultFilterEnabled: false, shareAcrossDevicesEnabled: true
     )
+    var sharingError: Error?
     var installError: Error?
     var verifyError: Error?
     var releaseError: Error?
@@ -365,6 +406,7 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
     var onInspectWebsites: (() async -> Void)?
     private(set) var removedRestricted: [String] = []
     private(set) var installReplacementWasProvided: [Bool] = []
+    private(set) var installedAppRestrictions: [AppleAppAgeRestriction?] = []
 
     init(events: AppleProtectionEventLog) {
         self.events = events
@@ -375,7 +417,14 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
         return inspection.hasPasscode
     }
 
-    func inspect(checkAdultFilter: Bool, passcode: String?) async throws -> AppleScreenTimeInspection {
+    func enableSharing(passcode: String?) async throws {
+        events.append("enable sharing")
+        if let sharingError { throw sharingError }
+    }
+
+    func inspect(checkAdultFilter: Bool, checkAdultApps: Bool, passcode: String?) async throws
+        -> AppleScreenTimeInspection
+    {
         events.append("inspect")
         return inspection
     }
@@ -383,19 +432,27 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
     func install(
         passcode: String,
         replacing existingPasscode: String?,
-        enableAdultFilter: Bool
+        enableAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?
     ) async throws {
         events.append("install")
         installReplacementWasProvided.append(existingPasscode != nil)
+        installedAppRestrictions.append(appAgeRestriction)
         if let installError { throw installError }
     }
 
-    func verify(passcode: String, requiresAdultFilter: Bool) async throws {
+    func verify(
+        passcode: String, requiresAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?, requiresSharing: Bool
+    ) async throws -> AppleScreenTimeInspection {
         events.append("verify")
         if let verifyError { throw verifyError }
+        return AppleScreenTimeInspection(
+            hasPasscode: true, adultFilterEnabled: requiresAdultFilter,
+            appAgeRating: appAgeRestriction?.applied, shareAcrossDevicesEnabled: true)
     }
 
-    func release(passcode: String, restoreUnrestricted: Bool) async throws {
+    func release(
+        passcode: String, restoreUnrestricted: Bool, appAgeRestriction: AppleAppAgeRestriction?
+    ) async throws {
         events.append("release")
         if let releaseError { throw releaseError }
     }
@@ -440,6 +497,8 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
     private(set) var completedReleaseOperationIDs: [UUID] = []
     private(set) var requestEndCalls = 0
     private(set) var setupDelay: TimeInterval?
+    private(set) var setupRequest: AppleLockdownSetupRequest?
+    private(set) var setupProof: AppleLockdownOperationRequest?
 
     init(
         events: AppleProtectionEventLog,
@@ -469,6 +528,7 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
     ) async throws -> AppleLockdownCredentialOperation {
         events.append("begin setup")
         setupDelay = request.fullUnlockDelay
+        setupRequest = request
         let operation = try required(setupOperation)
         snapshot = operation.snapshot
         return operation
@@ -484,8 +544,13 @@ private final class FakeAppleProtectionService: ProtectedServiceServing {
         return operation
     }
 
-    func completeAppleLockdownSetup(operationID: UUID) async throws -> AppleLockdownSnapshot {
+    func completeAppleLockdownSetup(
+        operationID: UUID, verifiedAppRating: AppleAppAgeRating?, shareAcrossDevicesVerified: Bool?
+    ) async throws -> AppleLockdownSnapshot {
         events.append("complete setup")
+        setupProof = AppleLockdownOperationRequest(
+            operationID: operationID, verifiedAppRating: verifiedAppRating,
+            shareAcrossDevicesVerified: shareAcrossDevicesVerified)
         completedSetupOperationIDs.append(operationID)
         snapshot = try required(completedSetupSnapshot)
         return snapshot

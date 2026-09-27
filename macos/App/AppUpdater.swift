@@ -12,7 +12,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     private var recoveryObservation: AnyCancellable?
     private var recoveryTask: Task<Void, Never>?
     private var lastRecoveryCheck = Date.distantPast
-    private var recoveryWasAttempted = CommandLine.arguments.contains(AppUpdateRecovery.relaunchArgument)
+    private var successorNeedsInitialConnection = CommandLine.arguments.contains(AppUpdateRecovery.relaunchArgument)
+    private var recoveryWasAttempted = false
     private var successorWasLaunched = false
     private var recoveryReplacement: AppUpdateRecovery.Replacement?
     private var recoveredApplication: NSRunningApplication?
@@ -79,6 +80,11 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         guard self.model == nil else { return }
         self.model = model
         recoveryObservation = model.$serviceAvailability.sink { [weak self] availability in
+            if availability == .ready, self?.successorNeedsInitialConnection == true,
+                !AppUpdateRecovery.currentImageWasRemoved()
+            {
+                self?.successorNeedsInitialConnection = false
+            }
             guard case .unavailable = availability else { return }
             Task { @MainActor [weak self] in self?.recoverAfterUpdateIfNeeded() }
         }
@@ -91,7 +97,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     private func recoverAfterUpdateIfNeeded(reusing existingApplication: NSRunningApplication? = nil) {
-        guard !recoveryWasAttempted || existingApplication != nil, recoveryTask == nil,
+        guard !successorNeedsInitialConnection,
+            !recoveryWasAttempted || existingApplication != nil, recoveryTask == nil,
             !recoveryTerminationIsPending,
             !installationIsStarting, !isPreparingUpdate,
             model?.canRecoverAppAfterUpdate == true,
@@ -175,9 +182,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
             recoverAfterUpdateIfNeeded(reusing: application)
             return
         }
-        if !successorWasLaunched,
-            !CommandLine.arguments.contains(AppUpdateRecovery.relaunchArgument)
-        {
+        if !successorWasLaunched {
             recoveryWasAttempted = false
         }
         lastRecoveryCheck = .distantPast

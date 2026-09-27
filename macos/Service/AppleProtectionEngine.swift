@@ -140,6 +140,16 @@ final class AppleLockdownEngine: @unchecked Sendable {
         try withLock {
             try requireNotFrozen()
             var candidate = state
+            if let restriction = state.configuration?.appAgeRestriction {
+                guard let verified = request.verifiedAppRating,
+                    verified.rawValue <= restriction.applied.rawValue
+                else { throw AppleLockdownError.invalidRequest("The Screen Time app age limit was not verified.") }
+            }
+            if state.configuration?.shareAcrossDevicesVerified == true,
+                request.shareAcrossDevicesVerified != true
+            {
+                throw AppleLockdownError.invalidRequest("Share Across Devices was not verified.")
+            }
             try candidate.completeSetup(operationID: request.operationID)
             guard let credentialID = state.credentialID else {
                 throw AppleLockdownError.credentialUnavailable

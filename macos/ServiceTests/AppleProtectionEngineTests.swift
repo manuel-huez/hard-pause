@@ -3,6 +3,96 @@ import Foundation
 import XCTest
 
 final class AppleProtectionEngineTests: XCTestCase {
+    func testAppBaselineSurvivesFailureAndRestartWithoutAcceptingLegacyCompletion() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try AppleLockdownEngine(
+            stateStore: store, credentialVault: vault,
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(["4820"]), clock: clock)
+        let restriction = AppleAppAgeRestriction(baseline: .eighteen)
+        let setup = try engine.beginSetup(
+            AppleLockdownSetupRequest(
+                fullUnlockDelay: 0, enablesAdultFilter: false, filterWasAlreadyEnabled: false,
+                shareAcrossDevicesVerified: true, appAgeRestriction: restriction))
+
+        XCTAssertThrowsError(try engine.completeSetup(AppleLockdownOperationRequest(operationID: setup.operationID)))
+        XCTAssertThrowsError(
+            try engine.completeSetup(
+                AppleLockdownOperationRequest(
+                    operationID: setup.operationID, verifiedAppRating: .eighteen, shareAcrossDevicesVerified: true)))
+        XCTAssertThrowsError(
+            try engine.completeSetup(
+                AppleLockdownOperationRequest(
+                    operationID: setup.operationID, verifiedAppRating: .sixteen, shareAcrossDevicesVerified: false)))
+        let restarted = try AppleLockdownEngine(stateStore: store, credentialVault: vault, clock: clock)
+        let resumed = try restarted.resumeSetup(AppleLockdownOperationRequest(operationID: setup.operationID))
+        XCTAssertEqual(resumed.snapshot.appAgeRestriction, restriction)
+        let verified = AppleLockdownOperationRequest(
+            operationID: setup.operationID, verifiedAppRating: .thirteen, shareAcrossDevicesVerified: true)
+        store.saveFailures = 1
+        XCTAssertThrowsError(try restarted.completeSetup(verified))
+        XCTAssertEqual(try restarted.status().phase, .pendingSetup)
+        let complete = try restarted.completeSetup(verified)
+        XCTAssertEqual(complete.phase, .active)
+        XCTAssertEqual(complete.appAgeRestriction, restriction)
+    }
+
+    func testAppReleaseRestoresOnlyOurExactLimitAndKeepsStricterPolicies() {
+        let restriction = AppleAppAgeRestriction(baseline: .unrated)
+        XCTAssertEqual(restriction.restorationTarget(current: .sixteen), .unrated)
+        XCTAssertNil(restriction.restorationTarget(current: .thirteen))
+        XCTAssertNil(restriction.restorationTarget(current: .disallowed))
+        XCTAssertNil(restriction.restorationTarget(current: .eighteen))
+        let stricter = AppleAppAgeRestriction(baseline: .four)
+        XCTAssertNil(stricter.restorationTarget(current: .four))
+    }
+
+    func testAdultAppLimitDependsOnAppOnlyPlanThroughBreakAndUnlockWait() throws {
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let protected = try ProtectedServiceEngine(
+            stateStore: FakeProtectedStateStore(), enforcer: FakeProtectionEnforcer(), clock: clock)
+        let apple = try AppleLockdownEngine(
+            stateStore: FakeAppleLockdownStateStore(), credentialVault: FakeAppleLockdownVault(),
+            passcodeGenerator: FakeAppleLockdownPasscodeGenerator(["4820"]), clock: clock)
+        let setup = try apple.beginSetup(
+            AppleLockdownSetupRequest(
+                fullUnlockDelay: 0, enablesAdultFilter: false, filterWasAlreadyEnabled: false,
+                shareAcrossDevicesVerified: true, appAgeRestriction: AppleAppAgeRestriction(baseline: .eighteen)))
+        _ = try apple.completeSetup(
+            AppleLockdownOperationRequest(
+                operationID: setup.operationID, verifiedAppRating: .sixteen, shareAcrossDevicesVerified: true))
+        let endpoint = ProtectedServiceEndpoint(
+            engine: protected, appleLockdown: apple, coordinator: ProtectedServiceCoordinator())
+        let block = try XCTUnwrap(
+            protected.create(
+                ProtectedCreateRequest(draft: serviceTestDraft(domains: [], applications: [serviceTestApplication()]))
+            ).blocks.first)
+        _ = try protected.activate(ProtectedRevisionRequest(id: block.id, expectedRevision: block.revision))
+        endpoint.list { _ in }
+        var endReply: AppleLockdownServiceReply?
+        endpoint.requestAppleLockdownEnd {
+            endReply = try? ProtectedServiceCodec.decode(AppleLockdownServiceReply.self, from: $0)
+        }
+        XCTAssertNotNil(endReply?.error)
+        XCTAssertEqual(try apple.status().phase, .active)
+        _ = try protected.requestBreak(ProtectedBlockRequest(id: block.id))
+        clock.reading = serviceTestReading(60)
+        guard case .breakActive = protected.list().blocks.first?.phase else {
+            return XCTFail("The app plan must reach its break.")
+        }
+        endpoint.requestAppleLockdownEnd {
+            endReply = try? ProtectedServiceCodec.decode(AppleLockdownServiceReply.self, from: $0)
+        }
+        XCTAssertNotNil(endReply?.error)
+        _ = try protected.requestEnd(ProtectedBlockRequest(id: block.id))
+        endpoint.list { _ in }
+        XCTAssertEqual(try apple.status().phase, .active)
+        clock.reading = serviceTestReading(240)
+        endpoint.list { _ in }
+        XCTAssertEqual(try apple.status().phase, .readyForRelease)
+    }
+
     func testInactiveAppleStateKeepsItsPreviousHandoffDigest() throws {
         XCTAssertEqual(
             try ServiceStateDigest.hash(AppleLockdownState()),
@@ -17,6 +107,7 @@ final class AppleProtectionEngineTests: XCTestCase {
         try state.validateForPersistence()
 
         XCTAssertNil(state.pendingWebsiteSync)
+        XCTAssertNil(state.configuration?.appAgeRestriction)
         XCTAssertEqual(
             try ServiceStateDigest.hash(state),
             "070e9118d155ca57d4e81fd43e747b4ea6abbb9a7694dd2654259ac9780ceaab")

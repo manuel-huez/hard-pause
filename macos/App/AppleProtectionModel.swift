@@ -87,7 +87,7 @@ final class AppleProtectionModel: ObservableObject {
         }
     }
 
-    func setUp(enablesAdultFilter: Bool, existingPasscode: String?) async {
+    func setUp(enablesAdultFilter: Bool, blocksAdultApps: Bool = false, existingPasscode: String?) async {
         guard !isBusy else { return }
         guard hasProAccess else {
             message = "Pro access is required to set up Screen Time."
@@ -98,8 +98,18 @@ final class AppleProtectionModel: ObservableObject {
             if let existingPasscode, !AppleScreenTimeAutomation.validCode(existingPasscode) {
                 throw AppleScreenTimeAutomationError.existingPasscodeRequired
             }
+            guard try await self.service.appleLockdownStatus().phase == .inactive else {
+                throw AppleLockdownError.setupAlreadyPending
+            }
+            try await self.automation.enableSharing(passcode: existingPasscode)
             let baseline = try await self.automation.inspect(
-                checkAdultFilter: enablesAdultFilter, passcode: existingPasscode)
+                checkAdultFilter: enablesAdultFilter, checkAdultApps: blocksAdultApps, passcode: existingPasscode)
+            guard baseline.shareAcrossDevicesEnabled == true else {
+                throw AppleScreenTimeAutomationError.sharingRequired
+            }
+            if blocksAdultApps && baseline.appAgeRating == nil {
+                throw AppleScreenTimeAutomationError.unsupportedAppAgeRating
+            }
             self.codeCheck = baseline.hasPasscode
             if baseline.hasPasscode, existingPasscode?.isEmpty != false {
                 throw AppleScreenTimeAutomationError.existingPasscodeRequired
@@ -109,7 +119,8 @@ final class AppleProtectionModel: ObservableObject {
                     fullUnlockDelay: 0,
                     enablesAdultFilter: enablesAdultFilter,
                     filterWasAlreadyEnabled: baseline.adultFilterEnabled,
-                    shareAcrossDevicesVerified: nil
+                    shareAcrossDevicesVerified: true,
+                    appAgeRestriction: blocksAdultApps ? baseline.appAgeRating.map(AppleAppAgeRestriction.init) : nil
                 )
             )
             self.snapshot = operation.snapshot
@@ -117,7 +128,8 @@ final class AppleProtectionModel: ObservableObject {
             try await self.automation.install(
                 passcode: operation.passcode,
                 replacing: baseline.hasPasscode ? existingPasscode : nil,
-                enableAdultFilter: enablesAdultFilter
+                enableAdultFilter: enablesAdultFilter,
+                appAgeRestriction: operation.snapshot.appAgeRestriction
             )
             try await self.verifyAndComplete(operation)
         }
@@ -149,7 +161,11 @@ final class AppleProtectionModel: ObservableObject {
                 throw AppleScreenTimeAutomationError.existingPasscodeRequired
             }
             let baseline = try await self.automation.inspect(
-                checkAdultFilter: status.enablesAdultFilter, passcode: existingPasscode)
+                checkAdultFilter: status.enablesAdultFilter, checkAdultApps: status.appAgeRestriction != nil,
+                passcode: existingPasscode)
+            guard status.shareAcrossDevicesVerified != true || baseline.shareAcrossDevicesEnabled == true else {
+                throw AppleScreenTimeAutomationError.sharingRequired
+            }
             // Retry with the same saved code; replacing an existing code requires explicit input.
             if baseline.hasPasscode, existingPasscode?.isEmpty != false {
                 throw AppleScreenTimeAutomationError.existingPasscodeRequired
@@ -158,7 +174,7 @@ final class AppleProtectionModel: ObservableObject {
             self.activity = .settingCode
             try await self.automation.install(
                 passcode: operation.passcode, replacing: existingPasscode,
-                enableAdultFilter: status.enablesAdultFilter
+                enableAdultFilter: status.enablesAdultFilter, appAgeRestriction: status.appAgeRestriction
             )
             try await self.verifyAndComplete(operation)
         }
@@ -187,7 +203,8 @@ final class AppleProtectionModel: ObservableObject {
             try await self.automation.release(
                 passcode: operation.passcode,
                 restoreUnrestricted: operation.snapshot.enablesAdultFilter
-                    && !operation.snapshot.filterWasAlreadyEnabled
+                    && !operation.snapshot.filterWasAlreadyEnabled,
+                appAgeRestriction: operation.snapshot.appAgeRestriction
             )
             self.snapshot = try await self.service.completeAppleLockdownRelease(operationID: operation.operationID)
             self.codeCheck = nil
@@ -314,9 +331,13 @@ final class AppleProtectionModel: ObservableObject {
 
     private func verifyAndComplete(_ operation: AppleLockdownCredentialOperation) async throws {
         activity = .verifyingCode
-        try await automation.verify(
-            passcode: operation.passcode, requiresAdultFilter: operation.snapshot.enablesAdultFilter)
-        snapshot = try await service.completeAppleLockdownSetup(operationID: operation.operationID)
+        let verified = try await automation.verify(
+            passcode: operation.passcode, requiresAdultFilter: operation.snapshot.enablesAdultFilter,
+            appAgeRestriction: operation.snapshot.appAgeRestriction,
+            requiresSharing: operation.snapshot.shareAcrossDevicesVerified == true)
+        snapshot = try await service.completeAppleLockdownSetup(
+            operationID: operation.operationID, verifiedAppRating: verified.appAgeRating,
+            shareAcrossDevicesVerified: verified.shareAcrossDevicesEnabled)
         codeCheck = nil
         message = "Screen Time is ready."
     }
