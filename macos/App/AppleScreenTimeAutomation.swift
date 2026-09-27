@@ -150,6 +150,8 @@ enum AppleScreenTimeAutomationError: LocalizedError {
     case existingPasscodeRequired
     case recoveryRequired
     case verificationRequired
+    case appRestrictionNotVerified
+    case webFilterNotVerified
     case websiteSyncUnavailable
     case contentRestrictionsRequired
     case unsupportedWebsitePolicy
@@ -182,10 +184,14 @@ enum AppleScreenTimeAutomationError: LocalizedError {
                 "Enter the current four-digit Screen Time code to replace it. Hard Pause will not remove an unknown code."
         case .recoveryRequired:
             return
-                "Finish Apple's passcode recovery step in System Settings, then choose Verify setup. The new code is saved securely."
+                "Finish Apple's passcode recovery step in System Settings, then continue setup. The new code is saved securely."
         case .verificationRequired:
             return
-                "The saved code could not be verified. Protection is not confirmed. Keep System Settings open and choose Verify setup."
+                "The saved code could not be verified. Protection is not confirmed. Keep System Settings open and continue setup."
+        case .appRestrictionNotVerified:
+            return "The Screen Time app age limit was not applied. Keep System Settings open and continue setup."
+        case .webFilterNotVerified:
+            return "Apple's adult website filter was not applied. Keep System Settings open and continue setup."
         case .websiteSyncUnavailable:
             return
                 "Screen Time website sync could not be verified. Check Content & Privacy in System Settings, then retry."
@@ -463,18 +469,28 @@ private actor ScreenTimeAccessibilityWorker {
     ) async throws -> AppleScreenTimeInspection {
         let inspection = try await inspect(
             checkAdultFilter: requiresAdultFilter, checkAdultApps: appAgeRestriction != nil, passcode: passcode)
-        guard inspection.hasPasscode, !requiresAdultFilter || inspection.adultFilterEnabled
-        else { throw AppleScreenTimeAutomationError.verificationRequired }
+        guard inspection.hasPasscode else { throw AppleScreenTimeAutomationError.verificationRequired }
+        guard !requiresAdultFilter || inspection.adultFilterEnabled else {
+            throw AppleScreenTimeAutomationError.webFilterNotVerified
+        }
         if let restriction = appAgeRestriction {
             guard let current = inspection.appAgeRating, current.rawValue <= restriction.applied.rawValue else {
-                throw AppleScreenTimeAutomationError.verificationRequired
+                throw AppleScreenTimeAutomationError.appRestrictionNotVerified
             }
         }
         guard !requiresSharing || inspection.shareAcrossDevicesEnabled == true else {
             throw AppleScreenTimeAutomationError.sharingRequired
         }
         try await openChangePasscode()
-        try await enterCode(passcode, from: .authenticateChange, expecting: .prompt(.create))
+        do {
+            try await enterCode(passcode, from: .authenticateChange, expecting: .prompt(.create))
+        } catch AppleScreenTimeAutomationError.verificationRequired {
+            if (try? codePrompt(expecting: .authenticateChange)) != nil {
+                try cancelCodePrompt()
+                try await settle()
+            }
+            throw AppleScreenTimeAutomationError.verificationRequired
+        }
         // Authentication succeeded. Never enter another code during verification.
         try cancelCodePrompt()
         try await settle()
@@ -1109,7 +1125,7 @@ private actor ScreenTimeAccessibilityWorker {
         try press(choice.0)
         try await settle()
         if let passcode { try await authorizeWebsiteChange(passcode: passcode) }
-        guard try appAgeRating() == rating else { throw AppleScreenTimeAutomationError.verificationRequired }
+        guard try appAgeRating() == rating else { throw AppleScreenTimeAutomationError.appRestrictionNotVerified }
     }
 
     private func sharingSwitch(in root: AXUIElement) throws -> AXUIElement {
@@ -1169,7 +1185,7 @@ private actor ScreenTimeAccessibilityWorker {
         try await settle()
         if let passcode { try await authorizeWebsiteChange(passcode: passcode) }
         guard text(try webFilter(), kAXValueAttribute) == choices[level].1 else {
-            throw AppleScreenTimeAutomationError.verificationRequired
+            throw AppleScreenTimeAutomationError.webFilterNotVerified
         }
     }
 

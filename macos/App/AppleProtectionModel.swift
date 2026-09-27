@@ -30,10 +30,22 @@ final class AppleProtectionModel: ObservableObject {
             case .syncingWebsites: return "Syncing websites…"
             }
         }
+
+        var failureLabel: String {
+            switch self {
+            case .checking: "Could not check Screen Time."
+            case .settingCode: "Could not finish Screen Time setup."
+            case .verifyingCode: "Could not verify Screen Time setup."
+            case .removingCode: "Could not remove the Screen Time code."
+            case .syncingWebsites: "Could not sync Screen Time websites."
+            }
+        }
     }
 
     @Published private(set) var snapshot: AppleLockdownSnapshot?
     @Published private(set) var codeCheck: Bool?
+    @Published private(set) var setupNeedsCurrentCode = false
+    private var checkedSetupOperationID: UUID?
     @Published private(set) var activity: Activity?
     @Published private(set) var message: String?
     @Published private(set) var hasError = false
@@ -136,44 +148,64 @@ final class AppleProtectionModel: ObservableObject {
         await syncAfterSetup()
     }
 
-    func verifySetup() async {
+    func continueSetup(existingPasscode: String? = nil) async {
         guard !isBusy else { return }
-        await perform(.verifyingCode) {
+        await perform(.checking) {
             let status = try await self.service.appleLockdownStatus()
             self.snapshot = status
             guard status.phase == .pendingSetup, let operationID = status.operationID else {
                 throw AppleLockdownError.setupNotPending
             }
-            let operation = try await self.service.resumeAppleLockdownSetup(operationID: operationID)
-            try await self.verifyAndComplete(operation)
-        }
-        await syncAfterSetup()
-    }
-
-    func retrySetup(existingPasscode: String?) async {
-        guard !isBusy else { return }
-        await perform(.checking) {
-            let status = try await self.service.appleLockdownStatus()
-            guard status.phase == .pendingSetup, let operationID = status.operationID else {
-                throw AppleLockdownError.setupNotPending
+            if self.checkedSetupOperationID != operationID {
+                self.setupNeedsCurrentCode = false
+                self.activity = .verifyingCode
+                let operation = try await self.service.resumeAppleLockdownSetup(operationID: operationID)
+                do {
+                    try await self.verifyAndComplete(operation)
+                    return
+                } catch AppleScreenTimeAutomationError.verificationRequired,
+                    AppleScreenTimeAutomationError.appRestrictionNotVerified,
+                    AppleScreenTimeAutomationError.webFilterNotVerified
+                {
+                    // A failed check can mean unfinished restrictions, not an incorrect code.
+                    self.activity = .checking
+                    self.setupNeedsCurrentCode = try await self.automation.inspectCode()
+                    self.checkedSetupOperationID = operationID
+                    if self.setupNeedsCurrentCode {
+                        self.message = "Enter your current Screen Time code to finish setup."
+                        return
+                    }
+                }
             }
-            if let existingPasscode, !AppleScreenTimeAutomation.validCode(existingPasscode) {
+            if self.setupNeedsCurrentCode {
+                guard let existingPasscode, AppleScreenTimeAutomation.validCode(existingPasscode) else {
+                    throw AppleScreenTimeAutomationError.existingPasscodeRequired
+                }
+            }
+            self.activity = .checking
+            let baseline: AppleScreenTimeInspection
+            do {
+                baseline = try await self.automation.inspect(
+                    checkAdultFilter: status.enablesAdultFilter, checkAdultApps: status.appAgeRestriction != nil,
+                    passcode: existingPasscode)
+            } catch AppleScreenTimeAutomationError.existingPasscodeRequired {
+                self.setupNeedsCurrentCode = true
                 throw AppleScreenTimeAutomationError.existingPasscodeRequired
             }
-            let baseline = try await self.automation.inspect(
-                checkAdultFilter: status.enablesAdultFilter, checkAdultApps: status.appAgeRestriction != nil,
-                passcode: existingPasscode)
             guard status.shareAcrossDevicesVerified != true || baseline.shareAcrossDevicesEnabled == true else {
                 throw AppleScreenTimeAutomationError.sharingRequired
             }
-            // Retry with the same saved code; replacing an existing code requires explicit input.
             if baseline.hasPasscode, existingPasscode?.isEmpty != false {
+                self.setupNeedsCurrentCode = true
                 throw AppleScreenTimeAutomationError.existingPasscodeRequired
             }
             let operation = try await self.service.resumeAppleLockdownSetup(operationID: operationID)
             self.activity = .settingCode
+            // Installation may change the native code before a later step fails.
+            self.checkedSetupOperationID = nil
+            self.setupNeedsCurrentCode = false
             try await self.automation.install(
-                passcode: operation.passcode, replacing: existingPasscode,
+                passcode: operation.passcode, replacing: baseline.hasPasscode ? existingPasscode : nil,
                 enableAdultFilter: status.enablesAdultFilter, appAgeRestriction: status.appAgeRestriction
             )
             try await self.verifyAndComplete(operation)
@@ -339,6 +371,8 @@ final class AppleProtectionModel: ObservableObject {
             operationID: operation.operationID, verifiedAppRating: verified.appAgeRating,
             shareAcrossDevicesVerified: verified.shareAcrossDevicesEnabled)
         codeCheck = nil
+        setupNeedsCurrentCode = false
+        checkedSetupOperationID = nil
         message = "Screen Time is ready."
     }
 
@@ -359,7 +393,7 @@ final class AppleProtectionModel: ObservableObject {
         }
         do { try await withNativeOperation(action) } catch {
             // These errors contain only fixed descriptions; the automation never returns native UI text.
-            message = error.localizedDescription
+            message = "\((self.activity ?? activity).failureLabel) \(error.localizedDescription)"
             hasError = true
             if let current = try? await service.appleLockdownStatus() { snapshot = current }
         }

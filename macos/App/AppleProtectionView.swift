@@ -219,7 +219,6 @@ struct AppleProtectionSetupView: View {
     @State private var hasInspected = false
     @State private var showsCodeStep = false
     @FocusState private var codeIsFocused: Bool
-    @State private var showsRetry = false
     @State private var enableAdultFilter = true
     @State private var blockAdultApps = true
     @State private var currentCode = ""
@@ -288,7 +287,7 @@ struct AppleProtectionSetupView: View {
             }
             if isPending {
                 Text(
-                    "Hard Pause saved the private code before setup stopped. Check whether macOS accepted it before you try again."
+                    "Hard Pause will check your progress and finish setup with the saved private code."
                 )
             } else if !hasInspected {
                 ScreenTimeBenefits()
@@ -328,11 +327,10 @@ struct AppleProtectionSetupView: View {
                 Text("Setup opens System Settings. Look away if you do not want to see the new code.")
                     .font(.callout)
             }
-            if isPending && showsRetry {
+            if isPending && model.setupNeedsCurrentCode {
                 codeEntry(
-                    "Original Screen Time code",
-                    detail:
-                        "Enter your original code if it is still set. Leave empty if there is no code. Hard Pause will reuse its saved private code."
+                    "Current Screen Time code",
+                    detail: "Enter your current 4-digit code so Hard Pause can finish setup."
                 )
             }
             if let activity = model.activity {
@@ -348,18 +346,9 @@ struct AppleProtectionSetupView: View {
                 }
                 Spacer()
                 if isPending {
-                    if showsRetry {
-                        Button("Retry setup") { runSetup(retry: true) }
-                            .buttonStyle(PauseButtonStyle())
-                            .disabled(!currentCode.isEmpty && !AppleScreenTimeAutomation.validCode(currentCode))
-                    }
-                    Button("Verify setup") {
-                        Task {
-                            await model.verifySetup()
-                            if model.snapshot?.phase == .active { dismiss() } else { showsRetry = true }
-                        }
-                    }
-                    .buttonStyle(PauseButtonStyle(primary: true))
+                    Button("Continue setup") { runSetup(retry: true) }
+                        .buttonStyle(PauseButtonStyle(primary: true))
+                        .disabled(model.setupNeedsCurrentCode && !AppleScreenTimeAutomation.validCode(currentCode))
                 } else if !hasInspected {
                     Button("Continue") {
                         Task {
@@ -434,7 +423,7 @@ struct AppleProtectionSetupView: View {
         currentCode = ""
         Task {
             if retry {
-                await model.retrySetup(existingPasscode: oldCode.isEmpty ? nil : oldCode)
+                await model.continueSetup(existingPasscode: oldCode.isEmpty ? nil : oldCode)
             } else {
                 await model.setUp(
                     enablesAdultFilter: enableAdultFilter, blocksAdultApps: blockAdultApps,

@@ -168,7 +168,7 @@ final class AppleProtectionModelTests: XCTestCase {
             completedSetupSnapshot: makeSnapshot(phase: .active)
         )
         let automation = FakeAppleScreenTimeAutomation(events: events)
-        automation.verifyError = AppleScreenTimeAutomationError.verificationRequired
+        automation.verifyErrors = [AppleScreenTimeAutomationError.verificationRequired]
         let model = AppleProtectionModel(service: service, automation: automation)
 
         await model.setUp(enablesAdultFilter: false, existingPasscode: nil)
@@ -179,87 +179,147 @@ final class AppleProtectionModelTests: XCTestCase {
         )
         XCTAssertTrue(service.completedSetupOperationIDs.isEmpty)
         XCTAssertEqual(model.snapshot, pending)
-        XCTAssertEqual(model.message, AppleScreenTimeAutomationError.verificationRequired.localizedDescription)
+        XCTAssertEqual(
+            model.message,
+            "Could not verify Screen Time setup. "
+                + AppleScreenTimeAutomationError.verificationRequired.localizedDescription
+        )
     }
 
-    func testRetryResumesTheSameSetupOperationWithoutProAccess() async {
+    func testContinueRequestsCurrentCodeThenResumesTheSameOperationWithoutProAccess() async {
         let events = AppleProtectionEventLog()
         let operationID = UUID()
         let restriction = AppleAppAgeRestriction(baseline: .eighteen)
         let pending = makeSnapshot(
             phase: .pendingSetup, operationID: operationID,
             appAgeRestriction: restriction, shareAcrossDevicesVerified: true)
-        let active = makeSnapshot(phase: .active)
         let service = FakeAppleProtectionService(
-            events: events,
-            snapshot: makeSnapshot(phase: .inactive),
+            events: events, snapshot: pending,
             setupOperation: makeOperation(id: operationID, snapshot: pending),
-            completedSetupSnapshot: active
-        )
+            completedSetupSnapshot: makeSnapshot(phase: .active))
         let automation = FakeAppleScreenTimeAutomation(events: events)
+        automation.inspection = AppleScreenTimeInspection(
+            hasPasscode: true, adultFilterEnabled: false, shareAcrossDevicesEnabled: true)
         automation.inspection.appAgeRating = .eighteen
-        automation.installError = AppleScreenTimeAutomationError.unsupportedScreen
-        let model = AppleProtectionModel(service: service, automation: automation)
+        automation.verifyErrors = [AppleScreenTimeAutomationError.appRestrictionNotVerified]
+        let model = AppleProtectionModel(service: service, automation: automation, hasProAccess: false)
 
-        await model.setUp(enablesAdultFilter: false, blocksAdultApps: true, existingPasscode: nil)
-        XCTAssertEqual(model.snapshot, pending)
+        await model.continueSetup()
+        XCTAssertTrue(model.setupNeedsCurrentCode)
+        XCTAssertFalse(model.hasError)
+        XCTAssertTrue(automation.installReplacementWasProvided.isEmpty)
         XCTAssertTrue(service.completedSetupOperationIDs.isEmpty)
 
-        events.removeAll()
-        automation.installError = nil
-        automation.inspection = AppleScreenTimeInspection(
-            hasPasscode: true,
-            adultFilterEnabled: false, appAgeRating: .thirteen, shareAcrossDevicesEnabled: true
-        )
-        let recoveryModel = AppleProtectionModel(service: service, automation: automation, hasProAccess: false)
         automation.inspection.shareAcrossDevicesEnabled = false
-        await recoveryModel.retrySetup(existingPasscode: "4321")
-        XCTAssertTrue(service.resumedSetupOperationIDs.isEmpty)
-        XCTAssertEqual(automation.installedAppRestrictions, [restriction])
-        XCTAssertEqual(recoveryModel.message, AppleScreenTimeAutomationError.sharingRequired.localizedDescription)
-        events.removeAll()
-        automation.inspection.shareAcrossDevicesEnabled = true
-        await recoveryModel.retrySetup(existingPasscode: "4321")
+        await model.continueSetup(existingPasscode: "4321")
+        XCTAssertTrue(model.hasError)
+        XCTAssertTrue(automation.installReplacementWasProvided.isEmpty)
+        XCTAssertEqual(events.values.filter { $0 == "verify" }.count, 1)
 
-        XCTAssertEqual(
-            events.values,
-            ["status", "inspect", "resume setup", "install", "verify", "complete setup"]
-        )
-        XCTAssertEqual(service.resumedSetupOperationIDs, [operationID])
+        automation.inspection.shareAcrossDevicesEnabled = true
+        automation.verifyErrors = [AppleScreenTimeAutomationError.unsupportedScreen]
+        await model.continueSetup(existingPasscode: "4321")
+        XCTAssertEqual(model.snapshot, pending)
+        XCTAssertFalse(model.setupNeedsCurrentCode)
+        XCTAssertTrue(model.hasError)
+
+        // The code may now be installed: recheck it before asking for the old code again.
+        await model.continueSetup()
+        XCTAssertEqual(service.resumedSetupOperationIDs, [operationID, operationID, operationID])
         XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
-        XCTAssertEqual(automation.installReplacementWasProvided, [false, true])
-        XCTAssertEqual(automation.installedAppRestrictions, [restriction, restriction])
-        XCTAssertFalse(recoveryModel.hasProAccess)
-        XCTAssertEqual(recoveryModel.snapshot, active)
+        XCTAssertEqual(automation.installReplacementWasProvided, [true])
+        XCTAssertEqual(automation.installedAppRestrictions, [restriction])
+        XCTAssertEqual(events.values.filter { $0 == "verify" }.count, 3)
+        XCTAssertFalse(events.values.contains("begin setup"))
+        XCTAssertFalse(model.setupNeedsCurrentCode)
+        XCTAssertEqual(model.snapshot?.phase, .active)
     }
 
-    func testRetryWithExistingPasscodeRequiresAnExplicitCodeBeforeResume() async {
+    func testContinueRequiresRequestedCodeBeforeResumingInstallation() async {
         let events = AppleProtectionEventLog()
         let operationID = UUID()
         let pending = makeSnapshot(phase: .pendingSetup, operationID: operationID)
         let service = FakeAppleProtectionService(
-            events: events,
-            snapshot: pending,
-            setupOperation: makeOperation(id: operationID, snapshot: pending),
-            completedSetupSnapshot: makeSnapshot(phase: .active)
-        )
+            events: events, snapshot: pending,
+            setupOperation: makeOperation(id: operationID, snapshot: pending))
         let automation = FakeAppleScreenTimeAutomation(events: events)
         automation.inspection = AppleScreenTimeInspection(
-            hasPasscode: true,
-            adultFilterEnabled: false
-        )
+            hasPasscode: true, adultFilterEnabled: false, shareAcrossDevicesEnabled: true)
+        automation.verifyErrors = [AppleScreenTimeAutomationError.verificationRequired]
         let model = AppleProtectionModel(service: service, automation: automation)
+        await model.continueSetup()
+        events.removeAll()
 
-        await model.retrySetup(existingPasscode: "")
+        await model.continueSetup(existingPasscode: "")
 
         XCTAssertEqual(events.values, ["status", "status"])
-        XCTAssertTrue(service.resumedSetupOperationIDs.isEmpty)
+        XCTAssertEqual(service.resumedSetupOperationIDs, [operationID])
         XCTAssertTrue(automation.installReplacementWasProvided.isEmpty)
         XCTAssertEqual(model.snapshot, pending)
-        XCTAssertEqual(
-            model.message,
-            AppleScreenTimeAutomationError.existingPasscodeRequired.localizedDescription
-        )
+        XCTAssertTrue(model.setupNeedsCurrentCode)
+        XCTAssertTrue(model.hasError)
+    }
+
+    func testContinueWithoutNativeCodeInstallsTheSavedOperation() async {
+        let events = AppleProtectionEventLog()
+        let operationID = UUID()
+        let pending = makeSnapshot(phase: .pendingSetup, operationID: operationID)
+        let service = FakeAppleProtectionService(
+            events: events, snapshot: pending,
+            setupOperation: makeOperation(id: operationID, snapshot: pending),
+            completedSetupSnapshot: makeSnapshot(phase: .active))
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        automation.verifyErrors = [AppleScreenTimeAutomationError.verificationRequired]
+        let model = AppleProtectionModel(service: service, automation: automation)
+
+        await model.continueSetup()
+
+        XCTAssertEqual(automation.installReplacementWasProvided, [false])
+        XCTAssertEqual(service.resumedSetupOperationIDs, [operationID, operationID])
+        XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
+        XCTAssertFalse(events.values.contains("begin setup"))
+        XCTAssertFalse(model.setupNeedsCurrentCode)
+        XCTAssertEqual(model.snapshot?.phase, .active)
+    }
+
+    func testContinueCompletesAnAlreadyInstalledCodeWithoutInstallingAgain() async {
+        let events = AppleProtectionEventLog()
+        let operationID = UUID()
+        let pending = makeSnapshot(phase: .pendingSetup, operationID: operationID)
+        let service = FakeAppleProtectionService(
+            events: events, snapshot: pending,
+            setupOperation: makeOperation(id: operationID, snapshot: pending),
+            completedSetupSnapshot: makeSnapshot(phase: .active))
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        let model = AppleProtectionModel(service: service, automation: automation)
+
+        await model.continueSetup()
+
+        XCTAssertEqual(service.completedSetupOperationIDs, [operationID])
+        XCTAssertTrue(automation.installReplacementWasProvided.isEmpty)
+        XCTAssertFalse(model.setupNeedsCurrentCode)
+        XCTAssertEqual(model.snapshot?.phase, .active)
+    }
+
+    func testContinueStopsOnUnknownScreenWithoutRequestingCodeOrInstalling() async {
+        let events = AppleProtectionEventLog()
+        let operationID = UUID()
+        let pending = makeSnapshot(phase: .pendingSetup, operationID: operationID)
+        let service = FakeAppleProtectionService(
+            events: events, snapshot: pending,
+            setupOperation: makeOperation(id: operationID, snapshot: pending))
+        let automation = FakeAppleScreenTimeAutomation(events: events)
+        automation.verifyErrors = [AppleScreenTimeAutomationError.unsupportedScreen]
+        let model = AppleProtectionModel(service: service, automation: automation)
+
+        await model.continueSetup()
+
+        XCTAssertFalse(events.values.contains("inspect code"))
+        XCTAssertTrue(automation.installReplacementWasProvided.isEmpty)
+        XCTAssertTrue(service.completedSetupOperationIDs.isEmpty)
+        XCTAssertEqual(model.snapshot, pending)
+        XCTAssertFalse(model.setupNeedsCurrentCode)
+        XCTAssertTrue(model.hasError)
     }
 
     func testReleaseFailureDoesNotCompleteRelease() async {
@@ -291,7 +351,11 @@ final class AppleProtectionModelTests: XCTestCase {
         XCTAssertFalse(model.hasProAccess)
         XCTAssertTrue(service.completedReleaseOperationIDs.isEmpty)
         XCTAssertEqual(model.snapshot, releaseInProgress)
-        XCTAssertEqual(model.message, AppleScreenTimeAutomationError.verificationRequired.localizedDescription)
+        XCTAssertEqual(
+            model.message,
+            "Could not remove the Screen Time code. "
+                + AppleScreenTimeAutomationError.verificationRequired.localizedDescription
+        )
     }
 
     func testReleaseRemovesOnlyHardPauseWebsiteEntries() async {
@@ -399,7 +463,7 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
     )
     var sharingError: Error?
     var installError: Error?
-    var verifyError: Error?
+    var verifyErrors: [Error] = []
     var releaseError: Error?
     var websites: AppleScreenTimeWebsites?
     var websiteReadError: Error?
@@ -444,7 +508,7 @@ private final class FakeAppleScreenTimeAutomation: AppleScreenTimeAutomating {
         passcode: String, requiresAdultFilter: Bool, appAgeRestriction: AppleAppAgeRestriction?, requiresSharing: Bool
     ) async throws -> AppleScreenTimeInspection {
         events.append("verify")
-        if let verifyError { throw verifyError }
+        if !verifyErrors.isEmpty { throw verifyErrors.removeFirst() }
         return AppleScreenTimeInspection(
             hasPasscode: true, adultFilterEnabled: requiresAdultFilter,
             appAgeRating: appAgeRestriction?.applied, shareAcrossDevicesEnabled: true)
