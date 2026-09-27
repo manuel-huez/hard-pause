@@ -217,6 +217,8 @@ struct AppleProtectionSetupView: View {
     @ObservedObject var model: AppleProtectionModel
     @Environment(\.dismiss) private var dismiss
     @State private var hasInspected = false
+    @State private var showsCodeStep = false
+    @FocusState private var codeIsFocused: Bool
     @State private var showsRetry = false
     @State private var enableAdultFilter = true
     @State private var blockAdultApps = true
@@ -241,7 +243,9 @@ struct AppleProtectionSetupView: View {
                 accessibilityStep
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .padding(24).frame(width: 540)
+        .foregroundStyle(PauseTheme.ink)
         .background(PauseTheme.background)
         .interactiveDismissDisabled(model.isBusy)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -278,7 +282,7 @@ struct AppleProtectionSetupView: View {
     private var setupSteps: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text(isPending ? "Finish Screen Time setup" : "Add Screen Time protection")
+                Text(setupTitle)
                     .font(PauseFont.display(24, relativeTo: .title))
                 ProBadge()
             }
@@ -293,40 +297,43 @@ struct AppleProtectionSetupView: View {
                 )
                 .font(.callout)
                 .foregroundStyle(PauseTheme.muted)
-            } else {
-                Toggle("Block 18+ apps", isOn: $blockAdultApps)
-                if blockAdultApps {
-                    Text("Also limits installed apps. Stays on during plan breaks.")
-                        .foregroundStyle(PauseTheme.muted)
+            } else if !showsCodeStep {
+                VStack(alignment: .leading, spacing: 16) {
+                    restrictionOption(
+                        "Block 18+ apps", detail: "Limit apps with an adult age rating.", isOn: $blockAdultApps)
+                    restrictionOption(
+                        "Filter adult websites", detail: "Use Apple’s filter and sync website limits.",
+                        isOn: $enableAdultFilter)
                 }
-                Toggle("Use Apple’s adult website filter and sync websites", isOn: $enableAdultFilter)
-                if enableAdultFilter {
-                    Text("Apple’s filter and synced website limits stay on during plan breaks.")
-                        .foregroundStyle(PauseTheme.muted)
-                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(PauseTheme.surface, in: RoundedRectangle(cornerRadius: 14))
                 if enableAdultFilter || blockAdultApps {
-                    Text(
-                        "Content & Privacy must already be on in Screen Time. Review Apple’s settings before you enable it."
-                    )
-                    .foregroundStyle(PauseTheme.muted)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("These restrictions stay on during plan breaks.")
+                        Text("Before setup, turn on Content & Privacy in Screen Time.")
+                    }
+                    .font(.callout).foregroundStyle(PauseTheme.muted)
                 }
+            } else {
                 if model.codeCheck == true {
-                    Text("Screen Time already has a code. Enter it once so Hard Pause can replace it.")
-                    SecureField("Current Screen Time code", text: $currentCode)
-                        .textFieldStyle(.roundedBorder)
+                    codeEntry(
+                        "Current Screen Time code",
+                        detail: "Enter your current 4-digit code so Hard Pause can replace it.")
+                } else {
+                    Text("Hard Pause will create and keep a private Screen Time code for you.")
                 }
-                Text(
-                    "When you continue, look away if you want to avoid seeing any digits in System Settings. Hard Pause will return here when it finishes."
-                )
-                .font(.callout).foregroundStyle(PauseTheme.muted)
+                Text(restrictionSummary)
+                    .font(.callout).foregroundStyle(PauseTheme.muted)
+                Text("Setup opens System Settings. Look away if you do not want to see the new code.")
+                    .font(.callout)
             }
             if isPending && showsRetry {
-                Text(
-                    "If your original code is still set, enter it below. Leave this empty if Screen Time has no code. Hard Pause will reuse its saved private code."
+                codeEntry(
+                    "Original Screen Time code",
+                    detail:
+                        "Enter your original code if it is still set. Leave empty if there is no code. Hard Pause will reuse its saved private code."
                 )
-                .font(.callout).foregroundStyle(PauseTheme.muted)
-                SecureField("Original Screen Time code", text: $currentCode)
-                    .textFieldStyle(.roundedBorder)
             }
             if let activity = model.activity {
                 ProgressView(activity.label).controlSize(.small)
@@ -334,7 +341,11 @@ struct AppleProtectionSetupView: View {
                 Text(message).font(.callout).foregroundStyle(.orange)
             }
             HStack {
-                Button("Close") { dismiss() }.buttonStyle(PauseButtonStyle())
+                if showsCodeStep && !isPending {
+                    Button("Back") { showsCodeStep = false }.buttonStyle(PauseButtonStyle())
+                } else {
+                    Button("Close") { dismiss() }.buttonStyle(PauseButtonStyle())
+                }
                 Spacer()
                 if isPending {
                     if showsRetry {
@@ -357,6 +368,9 @@ struct AppleProtectionSetupView: View {
                         }
                     }
                     .buttonStyle(PauseButtonStyle(primary: true))
+                } else if !showsCodeStep {
+                    Button("Continue") { showsCodeStep = true }
+                        .buttonStyle(PauseButtonStyle(primary: true))
                 } else {
                     Button("Set private code") { runSetup(retry: false) }
                         .buttonStyle(PauseButtonStyle(primary: true))
@@ -364,6 +378,53 @@ struct AppleProtectionSetupView: View {
                 }
             }.disabled(model.isBusy)
         }
+    }
+
+    private var setupTitle: String {
+        if isPending { return "Finish Screen Time setup" }
+        if !hasInspected { return "Add Screen Time protection" }
+        return showsCodeStep ? "Set the private code" : "Choose protection"
+    }
+
+    private var restrictionSummary: String {
+        switch (blockAdultApps, enableAdultFilter) {
+        case (true, true): "Protects: 18+ apps and adult websites."
+        case (true, false): "Protects: 18+ apps."
+        case (false, true): "Protects: adult websites."
+        case (false, false): "Keeps your current Screen Time restrictions."
+        }
+    }
+
+    private func restrictionOption(_ title: String, detail: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.body.weight(.medium))
+                Text(detail).font(.callout).foregroundStyle(PauseTheme.muted)
+            }
+        }
+        .toggleStyle(.checkbox)
+    }
+
+    private func codeEntry(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.body.weight(.medium))
+            Text(detail).font(.callout).foregroundStyle(PauseTheme.muted)
+            SecureField("4 digits", text: $currentCode)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .frame(width: 120, height: 32)
+                .background(PauseTheme.surface, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            codeIsFocused ? PauseTheme.coral : PauseTheme.stroke, lineWidth: codeIsFocused ? 1.5 : 1)
+                }
+                .focused($codeIsFocused)
+                .accessibilityLabel(title)
+                .privacySensitive()
+        }
+        .task { codeIsFocused = true }
     }
 
     private var isPending: Bool { model.snapshot?.phase == .pendingSetup }
