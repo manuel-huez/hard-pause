@@ -127,6 +127,7 @@ struct AppleProtectionCard: View {
     }
 
     private var stateLabel: String {
+        if model.snapshot?.phase == .active, model.websiteSyncNeedsRetry { return "Website sync incomplete" }
         if needsAttention { return "Needs attention" }
         switch model.snapshot?.phase {
         case .inactive: return "Not set up"

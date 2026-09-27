@@ -736,7 +736,7 @@ private actor ScreenTimeAccessibilityWorker {
     }
 
     private func websiteRows(in section: AXUIElement) throws -> [WebsiteRow] {
-        let list = try unique(section) { role($0) == kAXListRole }
+        let list = try unique(section) { [kAXListRole, kAXOutlineRole].contains(role($0)) }
         guard try readAttribute(list, kAXChildrenAttribute) is [AXUIElement] else {
             throw AppleScreenTimeAutomationError.websiteSyncUnavailable
         }
