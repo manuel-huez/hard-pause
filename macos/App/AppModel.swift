@@ -669,10 +669,13 @@ final class AppModel: ObservableObject {
     private func requestAutomaticServiceUpdateIfReady() async {
         guard !isRecoveringAppAfterUpdate, serviceCanUpdateWithoutApproval, !appleProtection.isBusy,
             !isRequestingServiceUpdate, !isInstallingService, !isBusy, !hasPendingMutation,
+            !websiteSyncPending, !isReconcilingAppleProtection,
             snapshot?.protection.isEnforcing == true,
             snapshot?.protection.issues.isEmpty == true,
             Date().timeIntervalSince(lastServiceUpdateRequest) >= serviceUpdateRetryInterval
         else { return }
+        isRequestingServiceUpdate = true
+        defer { isRequestingServiceUpdate = false }
         guard let status = try? await service.updateInstallationStatus(),
             status.serviceVersion == snapshot?.protection.serviceVersion,
             let bundleBuildText = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
@@ -691,8 +694,6 @@ final class AppModel: ObservableObject {
                     && browserWorkerReadyForHandoff
                     && [.inactive, .active, .waitingForFullUnlock].contains(appleStatus.phase))
         else { return }
-        isRequestingServiceUpdate = true
-        defer { isRequestingServiceUpdate = false }
         if hasActiveBlock {
             guard await probeBrowserWorkerReadiness() else { return }
         }
@@ -709,7 +710,7 @@ final class AppModel: ObservableObject {
 
     private func reconcileAppleProtection() async {
         guard !isRecoveringAppAfterUpdate, !isReconcilingAppleProtection, !appleProtection.isBusy,
-            !appleProtection.isSyncingWebsites
+            !appleProtection.isSyncingWebsites, !isRequestingServiceUpdate, !isInstallingService
         else { return }
         isReconcilingAppleProtection = true
         defer { isReconcilingAppleProtection = false }
