@@ -667,8 +667,17 @@ private actor ScreenTimeAccessibilityWorker {
 
     private func websiteEntrySheet() throws -> AXUIElement {
         guard let sheet = try credentialPrompt(),
-            try nodes(sheet).contains(where: { matches($0, keys: ["Add Website"]) }),
-            (try? unique(sheet) { role($0) == kAXTextFieldRole && text($0, kAXSubroleAttribute).isEmpty }) != nil
+            (try? unique(sheet) {
+                role($0) == kAXTextFieldRole && text($0, kAXSubroleAttribute).isEmpty
+                    && (matches($0, keys: ["URLHeaderAndLabel"])
+                        || strings.matches(text($0, kAXPlaceholderValueAttribute), keys: ["URLHeaderAndLabel"]))
+            }) != nil,
+            (try? unique(sheet) {
+                role($0) == kAXButtonRole && matches($0, keys: ["DoneButton", "Done"])
+            }) != nil,
+            (try? unique(sheet) {
+                role($0) == kAXButtonRole && matches($0, keys: ["CancelButton", "Cancel"])
+            }) != nil
         else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
         return sheet
     }

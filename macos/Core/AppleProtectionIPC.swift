@@ -226,7 +226,10 @@ struct AppleWebsiteSyncTargets: Codable, Equatable, Sendable {
                     Self.blocks(domain, with: rules)
                 })
         }
-        self.restricted = restricted.sorted()
+        // Apple's parent-domain entries also cover their subdomains.
+        self.restricted = restricted.filter { domain in
+            !restricted.contains { domain.hasSuffix(".\($0)") }
+        }.sorted()
         self.allowed = Set(
             allowed.filter { domain in
                 !restricted.contains(where: {

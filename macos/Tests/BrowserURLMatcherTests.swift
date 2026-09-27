@@ -75,6 +75,27 @@ final class BrowserURLMatcherTests: XCTestCase {
         XCTAssertNil(URLPatternRule.exactDomain(from: "file://example.com"))
     }
 
+    func testAppleTargetsCollapseCoveredHostsAcrossPlansWithoutAddingParents() {
+        let snapshot = { (domains: [String]) in
+            ProtectedBlockSnapshot(
+                id: UUID(), revision: 1,
+                draft: ProtectedBlockDraft(
+                    name: "Test",
+                    rules: ProtectedRules(
+                        blockedDomains: domains, blockedApplications: [], blocksStarterAdultSites: false),
+                    breakDelay: 60, fullUnlockDelay: 60, breakDuration: 60, elapsedDuration: nil),
+                phase: .active(naturalEndRemaining: nil))
+        }
+        let parent = snapshot(["example.com"])
+        let children = snapshot(["www.example.com", "deep.sub.example.com", "notexample.com", "only.other.test"])
+        XCTAssertEqual(
+            AppleWebsiteSyncTargets(blocks: [parent, children]).restricted,
+            ["example.com", "notexample.com", "only.other.test"])
+        XCTAssertEqual(
+            AppleWebsiteSyncTargets(blocks: [children]).restricted,
+            children.draft.rules.blockedDomains.sorted())
+    }
+
     func testOnlyCurrentlyEnforcedPhasesRedirect() {
         let draft = ProtectedBlockDraft(
             name: "Test", rules: rules, breakDelay: 60,
