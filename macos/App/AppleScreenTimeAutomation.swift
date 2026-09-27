@@ -111,7 +111,7 @@ struct ScreenTimeUIStrings {
         "ContentRestrictionsTitle", "ContentRestrictionsTitle_GreyMatterAlternate", "AADC_ContentRestrictionsTitle",
         "WebContentSpecifierName", "RestrictedTitle", "Allowed", "DoneButton", "Done",
         "Access to Web Content", "Customize…", "Change Passcode…", "Add", "Remove", "Add Website", "Cancel",
-        "CancelButton",
+        "CancelButton", "URLHeaderAndLabel",
         "Restrict explicit content, purchases, downloads, and privacy settings.",
         "Family Member",
         "StoreRestrictionsTitle", "AppsSpecifierName", "DontAllowLabel",
@@ -153,6 +153,7 @@ enum AppleScreenTimeAutomationError: LocalizedError {
     case appRestrictionNotVerified
     case webFilterNotVerified
     case websiteSyncUnavailable
+    case websiteEntryFailed(phase: String, reason: String)
     case contentRestrictionsRequired
     case unsupportedWebsitePolicy
     case personalSettingsRequired
@@ -187,11 +188,13 @@ enum AppleScreenTimeAutomationError: LocalizedError {
                 "Finish Apple's passcode recovery step in System Settings, then continue setup. The new code is saved securely."
         case .verificationRequired:
             return
-                "The saved code could not be verified. Protection is not confirmed. Keep System Settings open and continue setup."
+                "Screen Time did not confirm the code entry. The saved code was kept. Close the code prompt and try again."
         case .appRestrictionNotVerified:
-            return "The Screen Time app age limit was not applied. Keep System Settings open and continue setup."
+            return "The Screen Time app age setting was not confirmed. Try again."
         case .webFilterNotVerified:
             return "Apple's adult website filter was not applied. Keep System Settings open and continue setup."
+        case .websiteEntryFailed(let phase, let reason):
+            return "Could not add the Screen Time website while \(phase). \(reason)"
         case .websiteSyncUnavailable:
             return
                 "Screen Time website sync could not be verified. Check Content & Privacy in System Settings, then retry."
@@ -510,16 +513,27 @@ private actor ScreenTimeAccessibilityWorker {
     }
 
     func restoreAppAge(passcode: String, restriction: AppleAppAgeRestriction) async throws -> AppleAppAgeRating {
-        try await openAppSettings(passcode: passcode)
-        if let target = restriction.restorationTarget(current: try appAgeRating()) {
-            try await selectAppAge(target, passcode: passcode)
+        do {
+            try await openAppSettings(passcode: passcode)
+            if let target = restriction.restorationTarget(current: try appAgeRating()) {
+                try await selectAppAge(target, passcode: passcode)
+            }
+            let verified = try appAgeRating()
+            guard restriction.restorationTarget(current: verified) == nil else {
+                throw AppleScreenTimeAutomationError.appRestrictionNotVerified
+            }
+            try await closeAppSettings()
+            return verified
+        } catch {
+            if (try? codePrompt(expecting: .authenticate)) != nil {
+                try? cancelCodePrompt()
+                try? await settle()
+            }
+            if let sheet = try? credentialPrompt(), (try? appAgeControl(in: sheet)) != nil {
+                try? await closeAppSettings()
+            }
+            throw error
         }
-        let verified = try appAgeRating()
-        guard restriction.restorationTarget(current: verified) == nil else {
-            throw AppleScreenTimeAutomationError.appRestrictionNotVerified
-        }
-        try await closeAppSettings()
-        return verified
     }
 
     func release(passcode: String, restoreUnrestricted: Bool, appAgeRestriction: AppleAppAgeRestriction?) async throws {
@@ -587,35 +601,73 @@ private actor ScreenTimeAccessibilityWorker {
     private enum WebsiteKind { case allowed, restricted }
 
     private func addWebsite(_ domain: String, to kind: WebsiteKind, passcode: String) async throws {
-        let list = try websiteLists()
-        if (kind == .allowed ? list.websites.allowed : list.websites.restricted).contains(domain) { return }
-        try press(kind == .allowed ? list.allowedAdd : list.restrictedAdd)
-        try await settle()
-        if (try? codePrompt(expecting: .authenticate)) != nil {
-            try await authorizeWebsiteChange(passcode: passcode)
-            if (try? websiteEntrySheet()) == nil {
-                let current = try websiteLists()
-                try press(kind == .allowed ? current.allowedAdd : current.restrictedAdd)
-                try await settle()
+        var phase = "checking the website list"
+        var entry: WebsiteEntryForm?
+        do {
+            let list = try websiteLists()
+            if (kind == .allowed ? list.websites.allowed : list.websites.restricted).contains(domain) { return }
+            phase = "opening the URL form"
+            try press(kind == .allowed ? list.allowedAdd : list.restrictedAdd)
+            try await settle()
+            if (try? codePrompt(expecting: .authenticate)) != nil {
+                phase = "authorizing the website change"
+                try await authorizeWebsiteChange(passcode: passcode)
+                if (try? websiteEntryForm()) == nil {
+                    let current = try websiteLists()
+                    try press(kind == .allowed ? current.allowedAdd : current.restrictedAdd)
+                    try await settle()
+                }
             }
-        }
-        let sheet = try websiteEntrySheet()
-        let field = try unique(sheet) { role($0) == kAXTextFieldRole }
-        guard
-            AXUIElementSetAttributeValue(
-                field, kAXValueAttribute as CFString, "https://\(domain)" as CFString
-            ) == .success
-        else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
-        guard let done = element(sheet, kAXDefaultButtonAttribute),
-            element(sheet, kAXCancelButtonAttribute).map({ !CFEqual($0, done) }) ?? true
-        else {
-            throw AppleScreenTimeAutomationError.websiteSyncUnavailable
-        }
-        try press(done)
-        try await settle()
-        let updated = try websiteLists().websites
-        guard (kind == .allowed ? updated.allowed : updated.restricted).contains(domain) else {
-            throw AppleScreenTimeAutomationError.websiteSyncUnavailable
+            phase = "recognizing the URL form"
+            let form = try websiteEntryForm()
+            entry = form
+            phase = "waiting for the URL field"
+            if (try readAttribute(form.field, kAXFocusedAttribute) as? NSNumber)?.boolValue != true,
+                isSettable(form.field, kAXFocusedAttribute)
+            {
+                guard
+                    AXUIElementSetAttributeValue(form.field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                        == .success
+                else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
+            }
+            let focusDeadline = ContinuousClock.now + .seconds(3)
+            while try (readAttribute(form.field, kAXEnabledAttribute) as? NSNumber)?.boolValue != true
+                || (readAttribute(form.field, kAXFocusedAttribute) as? NSNumber)?.boolValue != true
+            {
+                guard ContinuousClock.now < focusDeadline else {
+                    throw AppleScreenTimeAutomationError.websiteSyncUnavailable
+                }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            let url = "https://\(domain)"
+            phase = "writing the URL"
+            guard AXUIElementSetAttributeValue(form.field, kAXValueAttribute as CFString, url as CFString) == .success
+            else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
+            phase = "checking the entered URL and Done button"
+            let valueDeadline = ContinuousClock.now + .seconds(3)
+            while try readAttribute(form.field, kAXValueAttribute) as? String != url
+                || (try readAttribute(form.done, kAXEnabledAttribute) as? NSNumber)?.boolValue != true
+            {
+                guard ContinuousClock.now < valueDeadline else {
+                    throw AppleScreenTimeAutomationError.websiteSyncUnavailable
+                }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            phase = "saving the website"
+            try press(form.done)
+            try await settle()
+            phase = "verifying the website list"
+            let updated = try websiteLists().websites
+            guard (kind == .allowed ? updated.allowed : updated.restricted).contains(domain) else {
+                throw AppleScreenTimeAutomationError.websiteSyncUnavailable
+            }
+        } catch {
+            if let form = entry ?? (try? websiteEntryForm()) {
+                try? press(form.cancel)
+                try? await settle()
+            }
+            let reason = (error as? AppleScreenTimeAutomationError)?.localizedDescription ?? "The operation stopped."
+            throw AppleScreenTimeAutomationError.websiteEntryFailed(phase: phase, reason: reason)
         }
     }
 
@@ -682,21 +734,27 @@ private actor ScreenTimeAccessibilityWorker {
         let restrictedRemove: AXUIElement
     }
 
-    private func websiteEntrySheet() throws -> AXUIElement {
-        guard let sheet = try credentialPrompt(),
-            (try? unique(sheet) {
-                role($0) == kAXTextFieldRole && text($0, kAXSubroleAttribute).isEmpty
-                    && (matches($0, keys: ["URLHeaderAndLabel"])
-                        || strings.matches(text($0, kAXPlaceholderValueAttribute), keys: ["URLHeaderAndLabel"]))
-            }) != nil,
-            (try? unique(sheet) {
-                role($0) == kAXButtonRole && matches($0, keys: ["DoneButton", "Done"])
-            }) != nil,
-            (try? unique(sheet) {
-                role($0) == kAXButtonRole && matches($0, keys: ["CancelButton", "Cancel"])
-            }) != nil
-        else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
-        return sheet
+    private struct WebsiteEntryForm {
+        let field: AXUIElement
+        let done: AXUIElement
+        let cancel: AXUIElement
+    }
+
+    private func websiteEntryForm() throws -> WebsiteEntryForm {
+        guard let sheet = try credentialPrompt() else { throw AppleScreenTimeAutomationError.websiteSyncUnavailable }
+        let controls = try nodes(sheet)
+        let fields = controls.filter {
+            role($0) == kAXTextFieldRole
+                && !["AXPasscodeBox", kAXSecureTextFieldSubrole].contains(text($0, kAXSubroleAttribute))
+                && (matches($0, keys: ["URLHeaderAndLabel"])
+                    || strings.matches(text($0, kAXPlaceholderValueAttribute), keys: ["URLHeaderAndLabel"]))
+        }
+        let done = controls.filter { role($0) == kAXButtonRole && matches($0, keys: ["DoneButton", "Done"]) }
+        let cancel = controls.filter { role($0) == kAXButtonRole && matches($0, keys: ["CancelButton", "Cancel"]) }
+        guard fields.count == 1, done.count == 1, cancel.count == 1 else {
+            throw AppleScreenTimeAutomationError.websiteSyncUnavailable
+        }
+        return WebsiteEntryForm(field: fields[0], done: done[0], cancel: cancel[0])
     }
 
     private func openWebsiteList(passcode: String) async throws {
@@ -938,15 +996,14 @@ private actor ScreenTimeAccessibilityWorker {
         default:
             throw AppleScreenTimeAutomationError.unsupportedPasscodeFlow
         }
-        if start.fields.allSatisfy({ isSettable($0, kAXValueAttribute) }) {
-            guard start.fields.count == 1 || start.fields.count == code.utf8.count else {
-                throw AppleScreenTimeAutomationError.unsupportedPasscodeFlow
-            }
-            for (field, value) in zip(start.fields, start.fields.count == 1 ? [code] : code.map(String.init)) {
-                guard isScreenTimeProcess(start.processID),
-                    AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, value as CFString) == .success
-                else { throw AppleScreenTimeAutomationError.unsupportedPasscodeFlow }
-            }
+        let valueIsSettable = start.fields.allSatisfy { isSettable($0, kAXValueAttribute) }
+        // SwiftUI passcode boxes can accept AX value writes without sending native text-input events.
+        let writesSingleField = start.fields.count == 1 && valueIsSettable
+        if writesSingleField {
+            guard isScreenTimeProcess(start.processID),
+                AXUIElementSetAttributeValue(start.fields[0], kAXValueAttribute as CFString, code as CFString)
+                    == .success
+            else { throw AppleScreenTimeAutomationError.unsupportedPasscodeFlow }
         } else {
             guard start.focusedField != nil else { throw AppleScreenTimeAutomationError.unsupportedPasscodeFlow }
             for digit in code.utf8 {
@@ -980,7 +1037,7 @@ private actor ScreenTimeAccessibilityWorker {
             }
             if transition == .authenticated, samePrompt == nil,
                 (try? webFilter(in: prompt)) != nil || (try? appAgeControl(in: prompt)) != nil
-                    || (try? websiteLists()) != nil || (try? websiteEntrySheet()) != nil
+                    || (try? websiteLists()) != nil || (try? websiteEntryForm()) != nil
             {
                 return
             }

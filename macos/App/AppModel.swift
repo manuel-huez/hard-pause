@@ -55,8 +55,6 @@ final class AppModel: ObservableObject {
     private var secondsSinceIdleRefresh = 0
     private var lastWebsiteTargets: AppleWebsiteSyncTargets?
     private var websiteSyncPending = false
-    private var lastWebsiteSyncAttempt = Date.distantPast
-    private var websiteSyncRetryInterval: TimeInterval = 30
     private var isReconcilingAppleProtection = false
     private var lastAutomaticAppleRelease = Date.distantPast
     private var automaticAppleReleaseRetryInterval: TimeInterval = 30
@@ -669,7 +667,7 @@ final class AppModel: ObservableObject {
     }
 
     private func requestAutomaticServiceUpdateIfReady() async {
-        guard !isRecoveringAppAfterUpdate, serviceCanUpdateWithoutApproval,
+        guard !isRecoveringAppAfterUpdate, serviceCanUpdateWithoutApproval, !appleProtection.isBusy,
             !isRequestingServiceUpdate, !isInstallingService, !isBusy, !hasPendingMutation,
             snapshot?.protection.isEnforcing == true,
             snapshot?.protection.issues.isEmpty == true,
@@ -681,7 +679,9 @@ final class AppModel: ObservableObject {
             let bundleBuild = UInt64(bundleBuildText),
             bundleBuild > status.installedAppBuild
         else { return }
-        guard let appleStatus = try? await service.appleLockdownStatus() else { return }
+        guard let appleStatus = try? await service.appleLockdownStatus(),
+            appleStatus.websiteSyncOperationID == nil
+        else { return }
         let hasActiveBlock =
             snapshot?.blocks.contains { $0.phase != .inactive } == true
             || appleStatus.phase != .inactive
@@ -728,14 +728,9 @@ final class AppModel: ObservableObject {
                 ? 30 : min(automaticAppleReleaseRetryInterval * 2, 900)
             return
         }
-        guard appleProtection.pendingWebsiteOverwrite == nil,
-            websiteSyncPending || appleProtection.websiteSyncNeedsRetry || status.websiteSyncOperationID != nil
+        guard appleProtection.pendingWebsiteOverwrite == nil, !appleProtection.websiteSyncNeedsRetry,
+            websiteSyncPending || status.websiteSyncOperationID != nil
         else { return }
-        if !websiteSyncPending,
-            Date().timeIntervalSince(lastWebsiteSyncAttempt) < websiteSyncRetryInterval
-        {
-            return
-        }
         websiteSyncPending = false
         if [.active, .waitingForFullUnlock, .readyForRelease].contains(status.phase),
             status.enablesAdultFilter,
@@ -745,9 +740,7 @@ final class AppModel: ObservableObject {
                 || status.mirroredAllowedDomains?.isEmpty == false
                 || status.websiteSyncOperationID != nil
         {
-            lastWebsiteSyncAttempt = Date()
-            let synced = await appleProtection.syncWebsites()
-            websiteSyncRetryInterval = synced ? 30 : min(websiteSyncRetryInterval * 2, 300)
+            await appleProtection.syncWebsites()
         }
     }
 

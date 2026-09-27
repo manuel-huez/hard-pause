@@ -56,6 +56,11 @@ struct AppleProtectionCard: View {
             if model.hasError, let message = model.message {
                 Text(message).font(.callout).foregroundStyle(.orange)
             }
+            if model.appAgeRestorationNeedsRetry {
+                Button("Retry app age setting") { Task { await model.retryAppAgeRestoration() } }
+                    .buttonStyle(PauseButtonStyle())
+                    .disabled(model.isBusy)
+            }
             if let message = model.websiteSyncMessage {
                 Text(message).font(.callout)
                     .foregroundStyle(model.websiteSyncNeedsRetry ? .orange : PauseTheme.muted)

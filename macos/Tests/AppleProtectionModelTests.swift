@@ -46,6 +46,18 @@ final class AppleProtectionModelTests: XCTestCase {
             XCTAssertNil(service.ageRestorationProof)
             XCTAssertEqual(events.values.filter { $0 == "restore app age" }.count, 1)
             XCTAssertTrue(model.hasError)
+            XCTAssertTrue(model.appAgeRestorationNeedsRetry)
+
+            automation.restoreAgeError = nil
+            service.ageRestorationCompletionError = nil
+            await model.retryAppAgeRestoration()
+            await model.refresh()
+
+            XCTAssertEqual(events.values.filter { $0 == "restore app age" }.count, 2)
+            XCTAssertEqual(service.ageRestorationProof?.operationID, service.ageRestorationOperation?.operationID)
+            XCTAssertNil(model.snapshot?.appAgeRestriction)
+            XCTAssertFalse(model.appAgeRestorationNeedsRetry)
+            XCTAssertFalse(model.hasError)
         }
     }
 

@@ -61,7 +61,8 @@ final class AppleProtectionModel: ObservableObject {
     private let operationLockURL: URL
     private var websiteSyncRequestedWhileBusy = false
     private var statusUnavailable = false
-    private var nextAppAgeRestorationAttempt = Date.distantPast
+    private var didAttemptAppAgeRestoration = false
+    @Published private(set) var appAgeRestorationNeedsRetry = false
 
     var isBusy: Bool { activity != nil }
     var isSyncingWebsites: Bool { activity == .syncingWebsites }
@@ -88,29 +89,38 @@ final class AppleProtectionModel: ObservableObject {
                 hasError = false
                 statusUnavailable = false
             }
-            if snapshot?.appAgeRestriction != nil,
-                [.active, .waitingForFullUnlock, .readyForRelease].contains(snapshot?.phase),
-                snapshot?.websiteSyncOperationID == nil, Date() >= nextAppAgeRestorationAttempt
-            {
-                // Keep the saved baseline until native verification and the durable completion both succeed.
-                await perform(.restoringAppAge) {
-                    let operation = try await self.service.beginAppleAppAgeRestoration()
-                    self.nextAppAgeRestorationAttempt = Date().addingTimeInterval(300)
-                    guard let restriction = operation.snapshot.appAgeRestriction else {
-                        throw AppleLockdownError.operationMismatch
-                    }
-                    let verified = try await self.automation.restoreAppAge(
-                        passcode: operation.passcode, restriction: restriction)
-                    self.snapshot = try await self.service.completeAppleAppAgeRestoration(
-                        operationID: operation.operationID, verifiedAppRating: verified)
-                    self.nextAppAgeRestorationAttempt = .distantPast
-                }
-            }
+            if snapshot?.appAgeRestriction == nil { appAgeRestorationNeedsRetry = false }
+            if !didAttemptAppAgeRestoration { await restoreAppAge() }
         } catch {
             statusUnavailable = true
             hasError = true
             message = error.localizedDescription
         }
+    }
+
+    func retryAppAgeRestoration() async {
+        await restoreAppAge()
+    }
+
+    private func restoreAppAge() async {
+        guard !isBusy, snapshot?.appAgeRestriction != nil,
+            [.active, .waitingForFullUnlock, .readyForRelease].contains(snapshot?.phase),
+            snapshot?.websiteSyncOperationID == nil
+        else { return }
+        // Keep the saved baseline until native verification and durable completion both succeed.
+        await perform(.restoringAppAge) {
+            let operation = try await self.service.beginAppleAppAgeRestoration()
+            // A failed native entry needs an explicit retry, never repeated background code attempts.
+            self.didAttemptAppAgeRestoration = true
+            guard let restriction = operation.snapshot.appAgeRestriction else {
+                throw AppleLockdownError.operationMismatch
+            }
+            let verified = try await self.automation.restoreAppAge(
+                passcode: operation.passcode, restriction: restriction)
+            self.snapshot = try await self.service.completeAppleAppAgeRestoration(
+                operationID: operation.operationID, verifiedAppRating: verified)
+        }
+        appAgeRestorationNeedsRetry = hasError && snapshot?.appAgeRestriction != nil
     }
 
     func inspectSettings() async {
@@ -278,7 +288,7 @@ final class AppleProtectionModel: ObservableObject {
             activity = nil
             if websiteSyncRequestedWhileBusy {
                 websiteSyncRequestedWhileBusy = false
-                Task { await syncWebsites() }
+                if !websiteSyncNeedsRetry { Task { await syncWebsites() } }
             }
         }
         var synced = false

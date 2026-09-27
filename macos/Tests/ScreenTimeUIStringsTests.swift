@@ -1,6 +1,22 @@
 import XCTest
 
 final class ScreenTimeUIStringsTests: XCTestCase {
+    func testInstalledURLFormLabelsAreLoadedForWebsiteSync() throws {
+        let bundle = try XCTUnwrap(
+            Bundle(path: "/System/Library/ExtensionKit/Extensions/ScreenTimePreferencesExtension.appex"))
+        let url = try XCTUnwrap(bundle.url(forResource: "Localizable", withExtension: "loctable"))
+        let translations = try XCTUnwrap(
+            PropertyListSerialization.propertyList(
+                from: Data(contentsOf: url), format: nil) as? [String: [String: Any]])
+        let labels = translations.values.compactMap { $0["URLHeaderAndLabel"] as? String }
+        XCTAssertFalse(labels.isEmpty)
+        let strings = ScreenTimeUIStrings()
+        for label in labels {
+            XCTAssertTrue(strings.matches(label, keys: ["URLHeaderAndLabel"]))
+        }
+        XCTAssertFalse(strings.matches("https://example.com", keys: ["URLHeaderAndLabel"]))
+    }
+
     func testAppRatingsUseLocalizedMeaningAndRejectUnknownOrAmbiguousScales() {
         let strings = ScreenTimeUIStrings(values: [
             "DontAllowLabel": ["許可しない"], "16+": ["فوق ١٦"], "18+": ["18+"],
