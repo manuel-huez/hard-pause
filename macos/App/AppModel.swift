@@ -53,11 +53,7 @@ final class AppModel: ObservableObject {
     let appleProtection: AppleProtectionModel
     private var cancellables = Set<AnyCancellable>()
     private var secondsSinceIdleRefresh = 0
-    private var lastWebsiteTargets: AppleWebsiteSyncTargets?
-    private var websiteSyncPending = false
     private var isReconcilingAppleProtection = false
-    private var lastAutomaticAppleRelease = Date.distantPast
-    private var automaticAppleReleaseRetryInterval: TimeInterval = 30
     private var browserActivity: NSObjectProtocol?
     private(set) var keepsBrowserProtectionRunning = false
     private var displayAnchor = SystemClock.read().continuousTime
@@ -429,7 +425,7 @@ final class AppModel: ObservableObject {
         if !BrowserWorkerClient.installedMachServices().isEmpty {
             _ = await probeBrowserWorkerReadiness()
             guard browserWorkerReadiness != nil else {
-                browserConnectionMessages[identifier] = "Hard Pause Browser Worker is unavailable. Try again."
+                browserConnectionMessages[identifier] = "Hard Pause Worker is unavailable. Try again."
                 return
             }
             browserWorkerProbeGeneration += 1
@@ -669,7 +665,7 @@ final class AppModel: ObservableObject {
     private func requestAutomaticServiceUpdateIfReady() async {
         guard !isRecoveringAppAfterUpdate, serviceCanUpdateWithoutApproval, !appleProtection.isBusy,
             !isRequestingServiceUpdate, !isInstallingService, !isBusy, !hasPendingMutation,
-            !websiteSyncPending, !isReconcilingAppleProtection,
+            !isReconcilingAppleProtection,
             snapshot?.protection.isEnforcing == true,
             snapshot?.protection.issues.isEmpty == true,
             Date().timeIntervalSince(lastServiceUpdateRequest) >= serviceUpdateRetryInterval
@@ -720,35 +716,30 @@ final class AppModel: ObservableObject {
             status.phase == .readyForRelease || status.phase == .releaseInProgress,
             status.websiteSyncOperationID == nil || status.phase == .releaseInProgress
         {
-            guard Date().timeIntervalSince(lastAutomaticAppleRelease) >= automaticAppleReleaseRetryInterval
-            else { return }
-            lastAutomaticAppleRelease = Date()
-            await appleProtection.finishEnd()
-            automaticAppleReleaseRetryInterval =
-                appleProtection.snapshot?.phase == .inactive
-                ? 30 : min(automaticAppleReleaseRetryInterval * 2, 900)
+            appleProtection.requestAutomation(.removeCode, automatically: true)
             return
         }
-        guard appleProtection.pendingWebsiteOverwrite == nil, !appleProtection.websiteSyncNeedsRetry,
-            websiteSyncPending || status.websiteSyncOperationID != nil
-        else { return }
-        websiteSyncPending = false
-        if [.active, .waitingForFullUnlock, .readyForRelease].contains(status.phase),
+        guard appleProtection.pendingWebsiteOverwrite == nil, !appleProtection.websiteSyncNeedsRetry else { return }
+        if status.websiteSyncOperationID != nil {
+            appleProtection.requestAutomation(
+                .syncWebsites, automatically: true,
+                targets: snapshot.map { AppleWebsiteSyncTargets(blocks: $0.blocks) })
+            return
+        }
+        guard snapshot?.protection.serviceVersion == ProtectedServiceContract.serviceVersion,
+            [.active, .waitingForFullUnlock, .readyForRelease].contains(status.phase),
             status.enablesAdultFilter,
-            let targets = lastWebsiteTargets,
-            !targets.restricted.isEmpty || !targets.allowed.isEmpty
-                || status.mirroredDomains?.isEmpty == false
-                || status.mirroredAllowedDomains?.isEmpty == false
-                || status.websiteSyncOperationID != nil
-        {
-            await appleProtection.syncWebsites()
+            let snapshot
+        else { return }
+        let targets = AppleWebsiteSyncTargets(blocks: snapshot.blocks)
+        if status.confirmedWebsiteTargets != targets {
+            appleProtection.requestAutomation(.syncWebsites, automatically: true, targets: targets)
+        } else {
+            appleProtection.clearWebsiteSyncRequest()
         }
     }
 
     private func accept(_ nextSnapshot: ProtectedServiceSnapshot) {
-        let websiteTargets = AppleWebsiteSyncTargets(blocks: nextSnapshot.blocks)
-        if lastWebsiteTargets != websiteTargets { websiteSyncPending = true }
-        lastWebsiteTargets = websiteTargets
         Task { @MainActor in
             await reconcileAppleProtection()
         }

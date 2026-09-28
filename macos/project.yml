@@ -10,8 +10,8 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: Apple Development
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
-    CURRENT_PROJECT_VERSION: 50
-    MARKETING_VERSION: 0.2.22
+    CURRENT_PROJECT_VERSION: 51
+    MARKETING_VERSION: 0.2.23
     LIBRARY_SEARCH_PATHS: $(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)
     OTHER_LDFLAGS: $(inherited) -lhard_pause_core
 packages:
@@ -136,6 +136,7 @@ targets:
       - App/AdultRatingStore.swift
       - App/ProtectedServiceClient.swift
       - App/SetupReadiness.swift
+      - App/Assets.xcassets
       - path: ../data/adult-domains
         type: folder
         buildPhase: resources
@@ -157,12 +158,12 @@ targets:
     info:
       path: BrowserWorker/Info.plist
       properties:
-        CFBundleDisplayName: Hard Pause Browser Worker
+        CFBundleDisplayName: Hard Pause Worker
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         LSUIElement: true
-        NSAppleEventsUsageDescription: Hard Pause Browser Worker checks browser tabs and redirects blocked pages.
+        NSAppleEventsUsageDescription: Hard Pause Worker checks browser tabs and redirects blocked pages.
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/../core/rust/include/hard_pause_core.h

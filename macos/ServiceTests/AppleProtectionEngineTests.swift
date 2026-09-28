@@ -239,6 +239,7 @@ final class AppleProtectionEngineTests: XCTestCase {
         try state.validateForPersistence()
 
         XCTAssertNil(state.pendingWebsiteSync)
+        XCTAssertNil(state.confirmedWebsiteTargets)
         XCTAssertNil(state.configuration?.appAgeRestriction)
         XCTAssertEqual(
             try ServiceStateDigest.hash(state),
@@ -277,16 +278,19 @@ final class AppleProtectionEngineTests: XCTestCase {
         XCTAssertThrowsError(try engine.prepareWebsiteSync(claim, targets: targets, writer: websiteWriter))
         XCTAssertNil(store.persisted.pendingWebsiteSync)
         XCTAssertNil(store.persisted.mirroredDomains)
+        XCTAssertNil(store.persisted.confirmedWebsiteTargets)
 
         let permit = try engine.prepareWebsiteSync(claim, targets: targets, writer: websiteWriter)
         let operationID = try XCTUnwrap(permit.operationID)
         XCTAssertEqual(store.persisted.mirroredDomains, targets.restricted)
         XCTAssertEqual(store.persisted.mirroredAllowedDomains, targets.allowed)
+        XCTAssertNil(store.persisted.confirmedWebsiteTargets)
         try store.persisted.validateForPersistence()
         let restarted = try AppleLockdownEngine(stateStore: store, credentialVault: vault, clock: clock)
         let resumed = try restarted.websiteSyncOperation(targets: AppleWebsiteSyncTargets(blocks: []))
         XCTAssertEqual(resumed, permit)
         XCTAssertEqual(try restarted.status().websiteSyncOperationID, operationID)
+        XCTAssertNil(try restarted.status().confirmedWebsiteTargets)
         XCTAssertThrowsError(
             try restarted.completeWebsiteSync(
                 AppleWebsiteSyncCompletion(
@@ -305,10 +309,39 @@ final class AppleProtectionEngineTests: XCTestCase {
         store.saveFailures = 1
         XCTAssertThrowsError(try restarted.completeWebsiteSync(completion, writer: websiteWriter))
         XCTAssertEqual(store.persisted.pendingWebsiteSync?.operationID, operationID)
+        XCTAssertNil(store.persisted.confirmedWebsiteTargets)
         XCTAssertTrue(restarted.activationReadiness().blocksAnyActivation)
         try restarted.completeWebsiteSync(completion, writer: websiteWriter)
         XCTAssertNil(try restarted.status().websiteSyncOperationID)
+        XCTAssertEqual(try restarted.status().confirmedWebsiteTargets, targets)
+        XCTAssertEqual(
+            try AppleLockdownEngine(stateStore: store, credentialVault: vault, clock: clock)
+                .status().confirmedWebsiteTargets, targets)
         XCTAssertFalse(restarted.activationReadiness().blocksAnyActivation)
+    }
+
+    func testConfirmedTargetsIncludePreexistingUnownedWebsites() throws {
+        let store = FakeAppleLockdownStateStore()
+        let vault = FakeAppleLockdownVault()
+        let clock = FakeServiceClock(serviceTestReading(0))
+        let engine = try configuredEngine(store: store, vault: vault, clock: clock)
+        let targets = AppleWebsiteSyncTargets(restricted: ["example.com"], allowed: ["safe.example"])
+        let claim = AppleWebsiteSyncClaim(
+            domains: [], allowedDomains: [],
+            expectedDomains: targets.restricted, expectedAllowedDomains: targets.allowed)
+        let permit = try engine.prepareWebsiteSync(claim, targets: targets, writer: websiteWriter)
+        let operationID = try XCTUnwrap(permit.operationID)
+
+        try engine.completeWebsiteSync(
+            AppleWebsiteSyncCompletion(
+                operationID: operationID, verifiedDomains: targets.restricted,
+                verifiedAllowedDomains: targets.allowed, mirroredDomains: [], mirroredAllowedDomains: []),
+            writer: websiteWriter)
+
+        let status = try engine.status()
+        XCTAssertEqual(status.confirmedWebsiteTargets, targets)
+        XCTAssertEqual(status.mirroredDomains, [])
+        XCTAssertEqual(status.mirroredAllowedDomains, [])
     }
 
     func testWebsitePermitCannotBeSharedWithAnotherRunningApp() throws {

@@ -3,6 +3,8 @@ import XCTest
 @MainActor
 final class AppleProtectionModelTests: XCTestCase {
     func testRefreshRestoresLegacyAgeSettingWithoutSetupReleaseOrWebsiteChanges() async {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let events = AppleProtectionEventLog()
         let restriction = AppleAppAgeRestriction(baseline: .eighteen)
         let snapshot = makeSnapshot(phase: .waitingForFullUnlock, appAgeRestriction: restriction)
@@ -10,18 +12,41 @@ final class AppleProtectionModelTests: XCTestCase {
         let operationID = UUID()
         service.ageRestorationOperation = makeOperation(id: operationID, snapshot: snapshot)
         let automation = FakeAppleScreenTimeAutomation(events: events)
-        let model = AppleProtectionModel(service: service, automation: automation, hasProAccess: false)
+        let model = AppleProtectionModel(
+            service: service, automation: automation,
+            operationLockURL: directory.appendingPathComponent("native.lock"), hasProAccess: false)
 
         await model.refresh()
 
+        XCTAssertEqual(events.values, ["status"])
+        XCTAssertEqual(model.automationRequest, .restoreAppAge)
+        XCTAssertTrue(model.showsAutomationConfirmation)
+
+        model.deferAutomation()
+        await model.refresh()
+
+        XCTAssertEqual(events.values, ["status", "status"])
+        XCTAssertEqual(model.automationRequest, .restoreAppAge)
+        XCTAssertFalse(model.showsAutomationConfirmation)
+        XCTAssertEqual(automation.restoredAgeRestrictions, [])
+        XCTAssertNil(service.ageRestorationProof)
+
+        model.showAutomationConfirmation()
+        await model.confirmAutomation()
+
         XCTAssertEqual(
-            events.values, ["status", "begin app age restoration", "restore app age", "complete app age restoration"])
+            events.values,
+            [
+                "status", "status", "status", "begin app age restoration", "restore app age",
+                "complete app age restoration",
+            ])
         XCTAssertEqual(automation.restoredAgeRestrictions, [restriction])
         XCTAssertEqual(service.ageRestorationProof?.operationID, operationID)
         XCTAssertEqual(service.ageRestorationProof?.verifiedAppRating, .eighteen)
         var expected = snapshot
         expected.appAgeRestriction = nil
         XCTAssertEqual(model.snapshot, expected)
+        XCTAssertNil(model.automationRequest)
         XCTAssertFalse(model.hasError)
     }
 
@@ -43,6 +68,13 @@ final class AppleProtectionModelTests: XCTestCase {
             await model.refresh()
 
             XCTAssertEqual(model.snapshot, snapshot)
+            XCTAssertEqual(model.automationRequest, .restoreAppAge)
+            XCTAssertTrue(model.showsAutomationConfirmation)
+            XCTAssertFalse(events.values.contains("begin app age restoration"))
+
+            await model.confirmAutomation()
+
+            XCTAssertEqual(model.snapshot, snapshot)
             XCTAssertNil(service.ageRestorationProof)
             XCTAssertEqual(events.values.filter { $0 == "restore app age" }.count, 1)
             XCTAssertTrue(model.hasError)
@@ -51,6 +83,8 @@ final class AppleProtectionModelTests: XCTestCase {
             automation.restoreAgeError = nil
             service.ageRestorationCompletionError = nil
             await model.retryAppAgeRestoration()
+            XCTAssertTrue(model.showsAutomationConfirmation)
+            await model.confirmAutomation()
             await model.refresh()
 
             XCTAssertEqual(events.values.filter { $0 == "restore app age" }.count, 2)

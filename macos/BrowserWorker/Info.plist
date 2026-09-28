@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hard Pause Browser Worker</string>
+	<string>Hard Pause Worker</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,6 +25,6 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Hard Pause Browser Worker checks browser tabs and redirects blocked pages.</string>
+	<string>Hard Pause Worker checks browser tabs and redirects blocked pages.</string>
 </dict>
 </plist>

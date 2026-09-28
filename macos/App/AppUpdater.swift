@@ -34,7 +34,18 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     func checkForUpdates() {
-        guard canCheckForUpdates else { return }
+        guard canCheckForUpdates else {
+            let alert = NSAlert()
+            alert.messageText = "Update not ready"
+            alert.informativeText =
+                !isConfigured
+                ? "App updates are unavailable in this build."
+                : isPreparingUpdate || installationIsStarting
+                    ? "An update is already in progress."
+                    : "Wait for Screen Time and protection checks to finish, then try again."
+            if let window = NSApp.keyWindow { alert.beginSheetModal(for: window) } else { alert.runModal() }
+            return
+        }
         isPreparingUpdate = true
         approvedUpdate = nil
         installationApproval = nil

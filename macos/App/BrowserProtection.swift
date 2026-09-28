@@ -66,13 +66,13 @@ final class BrowserProtection: ObservableObject {
         if identifier == "org.mozilla.firefox" {
             firefox.requestPermission()
             statuses[identifier] =
-                AXIsProcessTrusted() ? "Connected" : "Allow Hard Pause Browser Worker in Accessibility."
+                AXIsProcessTrusted() ? "Connected" : "Allow Hard Pause Worker in Accessibility."
             return
         }
         if await worker.wasDenied(identifier) {
             openAutomationSettings()
             statuses[identifier] =
-                "In System Settings, allow this browser under Hard Pause Browser Worker → Automation."
+                "In System Settings, allow this browser under Hard Pause Worker → Automation."
             return
         }
         if NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty {

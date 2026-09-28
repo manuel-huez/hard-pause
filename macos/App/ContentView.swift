@@ -27,6 +27,7 @@ private struct UnlockGuidancePresentation: Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updater: AppUpdater
     @Environment(\.scenePhase) private var scenePhase
     @State private var selection: WorkspacePane? = .home
     @State private var editor: BlockEditorPresentation?
@@ -141,6 +142,16 @@ struct ContentView: View {
         }
         .environment(\.mascotHoverChanged, { hoveredControl = editor == nil ? $0 : nil })
         .onOpenURL { url in
+            if url.scheme == "hardpause", url.host == "check-for-updates" {
+                NSApp.activate()
+                NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
+                Task {
+                    await model.refresh()
+                    await model.probeBrowserWorkerReadiness()
+                    updater.checkForUpdates()
+                }
+                return
+            }
             model.showBrowserAccess(url)
             if !model.browserAccessRequests.isEmpty {
                 selection = .settings
@@ -174,6 +185,13 @@ struct ContentView: View {
             model: model.appleProtection,
             isActive: editor == nil && !showsAppleProtectionSetup && unlockGuidance == nil
                 && activationTarget == nil && deletionTarget == nil && selection != .settings
+        )
+        .modifier(
+            ScreenTimeAutomationConfirmation(
+                model: model.appleProtection,
+                isActive: editor == nil && !showsAppleProtectionSetup && unlockGuidance == nil
+                    && activationTarget == nil && deletionTarget == nil
+                    && model.appleProtection.pendingWebsiteOverwrite == nil)
         )
         .alert(
             "Start \(activationTarget?.draft.name ?? "this plan")?",
@@ -2798,6 +2816,27 @@ extension View {
 
     fileprivate func mascotHoverTarget() -> some View { modifier(MascotHoverTarget()) }
     fileprivate func settingsPanel() -> some View { modifier(SettingsPanelModifier()) }
+}
+
+private struct ScreenTimeAutomationConfirmation: ViewModifier {
+    @ObservedObject var model: AppleProtectionModel
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "Update Screen Time?",
+            isPresented: Binding(
+                get: { isActive && model.automationRequest != nil && model.showsAutomationConfirmation },
+                set: { if !$0 { model.deferAutomation() } })
+        ) {
+            Button("Continue") { Task { await model.confirmAutomation() } }
+            Button("Not now", role: .cancel) { model.deferAutomation() }
+        } message: {
+            Text(
+                "Hard Pause will open System Settings to update Screen Time. Leave the keyboard and mouse alone until it finishes."
+            )
+        }
+    }
 }
 
 private struct ScreenTimeWebsiteOverwriteSheetModifier: ViewModifier {

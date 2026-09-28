@@ -137,6 +137,7 @@ final class ProtectedServiceIPCTests: XCTestCase {
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "9"))
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "12"))
         XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "13"))
+        XCTAssertTrue(ProtectedServiceContract.supportsSafeUpdate(from: "14"))
         XCTAssertTrue(
             ProtectedServiceContract.supportsSafeUpdate(
                 from: ProtectedServiceContract.serviceVersion
@@ -145,5 +146,15 @@ final class ProtectedServiceIPCTests: XCTestCase {
         XCTAssertFalse(ProtectedServiceContract.supportsSafeUpdate(from: "3"))
         XCTAssertFalse(ProtectedServiceContract.supportsSafeUpdate(from: "2"))
         XCTAssertFalse(ProtectedServiceContract.supportsSafeUpdate(from: ""))
+    }
+
+    func testOlderAppleLockdownSnapshotDecodesWithoutConfirmedWebsiteTargets() throws {
+        let data = Data(
+            #"{"phase":"active","fullUnlockDelay":60,"remainingDelay":null,"enablesAdultFilter":true,"filterWasAlreadyEnabled":false,"shareAcrossDevicesVerified":true,"mirroredDomains":[],"mirroredAllowedDomains":[],"operationID":null}"#
+                .utf8)
+
+        let snapshot = try JSONDecoder().decode(AppleLockdownSnapshot.self, from: data)
+
+        XCTAssertNil(snapshot.confirmedWebsiteTargets)
     }
 }

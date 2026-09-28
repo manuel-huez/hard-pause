@@ -106,6 +106,7 @@
 		65D1BA8E19A39F3D15A75311 /* AppleScreenTimeAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAC3D6AC0367FD5F3F5BF46 /* AppleScreenTimeAutomation.swift */; };
 		65EFB27F94B5152127CA2345 /* AdultWebsiteRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D05715D281272A3845C34D4 /* AdultWebsiteRules.swift */; };
 		671657DEC4760167C6B29563 /* Recursive.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10FAA4EF0128CE063FB7AC7C /* Recursive.ttf */; };
+		67EB456BEA7C1C444917C03D /* AppStatusMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42C2281AFFAAC16D2B99739 /* AppStatusMenu.swift */; };
 		6850BB1E5A693A0C7634F6BF /* PauseCoreLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF14D587F9BBA49ED56A2053 /* PauseCoreLifecycle.swift */; };
 		69828EAC0ED7711B58C47214 /* PFEnforcerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AAF9A47A7DA15A3C1B50F0C /* PFEnforcerTests.swift */; };
 		6B257FE7FA06E33636C8829E /* AppleProtectionIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2CF63A97D4B104E70AC07D /* AppleProtectionIPC.swift */; };
@@ -222,6 +223,7 @@
 		EBC9AC6FB284AA7E40996666 /* RustCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABD40901F5B581378F144C60 /* RustCoreBridge.swift */; };
 		EC88743F2F7F96C3AE929A54 /* ProtectedServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61B07D418D25772C6F4E58C /* ProtectedServiceIPC.swift */; };
 		ED87D939B50BB10C26F2A626 /* ServiceFirstUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B567B499F94D20EAB0E8F08C /* ServiceFirstUpdate.swift */; };
+		EED172435B9D07FE6F25A8B4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9D54959695EE4B7D0D254B40 /* Assets.xcassets */; };
 		F122BA17C9DD1DC1197C373E /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
 		F12E4E54053B902DA04BB919 /* ProtectedBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E32BC3491F35D0C4965B1 /* ProtectedBlock.swift */; };
 		F35A575BFF0629B94822E263 /* ProtectedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A1729B8F0309D32FF35968 /* ProtectedRules.swift */; };
@@ -332,6 +334,7 @@
 		A132D52C40502F34307579F9 /* BlockedPage */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BlockedPage; path = Resources/BlockedPage; sourceTree = SOURCE_ROOT; };
 		A19F909DC65DCD6164B95EA7 /* PauseCoreTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseCoreTransaction.swift; sourceTree = "<group>"; };
 		A3A9B40334B2C8EF80C77D3C /* ProtectedServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedServiceClient.swift; sourceTree = "<group>"; };
+		A42C2281AFFAAC16D2B99739 /* AppStatusMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStatusMenu.swift; sourceTree = "<group>"; };
 		A9AEF29D7E5F2AE9C0E6E603 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		ABD40901F5B581378F144C60 /* RustCoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustCoreBridge.swift; sourceTree = "<group>"; };
 		B2A24E2A38EF77A4AA11F98F /* BrowserWorkerReadinessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWorkerReadinessTests.swift; sourceTree = "<group>"; };
@@ -563,6 +566,7 @@
 		A9BB96A9B3969B192E0A7019 /* BrowserWorker */ = {
 			isa = PBXGroup;
 			children = (
+				A42C2281AFFAAC16D2B99739 /* AppStatusMenu.swift */,
 				89A5178F43F05941CED485AE /* BrowserPermissionGuard.swift */,
 				CDEC44CECD119F8DC074B99D /* BrowserWorkerApp.swift */,
 				ED9EC2D42376649BDF931B51 /* Info.plist */,
@@ -882,6 +886,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EED172435B9D07FE6F25A8B4 /* Assets.xcassets in Resources */,
 				DFC5D462E6931F58D05445AE /* BlockedPage in Resources */,
 				5F1A369311DB5118A3621808 /* PrivacyInfo.xcprivacy in Resources */,
 				671657DEC4760167C6B29563 /* Recursive.ttf in Resources */,
@@ -1192,6 +1197,7 @@
 				832FF8D2F2DB44EE4D58A95F /* AdultWebsiteDatabase.swift in Sources */,
 				65EFB27F94B5152127CA2345 /* AdultWebsiteRules.swift in Sources */,
 				9286745002932AA889174790 /* AgentCommitmentGuidance.swift in Sources */,
+				67EB456BEA7C1C444917C03D /* AppStatusMenu.swift in Sources */,
 				EA4210B52A7C9D3C21917A94 /* AppleProtectionIPC.swift in Sources */,
 				8DE8DEE4070975ECCCF1B39A /* AppleProtectionState.swift in Sources */,
 				CF7A79C8A6ED17955F54A737 /* BrowserPermissionGuard.swift in Sources */,
@@ -1438,7 +1444,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 50;
+				CURRENT_PROJECT_VERSION = 51;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1453,7 +1459,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.22;
+				MARKETING_VERSION = 0.2.23;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "$(inherited) -lhard_pause_core";
@@ -1642,7 +1648,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 50;
+				CURRENT_PROJECT_VERSION = 51;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = ZBX6C7BJ5X;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1663,7 +1669,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/rust-core/$(PLATFORM_NAME)";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.2.22;
+				MARKETING_VERSION = 0.2.23;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

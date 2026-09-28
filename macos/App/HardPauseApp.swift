@@ -47,66 +47,10 @@ struct HardPauseApp: App {
                     .disabled(!updater.canCheckForUpdates)
             }
         }
-
-        MenuBarExtra {
-            HardPauseMenu(model: model, updater: updater)
-        } label: {
-            Image(model.activeBlocks.isEmpty ? "MenuBarInactive" : "MenuBarActive")
-                .accessibilityLabel(
-                    model.activeBlocks.isEmpty ? "Hard Pause: no active plans" : "Hard Pause: plan active")
-        }
     }
 
     private var isCompactSetupWindow: Bool {
         model.shouldShowInitialSetup
-    }
-}
-
-private struct HardPauseMenu: View {
-    @ObservedObject var model: AppModel
-    @ObservedObject var updater: AppUpdater
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Text(model.serviceIsHealthy ? "Protection service running" : "Protection needs attention")
-        if model.activeBlocks.isEmpty {
-            Text("No active plans")
-        } else if model.activeBlocks.count == 1 {
-            Text("1 active plan")
-        } else {
-            Text("\(model.activeBlocks.count) active plans")
-        }
-        Divider()
-        Button("Open Hard Pause") {
-            openWindow(id: "main")
-            NSApplication.shared.activate()
-        }
-        Divider()
-        Text("Version \(ReleaseVersion.description)")
-        Button("Check for Updates…") { updater.checkForUpdates() }
-            .disabled(!updater.canCheckForUpdates)
-        if updater.isPreparingUpdate {
-            Text("Checking signed update and protection service…")
-        }
-        if !model.activeBlocks.isEmpty && !model.browserWorkerReadyForHandoff {
-            Text("Updates wait until browser protection is ready")
-        } else if !model.setupServiceReady {
-            Text(
-                model.needsServiceUpdate
-                    ? "App updates wait until protection is updated"
-                    : "App updates wait until the protection service is ready"
-            )
-        }
-        if !updater.isConfigured {
-            Text("App updates are unavailable in this build")
-        }
-        if model.needsServiceUpdate {
-            Text(
-                model.serviceCanUpdateWithoutApproval
-                    ? "Protection will update automatically"
-                    : "Use Update protection in the app for the service"
-            )
-        }
     }
 }
 

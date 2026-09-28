@@ -53,6 +53,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
     private(set) var requestedAtWallTime: Date?
     private(set) var mirroredDomains: [String]?
     private(set) var mirroredAllowedDomains: [String]?
+    private(set) var confirmedWebsiteTargets: AppleWebsiteSyncTargets?
     private(set) var hasUsedPlan: Bool?
     private(set) var pendingWebsiteSync: AppleWebsiteSyncPermit?
     private(set) var pendingAppAgeRestoration: AppleAppAgeRestorationPermit?
@@ -70,6 +71,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         requestedAtWallTime = nil
         mirroredDomains = nil
         mirroredAllowedDomains = nil
+        confirmedWebsiteTargets = nil
         // An inactive state can be synthesized by either service during a
         // live handoff when no Apple state file exists. Keep its encoding the
         // same as older services until a new setup starts.
@@ -272,6 +274,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         try recordMirroredDomains(
             completion.mirroredDomains, required: Set(permit.targets.restricted),
             allowed: completion.mirroredAllowedDomains, requiredAllowed: Set(permit.targets.allowed))
+        confirmedWebsiteTargets = phase == .releaseInProgress ? nil : permit.targets
         pendingWebsiteSync = nil
     }
 
@@ -337,6 +340,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
             operationID: publicPhase == .pendingSetup || publicPhase == .releaseInProgress
                 ? operationID : nil,
             websiteSyncOperationID: pendingWebsiteSync?.operationID,
+            confirmedWebsiteTargets: confirmedWebsiteTargets,
             appAgeRestriction: configuration?.appAgeRestriction,
             keepsCodeForLegacyPlans: configuration?.keepsCodeForLegacyPlans
         )
@@ -384,6 +388,13 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         } else if mirroredDomains != nil || mirroredAllowedDomains != nil {
             throw AppleLockdownError.stateUnavailable
         }
+        if let confirmedWebsiteTargets {
+            guard isConfirmedActive, configuration?.enablesAdultFilter == true,
+                [confirmedWebsiteTargets.restricted, confirmedWebsiteTargets.allowed].allSatisfy({ domains in
+                    domains == Array(Set(domains)).sorted() && domains.allSatisfy { DomainRule.normalize($0) == $0 }
+                }), Set(confirmedWebsiteTargets.restricted).isDisjoint(with: confirmedWebsiteTargets.allowed)
+            else { throw AppleLockdownError.stateUnavailable }
+        }
         if let requestedAtElapsed {
             guard requestedAtElapsed.isFinite,
                 requestedAtElapsed >= 0,
@@ -402,7 +413,7 @@ struct AppleLockdownState: Codable, Equatable, Sendable {
         case .inactive:
             guard configuration == nil, credentialID == nil, operationID == nil,
                 requestedAtElapsed == nil, requestedAtWallTime == nil,
-                mirroredDomains == nil, mirroredAllowedDomains == nil
+                mirroredDomains == nil, mirroredAllowedDomains == nil, confirmedWebsiteTargets == nil
             else {
                 throw AppleLockdownError.stateUnavailable
             }

@@ -676,6 +676,12 @@ final class ProtectedServiceUpdateEndpoint: NSObject, ProtectedServiceUpdateXPC 
                 try appleLockdown.prepareWebsiteSync(claim, targets: activeWebsiteTargets(), writer: writer)
             }
             response = AppleWebsiteSyncReply(operation: operation, error: nil)
+        } catch AppleLockdownError.websiteSyncTargetsChanged {
+            response = AppleWebsiteSyncReply(
+                operation: nil,
+                error: ProtectedServiceErrorPayload(
+                    code: "website_sync_targets_changed",
+                    message: AppleLockdownError.websiteSyncTargetsChanged.localizedDescription))
         } catch {
             response = AppleWebsiteSyncReply(
                 operation: nil,

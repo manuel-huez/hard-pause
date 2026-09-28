@@ -91,6 +91,7 @@ struct AppleLockdownSnapshot: Codable, Equatable, Sendable {
     let mirroredAllowedDomains: [String]?
     let operationID: UUID?
     var websiteSyncOperationID: UUID? = nil
+    var confirmedWebsiteTargets: AppleWebsiteSyncTargets? = nil
     var appAgeRestriction: AppleAppAgeRestriction? = nil
     var keepsCodeForLegacyPlans: Bool? = nil
 

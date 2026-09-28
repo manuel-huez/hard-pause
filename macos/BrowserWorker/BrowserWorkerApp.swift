@@ -6,6 +6,7 @@ private final class BrowserWorkerRuntime {
     private let service = ProtectedServiceClient()
     private let protection = BrowserProtection()
     private let permissionGuard = BrowserPermissionGuard()
+    private let menu = AppStatusMenu()
     private let machServiceName: String
 
     init(machServiceName: String) { self.machServiceName = machServiceName }
@@ -97,6 +98,11 @@ private final class BrowserWorkerRuntime {
 
     private func checkBrowserAccess() async {
         let current = try? await service.list()
+        // Versioned workers can overlap during an update; only the current service's worker owns the icon.
+        let ownsMenu =
+            current?.protection.releaseBuild.map { $0 == ReleaseVersion.build }
+            ?? (BrowserWorkerClient.installedMachServices().first == machServiceName)
+        menu.update(snapshot: current, ownsMenu: ownsMenu)
         let closed = await permissionGuard.check(
             active: current.map(Self.hasActiveBrowserRestrictions) == true,
             permission: { [self] process in
@@ -271,7 +277,7 @@ enum BrowserWorkerMain {
                 {
                     print(json)
                 }
-                if !ready { fputs("Hard Pause Browser Worker is not ready.\n", stderr) }
+                if !ready { fputs("Hard Pause Worker is not ready.\n", stderr) }
                 exit(ready ? EXIT_SUCCESS : EXIT_FAILURE)
             }
             RunLoop.main.run()

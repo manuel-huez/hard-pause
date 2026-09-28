@@ -61,11 +61,16 @@ struct AppleProtectionCard: View {
                     .buttonStyle(PauseButtonStyle())
                     .disabled(model.isBusy)
             }
+            if model.automationRequest != nil {
+                Button("Continue Screen Time update") { model.showAutomationConfirmation() }
+                    .buttonStyle(PauseButtonStyle(primary: true))
+                    .disabled(model.isBusy)
+            }
             if let message = model.websiteSyncMessage {
                 Text(message).font(.callout)
                     .foregroundStyle(model.websiteSyncNeedsRetry ? .orange : PauseTheme.muted)
                 Button(model.websiteSyncNeedsRetry ? "Retry website sync" : "Review website sync") {
-                    Task { await model.syncWebsites(presentingResult: true) }
+                    model.requestAutomation(.syncWebsites)
                 }
                 .buttonStyle(PauseButtonStyle())
                 .disabled(model.isBusy)
@@ -110,13 +115,13 @@ struct AppleProtectionCard: View {
                 Button("Remove unused Screen Time code") {
                     Task {
                         await model.requestEnd()
-                        if model.snapshot?.phase == .readyForRelease { await model.finishEnd() }
+                        if model.snapshot?.phase == .readyForRelease { model.requestAutomation(.removeCode) }
                     }
                 }
                 .buttonStyle(PauseButtonStyle())
             }
         case .readyForRelease, .releaseInProgress:
-            Button("Finish removing code") { Task { await model.finishEnd() } }
+            Button("Finish removing code") { model.requestAutomation(.removeCode) }
                 .buttonStyle(PauseButtonStyle(primary: true))
         case nil:
             if model.hasError {
@@ -197,6 +202,8 @@ struct ScreenTimeWebsiteOverwriteView: View {
                     entries("Allowed entries to remove", overwrite.allowed)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
+            Text("This opens System Settings. Leave the keyboard and mouse alone while it runs.")
+                .font(.callout).foregroundStyle(PauseTheme.muted)
             HStack {
                 Button("Keep Apple entries") { model.cancelWebsiteOverwrite() }
                     .buttonStyle(PauseButtonStyle())
@@ -207,7 +214,7 @@ struct ScreenTimeWebsiteOverwriteView: View {
                 .buttonStyle(PauseButtonStyle(primary: true))
             }.disabled(model.isBusy)
         }
-        .padding(24).frame(width: 520, height: 360)
+        .padding(24).frame(width: 520, height: 400)
         .background(PauseTheme.background)
         .interactiveDismissDisabled(model.isBusy)
     }
@@ -295,6 +302,8 @@ struct AppleProtectionSetupView: View {
                 Text(
                     "Hard Pause will check your progress and finish setup with the saved private code."
                 )
+                Text("This opens System Settings. Leave the keyboard and mouse alone while it runs.")
+                    .font(.callout).foregroundStyle(PauseTheme.muted)
             } else if !hasInspected {
                 ScreenTimeBenefits()
                 Text(

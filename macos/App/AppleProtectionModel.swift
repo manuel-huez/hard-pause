@@ -18,6 +18,75 @@ struct AppleWebsiteOverwrite: Equatable, Identifiable {
 /// Credentials are transient local variables, never published view state.
 @MainActor
 final class AppleProtectionModel: ObservableObject {
+    enum AutomationRequest: Int {
+        case removeCode, restoreAppAge, syncWebsites
+    }
+
+    @Published private(set) var automationRequest: AutomationRequest?
+    @Published private(set) var showsAutomationConfirmation = false
+    private var requestedWebsiteTargets: AppleWebsiteSyncTargets?
+
+    func requestAutomation(
+        _ request: AutomationRequest, automatically: Bool = false, targets: AppleWebsiteSyncTargets? = nil
+    ) {
+        guard !isBusy else { return }
+        if automatically, let pending = automationRequest {
+            if pending.rawValue < request.rawValue { return }
+            if pending == .syncWebsites, request == .syncWebsites, requestedWebsiteTargets == nil {
+                requestedWebsiteTargets = targets
+                return
+            }
+            if pending == request, request != .syncWebsites || requestedWebsiteTargets == targets { return }
+        }
+        automationRequest = request
+        requestedWebsiteTargets = targets
+        showsAutomationConfirmation = true
+    }
+
+    func deferAutomation() { showsAutomationConfirmation = false }
+    func showAutomationConfirmation() { showsAutomationConfirmation = automationRequest != nil }
+
+    func clearWebsiteSyncRequest() {
+        guard !isBusy, automationRequest == .syncWebsites else { return }
+        automationRequest = nil
+        showsAutomationConfirmation = false
+        requestedWebsiteTargets = nil
+    }
+
+    func confirmAutomation() async {
+        guard let request = automationRequest, !isBusy else { return }
+        showsAutomationConfirmation = false
+        activity = .checking
+        defer { if activity == .checking { activity = nil } }
+        do {
+            snapshot = try await service.appleLockdownStatus()
+            switch request {
+            case .removeCode:
+                guard [.readyForRelease, .releaseInProgress].contains(snapshot?.phase) else {
+                    automationRequest = nil
+                    return
+                }
+                activity = nil
+                await finishEnd()
+            case .restoreAppAge:
+                activity = nil
+                await restoreAppAge()
+            case .syncWebsites:
+                let current = try await service.list()
+                let targets = AppleWebsiteSyncTargets(blocks: current.blocks)
+                guard snapshot?.websiteSyncOperationID != nil || snapshot?.confirmedWebsiteTargets != targets else {
+                    automationRequest = nil
+                    return
+                }
+                activity = nil
+                await syncWebsites(presentingResult: true)
+            }
+        } catch {
+            hasError = true
+            message = error.localizedDescription
+        }
+    }
+
     enum Activity: Equatable {
         case checking, settingCode, verifyingCode, removingCode, syncingWebsites, restoringAppAge
 
@@ -89,8 +158,17 @@ final class AppleProtectionModel: ObservableObject {
                 hasError = false
                 statusUnavailable = false
             }
-            if snapshot?.appAgeRestriction == nil { appAgeRestorationNeedsRetry = false }
-            if !didAttemptAppAgeRestoration { await restoreAppAge() }
+            if snapshot?.appAgeRestriction == nil {
+                appAgeRestorationNeedsRetry = false
+                if automationRequest == .restoreAppAge { automationRequest = nil }
+            }
+            if snapshot?.phase == .inactive { automationRequest = nil }
+            if !didAttemptAppAgeRestoration, snapshot?.appAgeRestriction != nil,
+                [.active, .waitingForFullUnlock, .readyForRelease].contains(snapshot?.phase),
+                snapshot?.websiteSyncOperationID == nil
+            {
+                requestAutomation(.restoreAppAge, automatically: true)
+            }
         } catch {
             statusUnavailable = true
             hasError = true
@@ -99,7 +177,7 @@ final class AppleProtectionModel: ObservableObject {
     }
 
     func retryAppAgeRestoration() async {
-        await restoreAppAge()
+        requestAutomation(.restoreAppAge)
     }
 
     private func restoreAppAge() async {
@@ -119,6 +197,7 @@ final class AppleProtectionModel: ObservableObject {
                 passcode: operation.passcode, restriction: restriction)
             self.snapshot = try await self.service.completeAppleAppAgeRestoration(
                 operationID: operation.operationID, verifiedAppRating: verified)
+            self.automationRequest = nil
         }
         appAgeRestorationNeedsRetry = hasError && snapshot?.appAgeRestriction != nil
     }
@@ -266,6 +345,7 @@ final class AppleProtectionModel: ObservableObject {
                 appAgeRestriction: operation.snapshot.appAgeRestriction
             )
             self.snapshot = try await self.service.completeAppleLockdownRelease(operationID: operation.operationID)
+            self.automationRequest = nil
             self.codeCheck = nil
             self.websiteSyncMessage = nil
             self.websiteSyncNeedsRetry = false
@@ -296,11 +376,14 @@ final class AppleProtectionModel: ObservableObject {
             synced = try await withNativeOperation {
                 try await self.reconcileWebsites(approving: overwrite)
             }
+        } catch AppleLockdownError.websiteSyncTargetsChanged {
+            websiteSyncMessage = "The website rules changed. Review the current rules before continuing."
         } catch {
             websiteSyncMessage = error.localizedDescription
             websiteSyncNeedsRetry = true
         }
         if presentingResult { NSApp?.activate(ignoringOtherApps: true) }
+        if synced { automationRequest = nil }
         return synced
     }
 

@@ -274,6 +274,9 @@ final class ProtectedServiceClient: ProtectedServiceServing {
         let reply: AppleWebsiteSyncReply = try await performUpdate { service, callback in
             service.claimWebsiteSync(payload, withReply: callback)
         }
+        if reply.error?.code == "website_sync_targets_changed" {
+            throw AppleLockdownError.websiteSyncTargetsChanged
+        }
         if let error = reply.error { throw ProtectedServiceClientError.service(error.message) }
         guard let operation = reply.operation, operation.operationID != nil else {
             throw ProtectedServiceClientError.invalidReply

@@ -46,6 +46,77 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(service.activationCalls, 1)
     }
 
+    func testScreenTimeStartupSkipsConfirmedWebsiteTargets() async {
+        let active = makeBlock(
+            draft: makeDraft(), phase: .active(naturalEndRemaining: nil))
+        let targets = AppleWebsiteSyncTargets(blocks: [active])
+        let service = ControlledProtectedService(
+            snapshot: makeSnapshot(blocks: [active]),
+            appleSnapshot: makeAppleSnapshot(
+                phase: .active, enablesAdultFilter: true, confirmedWebsiteTargets: targets))
+        let model = AppModel(service: service, automaticallyRefreshes: false)
+
+        await model.refresh()
+        await waitForAppleStatusRead(service)
+
+        XCTAssertNil(model.appleProtection.automationRequest)
+        XCTAssertEqual(service.websiteSyncBeginCalls, 0)
+    }
+
+    func testScreenTimeStartupRequestsApprovalForUnknownOrChangedWebsiteTargets() async {
+        let active = makeBlock(
+            draft: makeDraft(), phase: .active(naturalEndRemaining: nil))
+        let previousTargets = AppleWebsiteSyncTargets(restricted: ["old.example"], allowed: [])
+
+        for confirmedTargets in [nil, previousTargets] as [AppleWebsiteSyncTargets?] {
+            let service = ControlledProtectedService(
+                snapshot: makeSnapshot(blocks: [active]),
+                appleSnapshot: makeAppleSnapshot(
+                    phase: .active, enablesAdultFilter: true,
+                    confirmedWebsiteTargets: confirmedTargets))
+            let model = AppModel(service: service, automaticallyRefreshes: false)
+
+            await model.refresh()
+            await waitForAutomationRequest(model)
+
+            XCTAssertEqual(model.appleProtection.automationRequest, .syncWebsites)
+            XCTAssertEqual(service.websiteSyncBeginCalls, 0)
+        }
+    }
+
+    func testScreenTimeStartupRequestsApprovalBeforeRecoveringPendingWebsiteSync() async {
+        let active = makeBlock(
+            draft: makeDraft(), phase: .active(naturalEndRemaining: nil))
+        let targets = AppleWebsiteSyncTargets(blocks: [active])
+        let service = ControlledProtectedService(
+            snapshot: makeSnapshot(blocks: [active], serviceVersion: "14"),
+            appleSnapshot: makeAppleSnapshot(
+                phase: .active, enablesAdultFilter: true,
+                websiteSyncOperationID: UUID(), confirmedWebsiteTargets: targets))
+        let model = AppModel(service: service, automaticallyRefreshes: false)
+
+        await model.refresh()
+        await waitForAutomationRequest(model)
+
+        XCTAssertEqual(model.appleProtection.automationRequest, .syncWebsites)
+        XCTAssertEqual(service.websiteSyncBeginCalls, 0)
+    }
+
+    func testScreenTimeStartupWaitsForSupportedServiceBeforeRequestingWebsiteSync() async {
+        let active = makeBlock(
+            draft: makeDraft(), phase: .active(naturalEndRemaining: nil))
+        let service = ControlledProtectedService(
+            snapshot: makeSnapshot(blocks: [active], serviceVersion: "14"),
+            appleSnapshot: makeAppleSnapshot(phase: .active, enablesAdultFilter: true))
+        let model = AppModel(service: service, automaticallyRefreshes: false)
+
+        await model.refresh()
+        await waitForAppleStatusRead(service)
+
+        XCTAssertNil(model.appleProtection.automationRequest)
+        XCTAssertEqual(service.websiteSyncBeginCalls, 0)
+    }
+
     func testCreateSavesPlanWithoutActivatingIt() async {
         let draft = makeDraft()
         let created = makeBlock(draft: draft)
@@ -549,19 +620,33 @@ final class AppModelTests: XCTestCase {
     private func makeAppleSnapshot(
         phase: AppleLockdownPhase,
         remainingDelay: TimeInterval? = nil,
-        operationID: UUID? = nil
+        operationID: UUID? = nil,
+        enablesAdultFilter: Bool = false,
+        websiteSyncOperationID: UUID? = nil,
+        confirmedWebsiteTargets: AppleWebsiteSyncTargets? = nil
     ) -> AppleLockdownSnapshot {
         AppleLockdownSnapshot(
             phase: phase,
             fullUnlockDelay: phase == .inactive ? nil : 86_400,
             remainingDelay: remainingDelay,
-            enablesAdultFilter: false,
+            enablesAdultFilter: enablesAdultFilter,
             filterWasAlreadyEnabled: false,
             shareAcrossDevicesVerified: nil,
             mirroredDomains: [],
             mirroredAllowedDomains: [],
-            operationID: operationID
+            operationID: operationID,
+            websiteSyncOperationID: websiteSyncOperationID,
+            confirmedWebsiteTargets: confirmedWebsiteTargets
         )
+    }
+
+    private func waitForAppleStatusRead(_ service: ControlledProtectedService) async {
+        for _ in 0..<100 where service.appleStatusCalls == 0 { await Task.yield() }
+        for _ in 0..<5 { await Task.yield() }
+    }
+
+    private func waitForAutomationRequest(_ model: AppModel) async {
+        for _ in 0..<100 where model.appleProtection.automationRequest == nil { await Task.yield() }
     }
 
     private func makeReadyModel(service: ControlledProtectedService) -> AppModel {
@@ -592,6 +677,7 @@ private final class ControlledProtectedService: ProtectedServiceServing {
     private(set) var cancelBreakCalls = 0
     private(set) var endCalls = 0
     private(set) var appleStatusCalls = 0
+    private(set) var websiteSyncBeginCalls = 0
     private(set) var appleEndCalls = 0
     private(set) var lastActivationID: UUID?
     private(set) var lastActivationRevision: Int?
@@ -720,6 +806,11 @@ private final class ControlledProtectedService: ProtectedServiceServing {
         guard let appleEndResponse else { throw AppleLockdownError.unavailable }
         appleSnapshot = appleEndResponse
         return appleEndResponse
+    }
+
+    func beginAppleWebsiteSync() async throws -> AppleWebsiteSyncOperation {
+        websiteSyncBeginCalls += 1
+        throw AppleLockdownError.unavailable
     }
 }
 
