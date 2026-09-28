@@ -181,7 +181,9 @@ final class HardPauseLifecycle: NSObject, NSApplicationDelegate {
         if let updater, updater.installationIsStarting {
             return updater.mayFinishInstallation() ? .terminateNow : .terminateCancel
         }
-        if model?.keepsBrowserProtectionRunning == true || updater?.shouldHoldTermination == true {
+        let needsGUIProtection =
+            model?.keepsBrowserProtectionRunning == true && model?.browserWorkerReadyForHandoff != true
+        if needsGUIProtection || updater?.shouldHoldTermination == true {
             sender.hide(nil)
             return .terminateCancel
         }

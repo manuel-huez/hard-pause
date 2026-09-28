@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon
 import Foundation
+import OSAKit
 
 /// Shared browser checks for the app and its user-session worker. URLs are never persisted or logged.
 @MainActor
@@ -133,10 +134,12 @@ final class BrowserProtection: ObservableObject {
                 permission = .unavailable
             } else if browser.id == "org.mozilla.firefox" {
                 permission = AXIsProcessTrusted() ? .granted : .denied
-            } else if NSRunningApplication.runningApplications(withBundleIdentifier: browser.id).isEmpty {
-                permission = await worker.closedPermission(browser.id)
+            } else if let application = NSRunningApplication.runningApplications(withBundleIdentifier: browser.id).first
+            {
+                permission = await worker.readinessPermission(
+                    browser.id, processIdentifier: application.processIdentifier)
             } else {
-                permission = await worker.readinessPermission(browser.id)
+                permission = await worker.closedPermission(browser.id)
             }
             result.append(
                 BrowserSetupState(id: browser.id, name: browser.name, isInstalled: installed, permission: permission))
@@ -167,7 +170,8 @@ final class BrowserProtection: ObservableObject {
             return
         }
         for browser in Self.browsers {
-            guard !NSRunningApplication.runningApplications(withBundleIdentifier: browser.id).isEmpty else {
+            guard let application = NSRunningApplication.runningApplications(withBundleIdentifier: browser.id).first
+            else {
                 statuses[browser.id] = "Browser is closed."
                 continue
             }
@@ -183,7 +187,7 @@ final class BrowserProtection: ObservableObject {
                 }
                 continue
             }
-            let permission = await worker.permission(browser.id)
+            let permission = await worker.permission(browser.id, processIdentifier: application.processIdentifier)
             guard permission == noErr else {
                 statuses[browser.id] = "Connect this browser to enable page redirects."
                 continue
@@ -195,7 +199,8 @@ final class BrowserProtection: ObservableObject {
                 continue
             }
             let outcome = await worker.check(
-                browser.id, rules: rules, page: page, adultDomains: database,
+                browser.id, processIdentifier: application.processIdentifier, rules: rules, page: page,
+                adultDomains: database,
                 cachedRating: { self.adultRatings.contains($0) },
                 authorize: { url, ratedAdult in
                     guard let latest = await currentSnapshot() else { return false }
@@ -233,10 +238,8 @@ private actor BrowserAutomationWorker {
         return "browserPreviouslyApproved.\(workerPath)\(identifier)"
     }
 
-    func permission(_ identifier: String, processIdentifier: pid_t? = nil) -> OSStatus {
-        let target =
-            processIdentifier.map(NSAppleEventDescriptor.init(processIdentifier:))
-            ?? NSAppleEventDescriptor(bundleIdentifier: identifier)
+    func permission(_ identifier: String, processIdentifier: pid_t) -> OSStatus {
+        let target = NSAppleEventDescriptor(processIdentifier: processIdentifier)
         let status = AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, false)
         recordPermission(status, for: identifier)
         return status
@@ -271,8 +274,8 @@ private actor BrowserAutomationWorker {
         return defaults.bool(forKey: approvalKey(identifier)) ? .previouslyGranted : .unknown
     }
 
-    func readinessPermission(_ identifier: String) -> BrowserPermissionState {
-        let status = permission(identifier)
+    func readinessPermission(_ identifier: String, processIdentifier: pid_t) -> BrowserPermissionState {
+        let status = permission(identifier, processIdentifier: processIdentifier)
         if status == noErr { return .granted }
         // macOS cannot query a closed browser. This remembers setup only, never tab access.
         if status == procNotFound && defaults.bool(forKey: approvalKey(identifier)) {
@@ -289,45 +292,44 @@ private actor BrowserAutomationWorker {
 
     func migratePausePage(_ identifier: String, from oldPage: URL, to newPage: URL) -> Bool {
         guard ["com.google.Chrome", "com.apple.Safari"].contains(identifier),
-            !NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty
+            let application = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first
         else { return false }
         let source = """
-            with timeout of 10 seconds
-                tell application id "\(identifier)"
-                    repeat with w in windows
-                        repeat with t in tabs of w
-                            try
-                                if URL of t is \(Self.literal(oldPage.absoluteString)) then
-                                    set URL of t to \(Self.literal(newPage.absoluteString))
-                                end if
-                            on error
-                                return -1
-                            end try
-                        end repeat
-                    end repeat
-                    set remaining to 0
-                    repeat with w in windows
-                        repeat with t in tabs of w
-                            try
-                                if URL of t is \(Self.literal(oldPage.absoluteString)) then
-                                    set remaining to remaining + 1
-                                end if
-                            on error
-                                return -1
-                            end try
-                        end repeat
-                    end repeat
-                    return remaining
-                end tell
-            end timeout
+            var results = [];
+            var windows = app.windows({ timeout: 10 });
+            for (var i = 0; i < windows.length; i++) {
+                var tabs = windows[i].tabs({ timeout: 10 });
+                for (var j = 0; j < tabs.length; j++) {
+                    try {
+                        if (tabs[j].url({ timeout: 10 }) === \(Self.literal(oldPage.absoluteString))) {
+                            results.push([windows[i].id({ timeout: 10 }), j + 1]);
+                        }
+                    } catch (error) { return -1; }
+                }
+            }
+            return results;
             """
-        var error: NSDictionary?
-        let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
-        return error == nil && result?.int32Value == 0
+        let pid = application.processIdentifier
+        guard let matches = Self.execute(source, processIdentifier: pid), matches.descriptorType == typeAEList else {
+            return false
+        }
+        for index in 0..<matches.numberOfItems {
+            guard let item = matches.atIndex(index + 1), item.numberOfItems == 2,
+                let windowID = item.atIndex(1),
+                let tabIndex = item.atIndex(2)?.int32Value, tabIndex > 0,
+                Self.setURL(
+                    newPage.absoluteString, ifCurrentURL: oldPage.absoluteString,
+                    in: identifier, processIdentifier: pid,
+                    windowID: windowID, tabIndex: tabIndex)
+            else { return false }
+        }
+        guard let remaining = Self.execute(source, processIdentifier: pid) else { return false }
+        return remaining.descriptorType == typeAEList && remaining.numberOfItems == 0
     }
 
     func check(
-        _ identifier: String, rules: [ProtectedRules], page: URL, adultDomains: AdultDomainDatabase?,
+        _ identifier: String, processIdentifier: pid_t, rules: [ProtectedRules], page: URL,
+        adultDomains: AdultDomainDatabase?,
         cachedRating: @escaping @MainActor @Sendable (URL) -> Bool,
         authorize: @escaping @MainActor @Sendable (URL, Bool) async -> Bool
     ) async -> CheckOutcome {
@@ -339,28 +341,22 @@ private actor BrowserAutomationWorker {
             return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
         }
         let source = """
-            with timeout of 2 seconds
-                tell application id "\(identifier)"
-                    set results to {}
-                    repeat with w in windows
-                        set tabPosition to 0
-                        repeat with t in tabs of w
-                            set tabPosition to tabPosition + 1
-                            try
-                                set end of results to {id of w, tabPosition, URL of t}
-                            end try
-                        end repeat
-                    end repeat
-                    return results
-                end tell
-            end timeout
+            var results = [];
+            var windows = app.windows({ timeout: 2 });
+            for (var i = 0; i < windows.length; i++) {
+                var tabs = windows[i].tabs({ timeout: 2 });
+                for (var j = 0; j < tabs.length; j++) {
+                    try {
+                        results.push([windows[i].id({ timeout: 2 }), j + 1, tabs[j].url({ timeout: 2 })]);
+                    }
+                    catch (error) { /* A tab closed during the scan. */ }
+                }
+            }
+            return results;
             """
-        var error: NSDictionary?
-        guard let script = NSAppleScript(source: source) else {
-            return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
-        }
-        let result = script.executeAndReturnError(&error)
-        guard error == nil else {
+        guard let result = Self.execute(source, processIdentifier: processIdentifier),
+            result.descriptorType == typeAEList
+        else {
             return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
         }
         if result.numberOfItems == 0 {
@@ -386,47 +382,30 @@ private actor BrowserAutomationWorker {
             let categoryActive = rules.contains(where: \.blocksAdultWebsites)
             var ratedAdult = categoryActive ? await cachedRating(url) : false
             if !matched && !ratedAdult && categoryActive && !rtaUnavailable {
-                let execution =
-                    identifier == "com.google.Chrome"
-                    ? "execute t javascript " : "do JavaScript "
                 let command =
                     identifier == "com.google.Chrome"
-                    ? execution + Self.literal(AdultPageRating.script)
-                    : execution + Self.literal(AdultPageRating.script) + " in t"
+                    ? "app.execute(t, { javascript: \(Self.literal(AdultPageRating.script)) }, { timeout: 2 })"
+                    : "app.doJavaScript(\(Self.literal(AdultPageRating.script)), { in: t }, { timeout: 2 })"
                 let inspect = """
-                    with timeout of 2 seconds
-                        tell application id "\(identifier)"
-                            set t to tab \(tabIndex) of window id \(windowReference)
-                            if URL of t is not \(Self.literal(raw)) then return false
-                            set adultRating to (\(command))
-                            if URL of t is \(Self.literal(raw)) then return adultRating
-                            return false
-                        end tell
-                    end timeout
+                    var t = app.windows.byId(\(windowReference)).tabs[\(tabIndex - 1)];
+                    if (t.url({ timeout: 2 }) !== \(Self.literal(raw))) return false;
+                    var adultRating = \(command);
+                    return t.url({ timeout: 2 }) === \(Self.literal(raw)) ? adultRating : false;
                     """
-                error = nil
-                if let ratingScript = NSAppleScript(source: inspect) {
-                    let rating = ratingScript.executeAndReturnError(&error)
-                    if error == nil { ratedAdult = rating.booleanValue } else { rtaUnavailable = true }
+                if let rating = Self.execute(inspect, processIdentifier: processIdentifier) {
+                    ratedAdult = rating.booleanValue
                 } else {
                     rtaUnavailable = true
                 }
             }
             guard matched || ratedAdult, await authorize(url, ratedAdult) else { continue }
-            let redirect = """
-                with timeout of 2 seconds
-                    tell application id "\(identifier)"
-                        try
-                            set t to tab \(tabIndex) of window id \(windowReference)
-                            if URL of t is \(Self.literal(raw)) then set URL of t to \(Self.literal(page.absoluteString))
-                        end try
-                    end tell
-                end timeout
-                """
-            error = nil
             mayHaveRedirected = true
-            NSAppleScript(source: redirect)?.executeAndReturnError(&error)
-            if error != nil {
+            guard let windowID = item.atIndex(1),
+                Self.setURL(
+                    page.absoluteString, ifCurrentURL: raw,
+                    in: identifier, processIdentifier: processIdentifier,
+                    windowID: windowID, tabIndex: tabIndex)
+            else {
                 return CheckOutcome(
                     success: false, rtaUnavailable: rtaUnavailable,
                     mayHaveRedirected: mayHaveRedirected)
@@ -434,6 +413,73 @@ private actor BrowserAutomationWorker {
         }
         return CheckOutcome(
             success: true, rtaUnavailable: rtaUnavailable, mayHaveRedirected: mayHaveRedirected)
+    }
+
+    private static func execute(_ body: String, processIdentifier: pid_t) -> NSAppleEventDescriptor? {
+        // A process target cannot relaunch a browser that quits between tab operations.
+        let source = """
+            function run() {
+                var app = Application(\(processIdentifier));
+                if (!app.running()) throw new Error("Browser closed");
+                \(body)
+            }
+            """
+        guard let language = OSALanguage(forName: "JavaScript") else { return nil }
+        var error: NSDictionary?
+        let result = OSAScript(source: source, language: language).executeAndReturnError(&error)
+        return error == nil ? result : nil
+    }
+
+    private static func setURL(
+        _ url: String, ifCurrentURL expectedURL: String, in identifier: String, processIdentifier: pid_t,
+        windowID: NSAppleEventDescriptor, tabIndex: Int32
+    ) -> Bool {
+        func object(
+            _ desiredClass: DescType, in container: NSAppleEventDescriptor,
+            form: DescType, key: NSAppleEventDescriptor
+        ) -> NSAppleEventDescriptor? {
+            var containerDesc = container.aeDesc!.pointee
+            var keyDesc = key.aeDesc!.pointee
+            var output = AEDesc()
+            guard CreateObjSpecifier(desiredClass, &containerDesc, form, &keyDesc, false, &output) == noErr else {
+                return nil
+            }
+            return NSAppleEventDescriptor(aeDescNoCopy: &output)
+        }
+        let tabClass: DescType = identifier == "com.google.Chrome" ? 0x4372_5462 : 0x6254_6162  // CrTb, bTab
+        let urlProperty: OSType = identifier == "com.google.Chrome" ? 0x5552_4c20 : 0x7055_524c  // URL , pURL
+        let root = NSAppleEventDescriptor(descriptorType: typeNull, data: nil)!
+        guard let window = object(cWindow, in: root, form: DescType(formUniqueID), key: windowID),
+            let tab = object(
+                tabClass, in: window, form: DescType(formAbsolutePosition),
+                key: NSAppleEventDescriptor(int32: tabIndex)),
+            let property = object(
+                cProperty, in: tab, form: DescType(formPropertyID),
+                key: NSAppleEventDescriptor(typeCode: urlProperty))
+        else { return false }
+        let target = NSAppleEventDescriptor(processIdentifier: processIdentifier)
+        let getEvent = NSAppleEventDescriptor.appleEvent(
+            withEventClass: AEEventClass(kAECoreSuite), eventID: AEEventID(kAEGetData),
+            targetDescriptor: target,
+            returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
+        getEvent.setParam(property, forKeyword: keyDirectObject)
+        do {
+            let reply = try getEvent.sendEvent(options: [.waitForReply], timeout: 2)
+            guard reply.paramDescriptor(forKeyword: keyErrorNumber)?.int32Value ?? 0 == 0,
+                let currentURL = reply.paramDescriptor(forKeyword: keyDirectObject)?.stringValue
+            else { return false }
+            if currentURL != expectedURL { return true }
+        } catch { return false }
+        let event = NSAppleEventDescriptor.appleEvent(
+            withEventClass: AEEventClass(kAECoreSuite), eventID: AEEventID(kAESetData),
+            targetDescriptor: target,
+            returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
+        event.setParam(property, forKeyword: keyDirectObject)
+        event.setParam(NSAppleEventDescriptor(string: url), forKeyword: keyAEData)
+        do {
+            let reply = try event.sendEvent(options: [.waitForReply], timeout: 2)
+            return reply.paramDescriptor(forKeyword: keyErrorNumber)?.int32Value ?? 0 == 0
+        } catch { return false }
     }
 
     private static func literal(_ string: String) -> String {
