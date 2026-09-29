@@ -383,7 +383,8 @@
     const previousId = element.querySelector('img')?.id;
     element.innerHTML = `<svg class="low-light-svg" viewBox="0 0 400 380" aria-hidden="true" focusable="false"><defs><radialGradient id="${id}-body" gradientUnits="userSpaceOnUse" cx="166" cy="120" r="225"><stop stop-color="#c6d5e9"/><stop offset=".55" stop-color="#94aaca"/><stop offset="1" stop-color="#637a9b"/></radialGradient><radialGradient id="${id}-halo"><stop stop-color="#8daeda" stop-opacity=".16"/><stop offset="1" stop-color="#8daeda" stop-opacity="0"/></radialGradient><linearGradient id="${id}-moon" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff4d3"/><stop offset="1" stop-color="#d2bf91"/></linearGradient><radialGradient id="${id}-shade"><stop stop-color="#233854" stop-opacity=".24"/><stop offset="1" stop-color="#233854" stop-opacity="0"/></radialGradient><clipPath id="${id}-clip"><path class="low-light-outline"/></clipPath><filter id="${id}-velvet" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="3" seed="12"/><feColorMatrix type="saturate" values="0"/></filter></defs><g class="low-light-character"><ellipse cx="200" cy="210" rx="197" ry="169" fill="url(#${id}-halo)"/><path class="low-light-moon" d="M326 67C301 68 282 90 282 115C282 148 312 170 343 158C317 158 298 139 300 115C301 94 312 78 326 67Z" fill="url(#${id}-moon)"/><path class="low-light-body" fill="url(#${id}-body)" stroke="#d1e1f4" stroke-opacity=".12" stroke-width="1"/><g clip-path="url(#${id}-clip)"><g class="low-light-plush"><ellipse cx="215" cy="318" rx="168" ry="91" fill="url(#${id}-shade)"/></g><rect x="20" y="90" width="360" height="220" filter="url(#${id}-velvet)" opacity=".07" class="low-light-texture"/></g><g class="low-light-sleep-z" aria-hidden="true"><text x="0" y="0" class="low-light-z">Z</text><text x="0" y="0" class="low-light-z">Z</text><text x="0" y="0" class="low-light-z">Z</text></g><g class="low-light-face"><path class="low-light-eye"/><path class="low-light-eye"/><path class="low-light-mouth"/></g></g></svg>`;
     const svg = element.querySelector('svg'),
-      body = svg.querySelector('.low-light-body');
+      body = svg.querySelector('.low-light-body'),
+      outline = svg.querySelector('.low-light-outline');
     if (previousId) svg.id = previousId;
     const character = svg.querySelector('.low-light-character'),
       face = svg.querySelector('.low-light-face'),
@@ -401,12 +402,11 @@
     let raf = 0,
       clock = 0,
       last = null,
-      rendered = -1,
       settlingUntil = 0;
     function draw() {
       const f = engine.sample(clock, reduced);
       body.setAttribute('d', f.path);
-      svg.querySelector('.low-light-outline').setAttribute('d', f.path);
+      outline.setAttribute('d', f.path);
       character.setAttribute('transform', f.character);
       face.setAttribute('transform', f.face);
       eyes.forEach((eye, i) => eye.setAttribute('d', f.eyes[i]));
@@ -431,11 +431,7 @@
       }
       if (last !== null) clock += Math.min((stamp - last) / 1000, 0.05);
       last = stamp;
-      // 30 updates per second; animation clock still uses the actual timestamp.
-      if (stamp - rendered >= 30) {
-        draw();
-        rendered = stamp;
-      }
+      draw();
       raf = win.requestAnimationFrame(tick);
     }
     function sync() {

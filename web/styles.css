@@ -127,7 +127,9 @@ em {
 }
 .wordmark {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
+  max-width: 100%;
   gap: 12px;
   font-size: 1.25rem;
   font-weight: 650;

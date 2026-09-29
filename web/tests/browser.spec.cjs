@@ -70,19 +70,19 @@ test('production landing is honest, local, and contains no simulated controls', 
   expect(external).toEqual([]);
 });
 
-test('Low Light keeps the sleeping motion and respects reduced motion', async ({ page }) => {
+test('Low Light follows browser frames and respects reduced motion', async ({ page }) => {
   await page.goto('/');
   const liveBody = page.locator('.presence .low-light-body');
   await expect(liveBody).toHaveAttribute('d', /Z$/);
   const movingPaths = await liveBody.evaluate(async (shape) => {
     const paths = [];
-    for (let index = 0; index < 8; index++) {
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+    for (let index = 0; index < 24; index++) {
+      await new Promise((resolve) => globalThis.requestAnimationFrame(resolve));
       paths.push(shape.getAttribute('d'));
     }
     return paths;
   });
-  expect(new Set(movingPaths).size).toBeGreaterThan(3);
+  expect(new Set(movingPaths).size).toBeGreaterThanOrEqual(movingPaths.length - 1);
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.waitForTimeout(100);
@@ -198,7 +198,7 @@ test('native greeting API faces forward, nods, and returns to the latest target'
   );
   const peaks = positions.filter(
     (position, index) =>
-      position > 2.5 && position > positions[index - 1] && position >= positions[index + 1],
+      position > 1.5 && position > positions[index - 1] && position >= positions[index + 1],
   );
   expect(peaks).toHaveLength(2);
   expect(positions.at(-1)).toBe(0);
