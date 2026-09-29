@@ -103,6 +103,33 @@ test('landing fits a narrow viewport and enlarged text', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Get the app' })).toBeVisible();
 });
 
+test('hero keeps the mascot and main content on the first screen', async ({ page }) => {
+  for (const [width, height] of [
+    [320, 568],
+    [375, 667],
+    [390, 740],
+    [667, 375],
+    [844, 390],
+    [768, 1024],
+    [1024, 768],
+    [1280, 600],
+    [1440, 900],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    await page.evaluate(() => document.fonts.ready);
+    for (const selector of ['.presence', '#hero-title', '.hero-intro', '.hero-actions']) {
+      await expect(page.locator(selector), `${selector} at ${width}×${height}`).toBeInViewport({
+        ratio: 1,
+      });
+    }
+    const heading = await page.locator('.hero-heading').boundingBox();
+    const mascot = await page.locator('.presence').boundingBox();
+    expect(mascot.x).toBeGreaterThanOrEqual(heading.x + heading.width);
+    expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
+  }
+});
+
 test('bundled native renderer remains local and morphs without body zoom', async ({ page }) => {
   const errors = [];
   const external = [];

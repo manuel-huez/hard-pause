@@ -170,9 +170,16 @@ em {
 .hero {
   display: grid;
   grid-template-columns: 1.12fr 1fr;
-  align-items: center;
+  grid-template-areas: 'heading art' 'intro art' 'actions art';
+  align-content: center;
   column-gap: 24px;
-  padding-top: 64px;
+  padding-block: 64px 90px;
+}
+.hero-heading {
+  grid-area: heading;
+}
+.hero-actions {
+  grid-area: actions;
 }
 .hero .eyebrow {
   color: var(--moon);
@@ -186,6 +193,7 @@ em {
   color: var(--moon);
 }
 .hero-intro {
+  grid-area: intro;
   max-width: 405px;
   color: var(--muted);
   font-size: 1.0625rem;
@@ -225,7 +233,11 @@ em {
   color: var(--muted);
 }
 .hero-art {
+  grid-area: art;
+  align-self: center;
+  justify-self: center;
   position: relative;
+  width: min(100%, 60svh);
   min-width: 0;
   aspect-ratio: 1;
   display: grid;
@@ -246,7 +258,7 @@ em {
 }
 .presence {
   position: relative;
-  width: 112%;
+  width: 100%;
   max-width: 580px;
   aspect-ratio: 400 / 380;
   padding: 0;
@@ -275,9 +287,6 @@ em {
 h2 {
   font-size: clamp(2.35rem, 4.1vw, 3.6rem);
   line-height: 1.16;
-}
-.hero {
-  padding-bottom: 90px;
 }
 .hero-intro a {
   color: var(--text);
@@ -552,11 +561,14 @@ details p {
   }
   .site-header {
     gap: 10px;
-    padding-block: 18px;
+    padding-block: 12px;
   }
   .wordmark {
     font-size: 1.125rem;
     gap: 9px;
+  }
+  .wordmark img {
+    width: 40px;
   }
   .site-header nav {
     gap: 0;
@@ -570,26 +582,26 @@ details p {
     font-size: 0.75rem;
   }
   .hero {
-    grid-template-columns: 1fr;
-    padding-block: 35px 60px;
+    grid-template-columns: 1.5fr 1fr;
+    grid-template-areas: 'heading art' 'intro intro' 'actions actions';
+    gap: 0 10px;
+    padding-block: 16px 40px;
   }
   .hero h1 {
-    font-size: clamp(3.1rem, 10.5vw, 4.5rem);
-    margin-block: 20px;
+    font-size: clamp(2.25rem, 8.5vw, 3.5rem);
+    margin-block: 12px 16px;
   }
   .hero-intro {
     max-width: 450px;
   }
   .hero .button {
-    margin-top: 24px;
+    margin-top: 20px;
   }
   .hero-art {
-    width: min(90%, 420px);
-    justify-self: center;
-    margin-top: 26px;
+    width: 100%;
   }
   .art-note {
-    bottom: 0;
+    display: none;
   }
   .features-section {
     border-radius: 26px 26px 0 0;
@@ -660,6 +672,39 @@ details p {
   .sketch-note,
   .wait-middle {
     font-size: 0.9375rem;
+  }
+}
+@media (min-width: 721px) and (max-height: 700px) {
+  .site-header {
+    padding-block: 14px;
+  }
+  .hero {
+    padding-top: 16px;
+  }
+  .hero h1 {
+    font-size: clamp(3rem, 10svh, 5rem);
+    margin-block: 16px;
+  }
+}
+@media (min-width: 600px) and (max-height: 500px) {
+  .hero {
+    grid-template-columns: 1.2fr 1fr;
+    grid-template-areas: 'heading art' 'intro actions';
+    gap: 12px 30px;
+    padding-top: 8px;
+  }
+  .hero h1 {
+    font-size: 2.25rem;
+    margin-block: 10px 0;
+  }
+  .hero-art {
+    width: min(100%, 38svh);
+  }
+  .hero .button {
+    margin-top: 0;
+  }
+  .art-note {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
