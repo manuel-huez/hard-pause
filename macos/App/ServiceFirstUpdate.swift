@@ -12,6 +12,9 @@ struct ServiceFirstUpdate {
         case invalidFeed
         case invalidArchive
         case serviceDidNotUpdate
+        case workerMissing
+        case workerNeedsAccess
+        case workerNotReady
         case restartNotSafe
 
         var errorDescription: String? {
@@ -19,6 +22,12 @@ struct ServiceFirstUpdate {
             case .invalidFeed: "The signed update feed is invalid."
             case .invalidArchive: "The downloaded update did not pass signature checks."
             case .serviceDidNotUpdate: "Protection did not finish updating. The app was not replaced."
+            case .workerMissing:
+                "The new browser worker was not installed. The app was not replaced. Keep Hard Pause open; the worker installation needs repair before this update can continue."
+            case .workerNeedsAccess:
+                "The new browser worker needs browser access. The app was not replaced. Allow access in Setup, then retry the update."
+            case .workerNotReady:
+                "The new browser worker did not become ready. The app was not replaced. Keep Hard Pause open and retry the update."
             case .restartNotSafe:
                 "Protection could not be confirmed before restarting. Keep Hard Pause open and retry the update."
             }

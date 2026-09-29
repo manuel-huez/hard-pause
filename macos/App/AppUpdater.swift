@@ -107,10 +107,12 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
             let approvedUpdate,
             Self.canUpdate(model),
             let status = try? await service.updateInstallationStatus(),
-            status.installedAppBuild >= approvedUpdate.build,
+            status.installedAppBuild == approvedUpdate.build,
             let latest = try? await service.list(),
+            latest.protection.releaseBuild == String(approvedUpdate.build),
             Self.isSafeToUpdate(latest),
             await hasBrowserCoverage(for: latest),
+            await model?.replacementWorkerReady(build: approvedUpdate.build) == true,
             !Task.isCancelled, installationIsStarting, Self.canUpdate(model)
         else { return false }
         return true
@@ -287,7 +289,9 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         shouldProceedWithUpdate item: SUAppcastItem,
         updateCheck: SPUUpdateCheck
     ) throws {
-        guard let approvedUpdate, approvedUpdate.matches(item) else {
+        let currentBuild =
+            UInt64(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0
+        guard let approvedUpdate, approvedUpdate.build > currentBuild, approvedUpdate.matches(item) else {
             throw NSError(
                 domain: "org.hardpause.app.updates",
                 code: 2,
@@ -334,27 +338,36 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     private func prepareService(for update: ServiceFirstUpdate) async throws {
+        let currentBuild =
+            UInt64(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0
+        if update.build <= currentBuild {
+            model?.setPendingBrowserWorkerBuild(nil)
+            approvedUpdate = update
+            return
+        }
         guard let latest = try? await service.list(),
             Self.isSafeToUpdate(latest),
             await hasBrowserCoverage(for: latest)
         else { throw ServiceFirstUpdate.Failure.serviceDidNotUpdate }
-        let currentBuild =
-            UInt64(
-                Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0
         let status = try await service.updateInstallationStatus()
-        if update.build > currentBuild && status.installedAppBuild < update.build {
+        if status.installedAppBuild < update.build {
             let staged = try await update.verifiedBundle()
             defer { try? FileManager.default.removeItem(at: staged.directory) }
             _ = try await service.requestManagedUpdate(bundlePath: staged.bundle.path)
+            model?.setPendingBrowserWorkerBuild(update.build)
             try await waitForService(build: update.build)
+        } else if status.installedAppBuild == update.build {
+            model?.setPendingBrowserWorkerBuild(update.build)
         }
         guard let installed = try? await service.updateInstallationStatus(),
-            installed.installedAppBuild >= min(update.build, currentBuild),
+            installed.installedAppBuild == update.build,
             let current = try? await service.list(),
             installed.serviceVersion == current.protection.serviceVersion,
+            current.protection.releaseBuild == String(update.build),
             Self.isSafeToUpdate(current),
             await hasBrowserCoverage(for: current)
         else { throw ServiceFirstUpdate.Failure.serviceDidNotUpdate }
+        try await waitForReplacementWorker(build: update.build)
         approvedUpdate = update
     }
 
@@ -362,9 +375,10 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         for _ in 0..<90 {
             if AppUpdateRecovery.currentImageWasRemoved() { throw RecoveryFailure.runningImageRemoved }
             if let status = try? await service.updateInstallationStatus(),
-                status.installedAppBuild >= build,
+                status.installedAppBuild == build,
                 let snapshot = try? await service.list(),
                 status.serviceVersion == snapshot.protection.serviceVersion,
+                snapshot.protection.releaseBuild == String(build),
                 Self.isSafeToUpdate(snapshot)
             {
                 return
@@ -372,6 +386,28 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
             try await Task.sleep(for: .seconds(2))
         }
         throw ServiceFirstUpdate.Failure.serviceDidNotUpdate
+    }
+
+    private func waitForReplacementWorker(build: UInt64) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(90))
+        while !Task.isCancelled, ContinuousClock.now < deadline {
+            if AppUpdateRecovery.currentImageWasRemoved() { throw RecoveryFailure.runningImageRemoved }
+            if await model?.replacementWorkerReady(build: build) == true { return }
+            try await Task.sleep(for: .seconds(2))
+        }
+        let name = AppModel.replacementWorkerName(build: build)
+        guard BrowserWorkerClient.installedMachServices().contains(name) else {
+            throw ServiceFirstUpdate.Failure.workerMissing
+        }
+        if let report = await model?.replacementWorkerReadiness(build: build),
+            report.browserAccess.contains(where: {
+                $0.installed && $0.permission != "granted"
+                    && !(report.checksPermissionsOnLaunch == true && $0.accessCanBeCheckedOnOpen)
+            })
+        {
+            throw ServiceFirstUpdate.Failure.workerNeedsAccess
+        }
+        throw ServiceFirstUpdate.Failure.workerNotReady
     }
 
     private func showUpdateError(_ error: Error) {

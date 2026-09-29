@@ -3,6 +3,43 @@ import XCTest
 
 @MainActor
 final class AppModelTests: XCTestCase {
+    func testReplacementWorkerGateRejectsReadyOlderWorkerAndStaleTarget() async {
+        let oldName = AppModel.replacementWorkerName(build: 51)
+        let targetName = AppModel.replacementWorkerName(build: 52)
+        let browsers = ["com.google.Chrome", "com.apple.Safari", "org.mozilla.firefox"]
+        func report(permission: String, observedAt: Date = Date()) -> BrowserWorkerReadiness {
+            BrowserWorkerReadiness(
+                observedAt: observedAt, serviceReady: true, serviceReachable: true, standbyReady: false,
+                cachedActiveRestrictions: false, pausePageReady: true, adultDatabaseReady: true,
+                pausePageURL: URL(string: "http://127.0.0.1:1234/BlockedPage/index.html"),
+                browserAccess: browsers.map {
+                    BrowserWorkerAccess(identifier: $0, installed: true, running: true, permission: permission)
+                }, browserStatuses: [:])
+        }
+        let oldReady = report(permission: "granted")
+        var target = report(permission: "denied")
+        var probedNames: [String] = []
+        let model = AppModel(
+            automaticallyRefreshes: false,
+            replacementWorkerProbe: { name in
+                probedNames.append(name)
+                return name == oldName ? oldReady : target
+            })
+
+        let denied = await model.replacementWorkerReady(build: 52)
+        XCTAssertFalse(denied)
+        XCTAssertEqual(probedNames, [targetName])
+
+        target = report(permission: "granted", observedAt: Date().addingTimeInterval(-20))
+        let stale = await model.replacementWorkerReady(build: 52)
+        XCTAssertFalse(stale)
+
+        target = report(permission: "granted")
+        let ready = await model.replacementWorkerReady(build: 52)
+        XCTAssertTrue(ready)
+        XCTAssertEqual(probedNames, [targetName, targetName, targetName])
+    }
+
     func testActivationRechecksPermissionAndUnlockRemainsAvailable() async {
         let status = ProtectionStatus(
             serviceVersion: ProtectedServiceContract.serviceVersion, isEnforcing: true, lastAppliedAt: Date(),
