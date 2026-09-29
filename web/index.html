@@ -1,17 +1,17 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"
     />
-    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#1c1d29" />
-    <title>Hard Pause — Give yourself time before access returns</title>
+    <meta name="theme-color" content="#1c2133" />
+    <title>Hard Pause — You had other plans.</title>
     <meta
       name="description"
-      content="Hard Pause is a local app for iPhone, iPad, and Mac. Choose what to block and set a wait before access returns. In development; build from source."
+      content="Block the apps and websites you keep opening. Choose a wait before you can use them again. Try the early Mac release of Hard Pause."
     />
     <link rel="icon" href="mascot/first-frame.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
@@ -20,256 +20,203 @@
     <script src="app.js" defer></script>
   </head>
   <body>
-    <a class="skip-link" href="#product">Skip to the product</a>
+    <a class="skip-link" href="#product">Skip to how it works</a>
     <header class="site-header wrap">
-      <a class="wordmark" href="#top" aria-label="Hard Pause home">hard pause</a>
+      <a class="wordmark" href="#top" aria-label="Hard Pause home">
+        <img src="mascot/first-frame.svg" width="52" height="49" alt="" />hard pause
+      </a>
       <nav aria-label="Main navigation">
-        <a href="#product">how it works</a>
-        <a href="#platforms">platforms</a>
-        <a href="#availability">get the app</a>
+        <a href="#product">How it works</a>
+        <a href="#questions">Questions</a>
+        <a class="nav-download" href="#availability"
+          >Get the app <span aria-hidden="true">↗</span></a
+        >
       </nav>
     </header>
     <main id="top">
       <section class="hero wrap" aria-labelledby="hero-title">
-        <p class="hero-label">LOCAL APP AND WEBSITE BLOCKING</p>
-        <h1 id="hero-title">Nothing needs<br />you <em>right now.</em></h1>
-        <button type="button" class="presence mascot" aria-label="Wake Low Light briefly">
-          <span class="presence-halo"></span>
-          <img
-            src="mascot/first-frame.svg"
-            width="400"
-            height="380"
-            alt=""
-            class="hero-character"
-          />
-        </button>
-        <div class="hero-bottom">
-          <p>Your apps can wait.<br />Set a little distance. Let the urge pass.</p>
-          <a class="quiet-link" href="#product"
-            >see how it works <span aria-hidden="true">↓</span></a
+        <div class="hero-copy">
+          <p class="eyebrow">A little help putting your apps away</p>
+          <h1 id="hero-title">You had<br /><em>other plans.</em></h1>
+          <p class="hero-intro">
+            Block the apps and websites you keep opening. Choose a wait before you can use them
+            again. Then get back to what you wanted to do.
+          </p>
+          <a class="button" href="#availability"
+            >Try Hard Pause for Mac <span aria-hidden="true">↗</span></a
           >
-          <p>Private by design.<br />No account or hosted service.</p>
+          <p class="release-note">Early release · macOS 26 or later</p>
+        </div>
+        <div class="hero-art">
+          <span class="night-ring" aria-hidden="true"></span>
+          <span class="star star-one" aria-hidden="true">✦</span>
+          <span class="star star-two" aria-hidden="true">✧</span>
+          <button type="button" class="presence mascot" aria-label="Say hello to Low Light">
+            <img src="mascot/first-frame.svg" width="400" height="380" alt="" />
+          </button>
+          <p class="art-note">Your apps can wait.</p>
+        </div>
+        <div class="hero-foot">
+          <p>A few things worth closing a tab for</p>
+          <ul aria-label="Make time for">
+            <li><span aria-hidden="true">↳</span> A few more pages</li>
+            <li><span aria-hidden="true">↳</span> One thing finished</li>
+            <li><span aria-hidden="true">↳</span> An earlier night</li>
+          </ul>
         </div>
       </section>
 
       <section class="product-section" id="product" tabindex="-1" aria-labelledby="product-title">
-        <div class="product-layout wrap">
-          <div class="product-copy">
-            <p class="eyebrow">THE PAUSE STAYS FIXED</p>
-            <h2 id="product-title">Decide once.<br />Wait it out.</h2>
-            <p class="section-intro">
-              Create separate named plans for different parts of your day. Choose apps and websites,
-              then set the waits that control access for each plan.
-            </p>
+        <div class="wrap">
+          <div class="product-layout">
+            <div class="product-heading">
+              <p class="eyebrow">How it works</p>
+              <h2 id="product-title">Make the choice.<br /><em>Keep the pause.</em></h2>
+              <p>
+                It’s easy to tap “ignore” on a reminder. Hard Pause gives you a waiting period
+                instead. You choose it before you start.
+              </p>
+            </div>
             <ol class="steps">
               <li>
-                <span>01</span>
+                <span class="step-number" aria-hidden="true">01</span>
                 <div>
-                  <h3>Choose the block</h3>
-                  <p>Select the apps and websites that can wait.</p>
+                  <h3>Pick what keeps pulling you back.</h3>
+                  <p>
+                    Social apps, video sites, the news. Choose what to block and give your plan a
+                    name.
+                  </p>
                 </div>
               </li>
               <li>
-                <span>02</span>
+                <span class="step-number" aria-hidden="true">02</span>
                 <div>
-                  <h3>Fix the rules</h3>
-                  <p>Starting a plan fixes its name and timing. Existing rules stay in place.</p>
+                  <h3>Decide how long you’ll wait.</h3>
+                  <p>
+                    Set the wait for a break or for ending your plan. Once you start, you can’t
+                    shorten it.
+                  </p>
                 </div>
               </li>
               <li>
-                <span>03</span>
+                <span class="step-number" aria-hidden="true">03</span>
                 <div>
-                  <h3>Request access</h3>
-                  <p>Set one wait for a short break and another for ending the block.</p>
+                  <h3>Close the window. Do your thing.</h3>
+                  <p>
+                    Your plan keeps running. If you ask for access, the wait begins. Your apps stay
+                    blocked until it ends.
+                  </p>
                 </div>
               </li>
             </ol>
           </div>
-
-          <div
-            class="product-illustration"
-            role="img"
-            aria-label="Static illustration of Hard Pause on Mac and iPhone"
-          >
-            <div class="mac-window" aria-hidden="true">
-              <div class="window-bar">
-                <span class="window-dots">● ● ●</span><span>hard pause</span><span>protected</span>
-              </div>
-              <div class="window-content">
-                <div class="block-sidebar">
-                  <span class="mini-label">YOUR BLOCKS</span>
-                  <div class="block-row active"><strong>Deep work</strong><span>active</span></div>
-                  <div class="block-row"><strong>Evening</strong><span>inactive</span></div>
-                </div>
-                <div class="block-status">
-                  <span class="status-pill">RULES FIXED</span>
-                  <h3>Deep work is active.</h3>
-                  <p>A request starts its wait. Overlapping plans stay in place.</p>
-                  <div class="rule-chips"><span>social apps</span><span>example.com</span></div>
-                  <div class="static-action">request a break <span>↗</span></div>
-                </div>
-              </div>
-            </div>
-            <div class="phone-card" aria-hidden="true">
-              <div class="phone-top"><span>hard pause</span><span>iPhone</span></div>
-              <span class="status-pill">FOCUS BLOCK</span>
-              <h3>Your pause is here.</h3>
-              <div class="small-presence">
-                <img src="mascot/first-frame.svg" width="400" height="380" alt="" />
-              </div>
-              <p>Active rules stay in place while a request is waiting.</p>
-              <div class="phone-line"></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="modes-section wrap" id="modes" aria-labelledby="modes-title">
-        <div class="modes-heading">
-          <p class="eyebrow">TWO WAYS TO PAUSE</p>
-          <h2 id="modes-title">Choose how access returns.</h2>
-        </div>
-        <div class="modes-grid">
-          <article class="mode-card">
-            <span class="mode-number">01 / FLEXIBLE</span>
-            <h3>Pause</h3>
-            <p>
-              Wait before a short break. When the break ends, the block returns. Ending the plan has
-              its own wait. You can also choose an end time when you create it.
-            </p>
-          </article>
-          <article class="mode-card">
-            <span class="mode-number">02 / NO BREAKS</span>
-            <h3>Hard Pause</h3>
-            <p>
-              Keep the block in place without breaks or an automatic end. To get access back, ask to
-              end the plan and wait for the time you chose.
-            </p>
-          </article>
-        </div>
-        <p class="modes-footnote">
-          If plans overlap, access returns only when every plan that blocks it allows access.
-        </p>
-      </section>
-
-      <section class="platform-section wrap" id="platforms" aria-labelledby="platform-title">
-        <div class="section-heading">
-          <p class="eyebrow">NATIVE ON BOTH PLATFORMS</p>
-          <h2 id="platform-title">One rule:<br />access takes time.</h2>
-          <p>Hard Pause uses local system protection designed for each device.</p>
-        </div>
-        <div class="platform-grid">
-          <article class="platform-card">
-            <div class="platform-meta"><span>01</span><span>iOS 26 or later</span></div>
-            <h3>iPhone and iPad</h3>
-            <p>
-              The app uses Screen Time to block selected apps and websites while a plan is active.
-            </p>
-            <ul>
-              <li>Block the apps and websites you choose</li>
-              <li>Make separate plans with their own waits</li>
-              <li>Make it harder to delete apps during a block</li>
-            </ul>
-            <p class="limit-note">
-              You can change Screen Time permission in iPhone settings. We still need to test the
-              protection on a real iPhone.
-            </p>
-          </article>
-          <article class="platform-card">
-            <div class="platform-meta"><span>02</span><span>macOS 26 or later</span></div>
-            <h3>Mac</h3>
-            <p>
-              Close the window and your block stays on. Hard Pause keeps running in the menu bar to
-              check websites.
-            </p>
-            <ul>
-              <li>Block apps, websites, and specific pages</li>
-              <li>Make separate plans with their own waits</li>
-              <li>Keep blocks on when you close the window</li>
-            </ul>
-            <p class="limit-note">
-              Some ways of browsing can get around website blocks. A Mac administrator can turn off
-              this protection. Closing a blocked app can lose unsaved work.
-            </p>
-          </article>
-        </div>
-        <p class="validation-note">
-          Hard Pause is still in development. We are testing how reliably the iPhone blocks apps and
-          how Screen Time setup works on Mac.
-        </p>
-      </section>
-
-      <section class="principles-section">
-        <div class="principles-layout wrap">
-          <h2>Quiet by design.<br />Local by default.</h2>
-          <div class="principle-grid">
-            <article>
-              <span>PRIVATE</span>
-              <h3>Your rules stay on your device.</h3>
+          <div class="pause-options" aria-labelledby="options-title">
+            <h3 id="options-title">
+              Room for a break?<br />
+              That’s up to you.
+            </h3>
+            <div class="pause-option">
+              <h4>Pause <span>With breaks</span></h4>
               <p>
-                No account, usage tracking, or uploaded browsing history. Website lists come from
-                public sources, but checks happen on your device.
+                Wait, take a short break, then the block returns. You can also set a time for the
+                plan to end.
               </p>
-            </article>
-            <article>
-              <span>HONEST</span>
-              <h3>Protection limits stay visible.</h3>
-              <p>If a block cannot run correctly, Hard Pause tells you in the app.</p>
-            </article>
-            <article>
-              <span>INDEPENDENT</span>
-              <h3>One block cannot release another.</h3>
-              <p>If two plans block the same thing, both must allow it before access returns.</p>
-            </article>
+            </div>
+            <div class="pause-option">
+              <h4>Hard Pause <span>No breaks</span></h4>
+              <p>
+                No breaks or automatic end. When you want to finish, request it and wait for the
+                time you chose.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="availability wrap" id="availability" aria-labelledby="availability-title">
-        <div>
-          <p class="eyebrow">EARLY RELEASE</p>
-          <h2 id="availability-title">Try the Mac app.</h2>
+      <section class="questions-section wrap" id="questions" aria-labelledby="questions-title">
+        <div class="questions-heading">
+          <p class="eyebrow">Good to know</p>
+          <h2 id="questions-title">Before you<br /><em>start.</em></h2>
+          <p>No account to make.<br />No usage tracking.<br />Your plans stay on your device.</p>
         </div>
-        <div class="availability-copy">
-          <p>
-            The Mac download is a development build. It is signed, but Apple has not approved it for
-            distribution. You may need to approve it in Mac settings before opening it. iPhone and
-            iPad still need a source build.
-          </p>
-          <div class="source-links">
-            <a class="quiet-link" href="https://github.com/manuel-huez/hard-pause/releases/latest"
-              >download for Mac <span aria-hidden="true">↗</span></a
-            >
-            <a class="quiet-link" href="https://github.com/manuel-huez/hard-pause"
-              >view the source <span aria-hidden="true">↗</span></a
-            >
+        <div class="questions-list">
+          <details>
+            <summary>Can I change my mind?</summary>
+            <p>
+              Yes. Ask to end your plan and the wait you chose will begin. It can’t be shortened. If
+              you chose Pause, you can request a short break too.
+            </p>
+          </details>
+          <details>
+            <summary>What if I have more than one plan?</summary>
+            <p>
+              You can make separate plans for work, evenings, or anything else. If two plans block
+              the same app or site, both must allow access before it opens again.
+            </p>
+          </details>
+          <details>
+            <summary>Does it see what I browse?</summary>
+            <p>
+              Hard Pause checks website addresses on your device to see if they should be blocked.
+              It does not upload your browsing history. Adult website lists are downloaded from a
+              public provider.
+            </p>
+          </details>
+          <details>
+            <summary>How strong is the blocking?</summary>
+            <p>
+              Hard Pause is still in development. Some browser setups can get around website blocks,
+              and someone with Mac administrator access can turn off the protection. Save your work
+              before blocking apps: closing them can lose unsaved changes.
+            </p>
+          </details>
+          <details>
+            <summary>Can I use it on my iPhone?</summary>
+            <p>
+              The iPhone and iPad app is in development for iOS 26 or later. It is not available in
+              the App Store yet, and its protection still needs testing on a real iPhone.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section class="availability" id="availability" aria-labelledby="availability-title">
+        <div class="availability-layout wrap">
+          <div>
+            <p class="eyebrow">Start with your Mac</p>
+            <h2 id="availability-title">Your next tab<br /><em>can wait.</em></h2>
+          </div>
+          <div class="availability-copy">
             <a
-              class="quiet-link"
-              href="https://github.com/manuel-huez/hard-pause/blob/main/macos/README.md"
-              >build for Mac <span aria-hidden="true">↗</span></a
+              class="button button-dark"
+              href="https://github.com/manuel-huez/hard-pause/releases/latest/download/HardPause-macOS.zip"
+              >Download for Mac <span aria-hidden="true">↓</span></a
             >
-            <a
-              class="quiet-link"
-              href="https://github.com/manuel-huez/hard-pause/blob/main/ios/README.md"
-              >build for iPhone <span aria-hidden="true">↗</span></a
-            >
-            <a
-              class="quiet-link"
-              href="https://github.com/manuel-huez/hard-pause/actions/workflows/checks.yml"
-              >view build checks <span aria-hidden="true">↗</span></a
+            <p class="download-meta">macOS 26 or later · Early release</p>
+            <p class="install-note">
+              This is a development build. It is signed but not notarized by Apple, so your Mac may
+              block it from opening.
+            </p>
+            <a class="text-link" href="https://github.com/manuel-huez/hard-pause/releases/latest"
+              >Read the release notes <span aria-hidden="true">↗</span></a
             >
           </div>
-          <p class="system-note">
-            Requires iOS 26 or macOS 26. Native signing and system permissions are needed for device
-            builds and local protection.
-          </p>
         </div>
       </section>
     </main>
     <footer class="site-footer wrap">
-      <a href="#top" class="wordmark">hard pause</a>
-      <p>a little further away.</p>
-      <a href="https://github.com/manuel-huez/hard-pause">GitHub ↗</a>
+      <a href="#top" class="wordmark"
+        ><img src="mascot/first-frame.svg" width="52" height="49" alt="" />hard pause</a
+      >
+      <p>App &amp; website blocking.</p>
+      <div class="footer-links">
+        <a href="https://github.com/manuel-huez/hard-pause"
+          >Source code <span aria-hidden="true">↗</span></a
+        >
+        <a href="https://github.com/manuel-huez/hard-pause/actions/workflows/checks.yml"
+          >Build checks <span aria-hidden="true">↗</span></a
+        >
+      </div>
     </footer>
   </body>
 </html>
