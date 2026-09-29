@@ -30,8 +30,15 @@ test('production landing is honest, local, and contains no simulated controls', 
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'You had other plans.' })).toBeVisible();
-  await expect(page.getByText('Early release · macOS 26 or later', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Try Hard Pause for Mac' }).click();
+  await expect(
+    page.getByText('Free · Source on GitHub · macOS 26 or later', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'adult websites', exact: true }).click();
+  await expect(page).toHaveURL(/#adult-blocking$/);
+  await expect(
+    page.getByRole('heading', { name: 'Adult websites. Blocked, too.' }),
+  ).toBeInViewport();
+  await page.getByRole('link', { name: 'Get Hard Pause for Mac' }).click();
   await expect(page).toHaveURL(/#availability$/);
   await expect(page.getByRole('link', { name: 'Download for Mac', exact: true })).toHaveAttribute(
     'href',
@@ -54,10 +61,6 @@ test('production landing is honest, local, and contains no simulated controls', 
   await expect(
     page.getByText('The iPhone and iPad app is in development', { exact: false }),
   ).toBeHidden();
-  await page.locator('summary', { hasText: 'How strong is the blocking?' }).click();
-  await expect(
-    page.getByText('Some browser setups can get around website blocks', { exact: false }),
-  ).toBeVisible();
   await expect(page.locator('form, input, select')).toHaveCount(0);
   expect((await page.locator('body').innerText()).toLowerCase()).not.toContain('skip the wait');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(

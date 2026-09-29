@@ -11,7 +11,7 @@
     <title>Hard Pause — You had other plans.</title>
     <meta
       name="description"
-      content="Private app and website blocking, including adult websites. No account or usage tracking. Choose a waiting period that stays in place when a craving hits."
+      content="Free, private app and website blocking, including adult websites. No account or usage tracking. Choose a waiting period that stays in place when a craving hits."
     />
     <link rel="icon" href="mascot/first-frame.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
@@ -20,14 +20,15 @@
     <script src="app.js" defer></script>
   </head>
   <body>
-    <a class="skip-link" href="#product">Skip to how it works</a>
+    <a class="skip-link" href="#product">Skip to features</a>
     <header class="site-header wrap">
       <a class="wordmark" href="#top" aria-label="Hard Pause home">
         <img src="mascot/first-frame.svg" width="52" height="49" alt="" />hard pause
       </a>
       <nav aria-label="Main navigation">
-        <a href="#product">How it works</a>
-        <a href="#questions">Questions</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#protection">Protection</a>
+        <a href="#adult-blocking">Adult blocking</a>
         <a class="nav-download" href="#availability"
           >Get the app <span aria-hidden="true">↗</span></a
         >
@@ -39,97 +40,87 @@
           <p class="eyebrow">Private app &amp; website blocking</p>
           <h1 id="hero-title">You had<br /><em>other plans.</em></h1>
           <p class="hero-intro">
-            Block the apps and websites you keep going back to. When a craving hits, getting access
-            back means waiting for the time you chose.
+            Block distracting apps, sites, and <a href="#adult-blocking">adult websites</a>. Your
+            activity stays on your device. Getting access back takes the time you chose.
           </p>
           <a class="button" href="#availability"
-            >Try Hard Pause for Mac <span aria-hidden="true">↗</span></a
+            >Get Hard Pause for Mac <span aria-hidden="true">↗</span></a
           >
-          <p class="release-note">Early release · macOS 26 or later</p>
+          <p class="release-note">Free · Source on GitHub · macOS 26 or later</p>
         </div>
         <div class="hero-art">
-          <span class="night-ring" aria-hidden="true"></span>
-          <span class="star star-one" aria-hidden="true">✦</span>
-          <span class="star star-two" aria-hidden="true">✧</span>
+          <img
+            class="hero-scribbles"
+            src="illustrations/night-scribbles.svg"
+            width="500"
+            height="500"
+            alt=""
+          />
           <button type="button" class="presence mascot" aria-label="Say hello to Low Light">
             <img src="mascot/first-frame.svg" width="400" height="380" alt="" />
           </button>
           <p class="art-note">Your apps can wait.</p>
         </div>
-        <div class="hero-foot">
-          <p>Private from the start</p>
-          <ul aria-label="Your privacy">
-            <li><span aria-hidden="true">↳</span> No account</li>
-            <li><span aria-hidden="true">↳</span> No usage tracking</li>
-            <li><span aria-hidden="true">↳</span> Checks stay on your device</li>
-          </ul>
+      </section>
+
+      <section class="features-section" id="product" tabindex="-1" aria-label="Why Hard Pause">
+        <div class="wrap">
+          <article class="feature-row" id="privacy" aria-labelledby="privacy-title">
+            <div class="feature-copy">
+              <p class="eyebrow">Private from the start</p>
+              <h2 id="privacy-title">
+                Your activity stays<br /><em class="scribble">on your device.</em>
+              </h2>
+              <p>
+                No account. No tracking. Every website check happens on your device, using the
+                protections built into it.
+              </p>
+            </div>
+            <div class="feature-art privacy-art" aria-hidden="true">
+              <img src="illustrations/local-device.svg" width="440" height="300" alt="" />
+              <span class="sketch-note">all right here.</span>
+            </div>
+          </article>
+          <article
+            class="feature-row feature-reverse"
+            id="protection"
+            aria-labelledby="protection-title"
+          >
+            <div class="feature-copy">
+              <p class="eyebrow">For when a craving hits</p>
+              <h2 id="protection-title">Changed your mind?<br /><em>There’s still a wait.</em></h2>
+              <p>
+                Choose how long you’ll wait before you start a plan. When you ask for access, that
+                wait begins. You can’t shorten it.
+              </p>
+            </div>
+            <figure
+              class="feature-art waiting-art"
+              aria-label="Request access, wait for the time you chose, then access returns"
+            >
+              <img src="illustrations/waiting-path.svg" width="460" height="300" alt="" />
+              <span class="wait-label wait-start" aria-hidden="true">Ask for<br />access</span>
+              <span class="wait-label wait-middle" aria-hidden="true">Your<br />wait</span>
+              <span class="wait-label wait-end" aria-hidden="true">Access<br />returns</span>
+            </figure>
+          </article>
         </div>
       </section>
 
-      <section class="product-section" id="product" tabindex="-1" aria-labelledby="product-title">
-        <div class="wrap">
-          <div class="product-layout">
-            <div class="product-heading">
-              <p class="eyebrow">How it works</p>
-              <h2 id="product-title">Make the choice.<br /><em>Keep the pause.</em></h2>
-              <p>
-                Choose your limits before a craving hits. Once your plan starts, you can’t remove
-                its blocks or shorten the wait. Changing your mind takes time.
-              </p>
-            </div>
-            <ol class="steps">
-              <li>
-                <span class="step-number" aria-hidden="true">01</span>
-                <div>
-                  <h3>Pick what keeps pulling you back.</h3>
-                  <p>
-                    Social apps, video sites, adult websites. Choose what to block and give your
-                    plan a name.
-                  </p>
-                </div>
-              </li>
-              <li>
-                <span class="step-number" aria-hidden="true">02</span>
-                <div>
-                  <h3>Decide how long you’ll wait.</h3>
-                  <p>
-                    Set the wait for a break or for ending your plan. Once you start, you can’t
-                    shorten it.
-                  </p>
-                </div>
-              </li>
-              <li>
-                <span class="step-number" aria-hidden="true">03</span>
-                <div>
-                  <h3>Close the window. Do your thing.</h3>
-                  <p>
-                    Your plan keeps running. If you ask for access, the wait begins. Your apps stay
-                    blocked until it ends.
-                  </p>
-                </div>
-              </li>
-            </ol>
-          </div>
-          <div class="pause-options" aria-labelledby="options-title">
-            <h3 id="options-title">
-              Room for a break?<br />
-              That’s up to you.
-            </h3>
-            <div class="pause-option">
-              <h4>Pause <span>With breaks</span></h4>
-              <p>
-                Wait, take a short break, then the block returns. You can also set a time for the
-                plan to end.
-              </p>
-            </div>
-            <div class="pause-option">
-              <h4>Hard Pause <span>No breaks</span></h4>
-              <p>
-                No breaks or automatic end. When you want to finish, request it and wait for the
-                time you chose.
-              </p>
-            </div>
-          </div>
+      <section class="adult-section wrap" id="adult-blocking" aria-labelledby="adult-title">
+        <div class="adult-art" aria-hidden="true">
+          <img src="illustrations/adult-websites.svg" width="370" height="300" alt="" />
+        </div>
+        <div class="feature-copy">
+          <p class="eyebrow">Included with Hard Pause</p>
+          <h2 id="adult-title">Adult websites.<br /><em>Blocked, too.</em></h2>
+          <p>
+            Turn on adult website blocking in your plan. Sites are checked on your device, and you
+            can add specific sites too.
+          </p>
+          <a class="text-link" href="#availability"
+            >Get Hard Pause for free <span aria-hidden="true">↗</span></a
+          >
         </div>
       </section>
 
@@ -141,10 +132,17 @@
         </div>
         <div class="questions-list">
           <details>
+            <summary>Is Hard Pause free?</summary>
+            <p>
+              Yes. Hard Pause is free, including app, website, and adult website blocking. You can
+              view the code on GitHub.
+            </p>
+          </details>
+          <details>
             <summary>Can I change my mind?</summary>
             <p>
-              Yes. Ask to end your plan and the wait you chose will begin. It can’t be shortened. If
-              you chose Pause, you can request a short break too.
+              Yes. Ask to end your plan and wait for the time you chose. Pause plans also allow
+              short breaks after a wait. Hard Pause plans have no breaks or automatic end.
             </p>
           </details>
           <details>
@@ -155,34 +153,16 @@
             </p>
           </details>
           <details>
-            <summary>Can it block adult content?</summary>
+            <summary>Can it set up Screen Time for me?</summary>
             <p>
-              Yes. Turn on adult website blocking in your plan. On Mac, Hard Pause checks sites
-              against an updated adult website list on your device. You can add specific sites too.
-              No filter catches every adult site.
-            </p>
-          </details>
-          <details>
-            <summary>Does Hard Pause send my activity anywhere?</summary>
-            <p>
-              No. Blocking and website checks run entirely on your device, using its built-in
-              protections. Hard Pause does not send your browsing activity to us or anyone else. No
-              account. No tracking.
-            </p>
-          </details>
-          <details>
-            <summary>How strong is the blocking?</summary>
-            <p>
-              Hard Pause is still in development. Some browser setups can get around website blocks,
-              and someone with Mac administrator access can turn off the protection. Save your work
-              before blocking apps: closing them can lose unsaved changes.
+              Yes. On Mac, Hard Pause can set up Apple’s Screen Time protections for you and keep
+              them in place until your chosen wait ends.
             </p>
           </details>
           <details>
             <summary>Can I use it on my iPhone?</summary>
             <p>
-              The iPhone and iPad app is in development for iOS 26 or later. It is not available in
-              the App Store yet, and its protection still needs testing on a real iPhone.
+              The iPhone and iPad app is in development. For now, you can get Hard Pause for Mac.
             </p>
           </details>
         </div>
