@@ -227,9 +227,70 @@ final class BrowserProtection: ObservableObject {
     }
 }
 
-private actor BrowserAutomationWorker {
+actor BrowserAutomationWorker {
     private let defaults = UserDefaults.standard
     private var lastPermissionResults: [String: OSStatus] = [:]
+    private lazy var script: OSAScript? = {
+        guard let language = OSALanguage(forName: "JavaScript") else { return nil }
+        // Keep one OSA context. Repeated OSAScript creation retains large amounts of
+        // JavaScript runtime memory even when each script is released by Swift.
+        let source = """
+            function browser(pid) {
+                var app = Application(pid);
+                if (!app.running()) throw new Error("Browser closed");
+                return app;
+            }
+            function scan(pid) {
+                var app = browser(pid);
+                var results = [];
+                var windows = app.windows({ timeout: 2 });
+                for (var i = 0; i < windows.length; i++) {
+                    var tabs = windows[i].tabs({ timeout: 2 });
+                    for (var j = 0; j < tabs.length; j++) {
+                        try {
+                            results.push([windows[i].id({ timeout: 2 }), j + 1, tabs[j].url({ timeout: 2 })]);
+                        } catch (error) { /* A tab closed during the scan. */ }
+                    }
+                }
+                return results;
+            }
+            function inspect(pid, isChrome, windowID, tabIndex, expectedURL) {
+                var app = browser(pid);
+                var t = app.windows.byId(windowID).tabs[tabIndex];
+                if (t.url({ timeout: 2 }) !== expectedURL) return false;
+                var adultRating = isChrome
+                    ? app.execute(t, { javascript: \(BrowserAutomationWorker.literal(AdultPageRating.script)) }, { timeout: 2 })
+                    : app.doJavaScript(\(BrowserAutomationWorker.literal(AdultPageRating.script)), { in: t }, { timeout: 2 });
+                return t.url({ timeout: 2 }) === expectedURL ? adultRating : false;
+            }
+            function migrationMatches(pid, oldURL) {
+                var app = browser(pid);
+                var results = [];
+                var windows = app.windows({ timeout: 10 });
+                for (var i = 0; i < windows.length; i++) {
+                    var tabs = windows[i].tabs({ timeout: 10 });
+                    for (var j = 0; j < tabs.length; j++) {
+                        try {
+                            if (tabs[j].url({ timeout: 10 }) === oldURL) {
+                                results.push([windows[i].id({ timeout: 10 }), j + 1]);
+                            }
+                        } catch (error) { return -1; }
+                    }
+                }
+                return results;
+            }
+            """
+        return OSAScript(source: source, language: language)
+    }()
+
+    private func execute(_ handler: String, arguments: [Any]) -> NSAppleEventDescriptor? {
+        guard let script else { return nil }
+        return autoreleasepool {
+            var error: NSDictionary?
+            let result = script.executeHandler(withName: handler, arguments: arguments, error: &error)
+            return error == nil ? result : nil
+        }
+    }
 
     private func approvalKey(_ identifier: String) -> String {
         let workerPath =
@@ -294,23 +355,10 @@ private actor BrowserAutomationWorker {
         guard ["com.google.Chrome", "com.apple.Safari"].contains(identifier),
             let application = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first
         else { return false }
-        let source = """
-            var results = [];
-            var windows = app.windows({ timeout: 10 });
-            for (var i = 0; i < windows.length; i++) {
-                var tabs = windows[i].tabs({ timeout: 10 });
-                for (var j = 0; j < tabs.length; j++) {
-                    try {
-                        if (tabs[j].url({ timeout: 10 }) === \(Self.literal(oldPage.absoluteString))) {
-                            results.push([windows[i].id({ timeout: 10 }), j + 1]);
-                        }
-                    } catch (error) { return -1; }
-                }
-            }
-            return results;
-            """
         let pid = application.processIdentifier
-        guard let matches = Self.execute(source, processIdentifier: pid), matches.descriptorType == typeAEList else {
+        guard let matches = execute("migrationMatches", arguments: [pid, oldPage.absoluteString]),
+            matches.descriptorType == typeAEList
+        else {
             return false
         }
         for index in 0..<matches.numberOfItems {
@@ -323,7 +371,9 @@ private actor BrowserAutomationWorker {
                     windowID: windowID, tabIndex: tabIndex)
             else { return false }
         }
-        guard let remaining = Self.execute(source, processIdentifier: pid) else { return false }
+        guard let remaining = execute("migrationMatches", arguments: [pid, oldPage.absoluteString]) else {
+            return false
+        }
         return remaining.descriptorType == typeAEList && remaining.numberOfItems == 0
     }
 
@@ -335,26 +385,12 @@ private actor BrowserAutomationWorker {
     ) async -> CheckOutcome {
         var rtaUnavailable = false
         var mayHaveRedirected = false
-        // Only fixed, allowlisted application IDs enter the scripts. Tab URLs and the
-        // destination are escaped as data, and the tab URL is checked again before a redirect.
+        // Only fixed, allowlisted application IDs enter the scripts. The browser
+        // process is targeted by PID, and the tab URL is checked again before a redirect.
         guard BrowserProtection.browsers.contains(where: { $0.id == identifier }) else {
             return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
         }
-        let source = """
-            var results = [];
-            var windows = app.windows({ timeout: 2 });
-            for (var i = 0; i < windows.length; i++) {
-                var tabs = windows[i].tabs({ timeout: 2 });
-                for (var j = 0; j < tabs.length; j++) {
-                    try {
-                        results.push([windows[i].id({ timeout: 2 }), j + 1, tabs[j].url({ timeout: 2 })]);
-                    }
-                    catch (error) { /* A tab closed during the scan. */ }
-                }
-            }
-            return results;
-            """
-        guard let result = Self.execute(source, processIdentifier: processIdentifier),
+        guard let result = execute("scan", arguments: [processIdentifier]),
             result.descriptorType == typeAEList
         else {
             return CheckOutcome(success: false, rtaUnavailable: rtaUnavailable, mayHaveRedirected: false)
@@ -367,14 +403,14 @@ private actor BrowserAutomationWorker {
                 let raw = item.atIndex(3)?.stringValue,
                 let url = URL(string: raw), url != page, ["http", "https"].contains(url.scheme?.lowercased() ?? "")
             else { continue }
-            let windowReference: String
+            let windowReference: Any
             if identifier == "com.google.Chrome" {
                 guard let windowID = item.atIndex(1)?.stringValue, !windowID.isEmpty else { continue }
-                windowReference = Self.literal(windowID)
+                windowReference = windowID
             } else {
                 let windowID = item.atIndex(1)?.int32Value ?? 0
                 guard windowID > 0 else { continue }
-                windowReference = String(windowID)
+                windowReference = windowID
             }
             let tabIndex = item.atIndex(2)?.int32Value ?? 0
             guard tabIndex > 0 else { continue }
@@ -382,17 +418,12 @@ private actor BrowserAutomationWorker {
             let categoryActive = rules.contains(where: \.blocksAdultWebsites)
             var ratedAdult = categoryActive ? await cachedRating(url) : false
             if !matched && !ratedAdult && categoryActive && !rtaUnavailable {
-                let command =
-                    identifier == "com.google.Chrome"
-                    ? "app.execute(t, { javascript: \(Self.literal(AdultPageRating.script)) }, { timeout: 2 })"
-                    : "app.doJavaScript(\(Self.literal(AdultPageRating.script)), { in: t }, { timeout: 2 })"
-                let inspect = """
-                    var t = app.windows.byId(\(windowReference)).tabs[\(tabIndex - 1)];
-                    if (t.url({ timeout: 2 }) !== \(Self.literal(raw))) return false;
-                    var adultRating = \(command);
-                    return t.url({ timeout: 2 }) === \(Self.literal(raw)) ? adultRating : false;
-                    """
-                if let rating = Self.execute(inspect, processIdentifier: processIdentifier) {
+                if let rating = execute(
+                    "inspect",
+                    arguments: [
+                        processIdentifier, identifier == "com.google.Chrome", windowReference, tabIndex - 1, raw,
+                    ]
+                ) {
                     ratedAdult = rating.booleanValue
                 } else {
                     rtaUnavailable = true
@@ -413,21 +444,6 @@ private actor BrowserAutomationWorker {
         }
         return CheckOutcome(
             success: true, rtaUnavailable: rtaUnavailable, mayHaveRedirected: mayHaveRedirected)
-    }
-
-    private static func execute(_ body: String, processIdentifier: pid_t) -> NSAppleEventDescriptor? {
-        // A process target cannot relaunch a browser that quits between tab operations.
-        let source = """
-            function run() {
-                var app = Application(\(processIdentifier));
-                if (!app.running()) throw new Error("Browser closed");
-                \(body)
-            }
-            """
-        guard let language = OSALanguage(forName: "JavaScript") else { return nil }
-        var error: NSDictionary?
-        let result = OSAScript(source: source, language: language).executeAndReturnError(&error)
-        return error == nil ? result : nil
     }
 
     private static func setURL(

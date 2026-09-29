@@ -27,6 +27,8 @@ final class AppModel: ObservableObject {
     private let browserProtection = BrowserProtection()
     private var browserWorker = BrowserWorkerClient()
     @Published private(set) var browserWorkerReadiness: BrowserWorkerReadiness?
+    private(set) var pendingBrowserWorkerBuild: UInt64?
+    private let replacementWorkerProbe: (@MainActor (String) async -> BrowserWorkerReadiness?)?
     var browserWorkerReadyForHandoff: Bool {
         browserWorkerReadiness?.isFresh() == true
             && browserWorkerReadiness?.readyForHandoff == true
@@ -131,12 +133,14 @@ final class AppModel: ObservableObject {
         automaticallyRefreshes: Bool = true,
         setupProbe: (@MainActor () async -> SetupAccessState)? = nil,
         serviceInstallationCheck: (() -> Bool)? = nil,
-        serviceInstallAction: (@MainActor (Bool, Bool, Bool) async throws -> Void)? = nil
+        serviceInstallAction: (@MainActor (Bool, Bool, Bool) async throws -> Void)? = nil,
+        replacementWorkerProbe: (@MainActor (String) async -> BrowserWorkerReadiness?)? = nil
     ) {
         let client = service ?? ProtectedServiceClient()
         self.service = client
         appleProtection = AppleProtectionModel(service: client)
         self.setupProbe = setupProbe
+        self.replacementWorkerProbe = replacementWorkerProbe
         self.serviceInstallationCheck =
             serviceInstallationCheck ?? {
                 FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/org.hardpause.service.plist")
@@ -417,12 +421,48 @@ final class AppModel: ObservableObject {
         browserAccessRequests.insert(String(url.path.dropFirst()))
     }
 
+    func setPendingBrowserWorkerBuild(_ build: UInt64?) {
+        guard pendingBrowserWorkerBuild != build else { return }
+        pendingBrowserWorkerBuild = build
+        Task { await refreshSetup() }
+    }
+
+    static func replacementWorkerName(build: UInt64) -> String {
+        "\(BrowserWorkerIdentity.machService).v\(build)"
+    }
+
+    func replacementWorkerReadiness(build: UInt64) async -> BrowserWorkerReadiness? {
+        let name = Self.replacementWorkerName(build: build)
+        guard let client = BrowserWorkerClient(machServiceName: name) else { return nil }
+        if let replacementWorkerProbe { return await replacementWorkerProbe(name) }
+        return await client.readiness()
+    }
+
+    func replacementWorkerReady(build: UInt64) async -> Bool {
+        guard let report = await replacementWorkerReadiness(build: build) else { return false }
+        return report.isFresh() && report.readyForRetirement && report.serviceReachable
+            && report.pausePageURL.map(BrowserWorkerIdentity.isLocalPausePage) == true
+    }
+
     func connectBrowser(_ identifier: String) async {
         guard !isRecoveringAppAfterUpdate, connectingBrowserID == nil else { return }
         connectingBrowserID = identifier
         browserConnectionMessages[identifier] = nil
         defer { connectingBrowserID = nil }
-        if !BrowserWorkerClient.installedMachServices().isEmpty {
+        if let pendingBrowserWorkerBuild {
+            let name = Self.replacementWorkerName(build: pendingBrowserWorkerBuild)
+            guard BrowserWorkerClient.installedMachServices().contains(name),
+                let target = BrowserWorkerClient(machServiceName: name)
+            else {
+                browserConnectionMessages[identifier] =
+                    "The new browser worker is missing. Its installation needs repair before the update can continue."
+                return
+            }
+            let readiness = await target.requestPermission(for: identifier)
+            browserConnectionMessages[identifier] =
+                readiness?.browserStatuses[identifier]
+                ?? "The new browser worker did not reply. Retry the app update."
+        } else if !BrowserWorkerClient.installedMachServices().isEmpty {
             _ = await probeBrowserWorkerReadiness()
             guard browserWorkerReadiness != nil else {
                 browserConnectionMessages[identifier] = "Hard Pause Worker is unavailable. Try again."
@@ -490,7 +530,11 @@ final class AppModel: ObservableObject {
     func refreshSetup() async {
         guard !isCheckingSetup, !isRecoveringAppAfterUpdate else { return }
         isCheckingSetup = true
-        defer { isCheckingSetup = false }
+        let pendingBuild = pendingBrowserWorkerBuild
+        defer {
+            isCheckingSetup = false
+            if pendingBuild != pendingBrowserWorkerBuild { Task { await refreshSetup() } }
+        }
         let access: SetupAccessState
         if let setupProbe {
             access = await setupProbe()
@@ -505,8 +549,15 @@ final class AppModel: ObservableObject {
             {
                 _ = await probeBrowserWorkerReadiness()
             }
+            let pendingReadiness: BrowserWorkerReadiness?
+            if let pendingBuild {
+                pendingReadiness = await replacementWorkerReadiness(build: pendingBuild)
+            } else {
+                pendingReadiness = nil
+            }
+            let presentedWorker = pendingBuild == nil ? browserWorkerReadiness : pendingReadiness
             let browsers: [BrowserSetupState]
-            if let worker = browserWorkerReadiness, worker.isFresh() {
+            if let worker = presentedWorker, worker.isFresh() {
                 browsers = worker.browserAccess.map { browser in
                     let permission: BrowserPermissionState
                     if !browser.installed {
@@ -529,6 +580,15 @@ final class AppModel: ObservableObject {
                         isInstalled: browser.installed,
                         permission: permission)
                 }
+            } else if pendingBuild != nil {
+                browsers = BrowserProtection.browsers.map { browser in
+                    let installed =
+                        NSWorkspace.shared.urlForApplication(withBundleIdentifier: browser.id) != nil
+                        || !NSRunningApplication.runningApplications(withBundleIdentifier: browser.id).isEmpty
+                    return BrowserSetupState(
+                        id: browser.id, name: browser.name, isInstalled: installed,
+                        permission: installed ? .unknown : .unavailable)
+                }
             } else {
                 browsers = await browserProtection.readiness()
             }
@@ -536,6 +596,7 @@ final class AppModel: ObservableObject {
                 browsers: browsers,
                 startsAtLogin: loginStatus.value)
         }
+        guard pendingBuild == pendingBrowserWorkerBuild else { return }
         browserReadiness = access.browsers
         browserAccessRequests.subtract(access.browsers.filter { $0.permission == .granted }.map(\.id))
         startsAtLogin = access.startsAtLogin
