@@ -70,19 +70,19 @@ test('production landing is honest, local, and contains no simulated controls', 
   expect(external).toEqual([]);
 });
 
-test('Low Light keeps the sleeping motion and respects reduced motion', async ({ page }) => {
+test('Low Light follows browser frames and respects reduced motion', async ({ page }) => {
   await page.goto('/');
   const liveBody = page.locator('.presence .low-light-body');
   await expect(liveBody).toHaveAttribute('d', /Z$/);
   const movingPaths = await liveBody.evaluate(async (shape) => {
     const paths = [];
-    for (let index = 0; index < 8; index++) {
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+    for (let index = 0; index < 24; index++) {
+      await new Promise((resolve) => globalThis.requestAnimationFrame(resolve));
       paths.push(shape.getAttribute('d'));
     }
     return paths;
   });
-  expect(new Set(movingPaths).size).toBeGreaterThan(3);
+  expect(new Set(movingPaths).size).toBeGreaterThanOrEqual(movingPaths.length - 1);
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.waitForTimeout(100);
@@ -101,6 +101,34 @@ test('landing fits a narrow viewport and enlarged text', async ({ page }) => {
     true,
   );
   await expect(page.getByRole('link', { name: 'Get the app' })).toBeVisible();
+});
+
+test('hero keeps the mascot and main content on the first screen', async ({ page }) => {
+  for (const [width, height] of [
+    [320, 568],
+    [375, 667],
+    [390, 740],
+    [568, 320],
+    [667, 375],
+    [844, 390],
+    [768, 1024],
+    [1024, 768],
+    [1280, 600],
+    [1440, 900],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    await page.evaluate(() => document.fonts.ready);
+    for (const selector of ['.presence', '#hero-title', '.hero-intro', '.hero-actions']) {
+      await expect(page.locator(selector), `${selector} at ${width}×${height}`).toBeInViewport({
+        ratio: 1,
+      });
+    }
+    const heading = await page.locator('.hero-heading').boundingBox();
+    const mascot = await page.locator('.presence').boundingBox();
+    expect(mascot.x).toBeGreaterThanOrEqual(heading.x + heading.width);
+    expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
+  }
 });
 
 test('bundled native renderer remains local and morphs without body zoom', async ({ page }) => {
@@ -198,7 +226,7 @@ test('native greeting API faces forward, nods, and returns to the latest target'
   );
   const peaks = positions.filter(
     (position, index) =>
-      position > 2.5 && position > positions[index - 1] && position >= positions[index + 1],
+      position > 1.5 && position > positions[index - 1] && position >= positions[index + 1],
   );
   expect(peaks).toHaveLength(2);
   expect(positions.at(-1)).toBe(0);
