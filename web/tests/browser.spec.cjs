@@ -29,38 +29,36 @@ test('production landing is honest, local, and contains no simulated controls', 
   });
 
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Nothing needs you right now.' })).toBeVisible();
-  await expect(
-    page.getByText('Hard Pause uses local system protection designed for each device.'),
-  ).toBeVisible();
-  await expect(page.getByText('iOS 26 or later')).toBeVisible();
-  await expect(page.getByText('macOS 26 or later')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Pause', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Hard Pause', exact: true })).toBeVisible();
-  await expect(
-    page.getByText('We still need to test the protection on a real iPhone.'),
-  ).toBeVisible();
-  await expect(
-    page.getByText('The Mac download is a development build.', { exact: false }),
-  ).toBeVisible();
-  await expect(page.getByRole('link', { name: 'download for Mac' })).toHaveAttribute(
+  await expect(page.getByRole('heading', { name: 'You had other plans.' })).toBeVisible();
+  await expect(page.getByText('Early release · macOS 26 or later', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Try Hard Pause for Mac' }).click();
+  await expect(page).toHaveURL(/#availability$/);
+  await expect(page.getByRole('link', { name: 'Download for Mac', exact: true })).toHaveAttribute(
     'href',
-    `${repositoryURL}/releases/latest`,
+    `${repositoryURL}/releases/latest/download/HardPause-macOS.zip`,
   );
-  await expect(page.getByRole('link', { name: 'view the source' })).toHaveAttribute(
+  await expect(page.getByText('This is a development build.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Source code' })).toHaveAttribute(
     'href',
     repositoryURL,
   );
-  await expect(page.getByRole('link', { name: 'view build checks' })).toHaveAttribute(
-    'href',
-    checksURL,
-  );
-  await expect(page.locator('.product-illustration')).toHaveAttribute('role', 'img');
+  await expect(page.getByRole('link', { name: 'Build checks' })).toHaveAttribute('href', checksURL);
+
+  const iphoneQuestion = page.locator('summary', { hasText: 'Can I use it on my iPhone?' });
+  await iphoneQuestion.focus();
+  await page.keyboard.press('Enter');
   await expect(
-    page.locator('.product-illustration button, .product-illustration input'),
-  ).toHaveCount(0);
+    page.getByText('The iPhone and iPad app is in development', { exact: false }),
+  ).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('The iPhone and iPad app is in development', { exact: false }),
+  ).toBeHidden();
+  await page.locator('summary', { hasText: 'How strong is the blocking?' }).click();
+  await expect(
+    page.getByText('Some browser setups can get around website blocks', { exact: false }),
+  ).toBeVisible();
   await expect(page.locator('form, input, select')).toHaveCount(0);
-  await expect(page.locator('[id*="preview"], [class*="preview"]')).toHaveCount(0);
   expect((await page.locator('body').innerText()).toLowerCase()).not.toContain('skip the wait');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
@@ -99,7 +97,7 @@ test('landing fits a narrow viewport and enlarged text', async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );
-  await expect(page.getByRole('link', { name: 'get the app' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Get the app' })).toBeVisible();
 });
 
 test('bundled native renderer remains local and morphs without body zoom', async ({ page }) => {
