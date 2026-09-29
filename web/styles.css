@@ -686,7 +686,10 @@ details p {
     margin-block: 16px;
   }
 }
-@media (min-width: 600px) and (max-height: 500px) {
+@media (min-width: 560px) and (max-height: 500px) {
+  .site-header {
+    padding-block: 6px;
+  }
   .hero {
     grid-template-columns: 1.2fr 1fr;
     grid-template-areas: 'heading art' 'intro actions';
@@ -698,7 +701,7 @@ details p {
     margin-block: 10px 0;
   }
   .hero-art {
-    width: min(100%, 38svh);
+    width: clamp(100px, 30svh, 160px);
   }
   .hero .button {
     margin-top: 0;

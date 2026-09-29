@@ -108,6 +108,7 @@ test('hero keeps the mascot and main content on the first screen', async ({ page
     [320, 568],
     [375, 667],
     [390, 740],
+    [568, 320],
     [667, 375],
     [844, 390],
     [768, 1024],
